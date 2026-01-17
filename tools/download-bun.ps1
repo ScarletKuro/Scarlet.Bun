@@ -55,8 +55,8 @@ if ($extractedFiles) {
     Write-Host "Moving $($bunExe.FullName) to $ExecutablePath"
     Move-Item -Path $bunExe.FullName -Destination $ExecutablePath -Force
     
-    # Clean up ALL extracted directories (including bun-* and __MACOSX)
-    Get-ChildItem -Path $extractDir -Directory | ForEach-Object {
+    # Clean up only extracted bun-* directories (not project directories like build/)
+    Get-ChildItem -Path $extractDir -Directory | Where-Object { $_.Name -like "bun-*" -or $_.Name -eq "__MACOSX" } | ForEach-Object {
       Remove-Item -Path $_.FullName -Recurse -Force -ErrorAction SilentlyContinue
     }
   }

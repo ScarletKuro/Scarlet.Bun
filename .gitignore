@@ -57,6 +57,8 @@ src/**/bun-*/
 !src/**/*.csproj
 !src/**/*.cs
 !src/**/*.md
+!src/**/*.props
+!src/**/*.targets
 
 # Test outputs
 *.trx

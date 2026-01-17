@@ -48,8 +48,10 @@ if [ -n "$BUN_EXE" ] && [ "$BUN_EXE" != "$EXECUTABLE_PATH" ]; then
   echo "Moving $BUN_EXE to $EXECUTABLE_PATH"
   mv "$BUN_EXE" "$EXECUTABLE_PATH"
   
-  # Clean up extracted directory structures (both bun-* and __MACOSX)
-  find "$EXTRACT_DIR" -mindepth 1 -maxdepth 1 -type d -exec rm -rf {} + 2>/dev/null || true
+  # Clean up only extracted bun-* directories (not project directories like build/)
+  find "$EXTRACT_DIR" -mindepth 1 -maxdepth 1 -type d -name "bun-*" -exec rm -rf {} + 2>/dev/null || true
+  # Also clean up __MACOSX if present
+  [ -d "$EXTRACT_DIR/__MACOSX" ] && rm -rf "$EXTRACT_DIR/__MACOSX" 2>/dev/null || true
 fi
 
 # Clean up temp file with error handling
