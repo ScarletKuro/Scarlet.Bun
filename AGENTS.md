@@ -6,46 +6,79 @@ This document provides information for AI agents and developers about the Scarle
 
 This is an MSBuild task package that integrates Bun (a fast JavaScript runtime) into .NET build processes. It allows developers to execute Bun commands as part of their .NET project builds.
 
+## Understanding Bun
+
+**IMPORTANT: Before making any changes related to Bun functionality, capabilities, or commands, you MUST first consult the comprehensive Bun documentation.**
+
+The complete Bun documentation for LLMs is available at `.github/agents/bun-llms-full.txt`. This file contains:
+- Complete API reference for all Bun commands and features
+- Usage examples and best practices
+- Performance characteristics and optimization techniques
+- Platform-specific behavior and compatibility notes
+- Build, bundler, test runner, and runtime capabilities
+
+**When to consult the Bun documentation:**
+- Before implementing or modifying any Bun command execution
+- When adding new Bun features or capabilities to the MSBuild task
+- When troubleshooting Bun-related issues or errors
+- When optimizing Bun command parameters or flags
+- When updating integration tests that use Bun commands
+
+This ensures that any Bun-related implementations leverage the full capabilities of the tool and follow recommended practices.
+
 ## Project Structure
 
 ```
 /
+├── .github/
+│   └── agents/                        # AI agent resources
+│       ├── bun-llms-full.txt              # Comprehensive Bun documentation for LLMs
+│       └── README.md                      # Documentation about agent resources
+├── build/
+│   └── BunRuntime.targets             # Shared MSBuild targets for runtime packages
 ├── src/
-│   └── Scarlet.Bun.MSBuild/          # Main MSBuild task library
-│       ├── Platform.cs                  # Platform enum (Windows/Linux/macOS x64/ARM64)
-│       ├── BunRuntimeResolver.cs        # Runtime detection and path resolution
-│       ├── BunRunTask.cs                # Main MSBuild task implementation
-│       ├── build/
-│       │   ├── Scarlet.Bun.MSBuild.props    # MSBuild properties
-│       │   └── Scarlet.Bun.MSBuild.targets  # MSBuild targets
-│       └── runtimes/                    # Embedded Bun executables
-│           ├── bun-windows-x64-baseline/
-│           ├── bun-linux-x64-baseline/
-│           ├── bun-linux-aarch64/
-│           ├── bun-darwin-x64-baseline/
-│           └── bun-darwin-aarch64/
+│   ├── Scarlet.Bun.MSBuild/           # Main MSBuild task library
+│   │   ├── Platform.cs                    # Platform enum (Windows/Linux/macOS x64/ARM64)
+│   │   ├── BunRuntimeResolver.cs          # Runtime detection and path resolution
+│   │   ├── BunRunTask.cs                  # Main MSBuild task for executing Bun commands
+│   │   ├── BunDownloader.cs               # Runtime download functionality
+│   │   └── build/
+│   │       ├── Scarlet.Bun.MSBuild.props      # MSBuild properties
+│   │       └── Scarlet.Bun.MSBuild.targets    # MSBuild targets
+│   └── Scarlet.Bun.Runtime.{platform}/  # Platform-specific runtime packages (5 packages)
+│       ├── build/                         # MSBuild integration for each runtime
+│       │   └── Scarlet.Bun.Runtime.{platform}.props
+│       └── {platform}.csproj              # Downloads/packages Bun binary for platform
+├── samples/
+│   ├── Scarlet.Bun.Sample/            # Sample project using embedded runtimes
+│   └── Scarlet.Bun.Sample.Download/   # Sample project using runtime download
 ├── tests/
 │   ├── Scarlet.Bun.MSBuild.Tests/         # Unit tests
 │   │   ├── PlatformTests.cs                  # Platform detection tests
-│   │   └── BunRuntimeResolverTests.cs        # Runtime resolver tests
+│   │   ├── BunRuntimeResolverTests.cs        # Runtime resolver tests
+│   │   └── BunDownloaderTests.cs             # Runtime downloader tests
 │   └── Scarlet.Bun.MSBuild.IntegrationTests/  # Integration tests
 │       ├── BunIntegrationTests.cs            # End-to-end Bun execution tests
+│       ├── BunDownloadIntegrationTests.cs    # Runtime download integration tests
 │       ├── MockBuildEngine.cs                # Mock MSBuild engine for testing
 │       └── TestAssets/                       # Test files for integration tests
 │           ├── build.mjs                     # Sample Bun build script
 │           ├── package.json                  # Node dependencies
 │           ├── scripts/                      # Sample JS files
 │           └── styles/                       # Sample SCSS files
-├── Scarlet.Bun.MSBuild.sln         # Solution file
+├── tools/
+│   ├── download-bun.sh                # Bash script to download Bun runtime
+│   └── download-bun.ps1               # PowerShell script to download Bun runtime
+├── AGENTS.md                          # This file - guide for AI agents
 ├── README.md                          # User-facing documentation
-└── .gitignore                         # Git ignore patterns
+└── Scarlet.Bun.MSBuild.slnx           # Solution file
 
 ```
 
 ## Key Components
 
 ### 1. Platform Detection (`Platform.cs` & `BunRuntimeResolver.cs`)
-- Detects the current OS and architecture
+- Detects the current OS and architecture (Windows/Linux/macOS, x64/ARM64)
 - Maps platforms to their corresponding Bun runtime directories
 - Resolves the path to the appropriate Bun executable
 - Sets execute permissions on Unix systems
@@ -55,11 +88,25 @@ This is an MSBuild task package that integrates Bun (a fast JavaScript runtime) 
 - Executes Bun commands with configurable parameters
 - Captures stdout/stderr
 - Supports timeout and error handling
+- Works with both embedded runtimes and downloaded runtimes
 
-### 3. MSBuild Integration (`build/*.props` & `build/*.targets`)
+### 3. Runtime Downloader (`BunDownloader.cs`)
+- Downloads Bun runtime from GitHub releases
+- Caches downloaded runtimes to avoid re-downloading
+- Supports version-specific downloads
+- Validates runtime availability before download
+
+### 4. Platform-Specific Runtime Packages (`Scarlet.Bun.Runtime.{platform}`)
+- Five separate NuGet packages, one for each supported platform
+- Downloads platform-specific Bun binaries during build
+- Packages binaries for distribution via NuGet
+- Each package includes MSBuild integration via `.props` files
+
+### 5. MSBuild Integration (`build/*.props` & `build/*.targets`)
 - Automatically loaded when package is referenced
 - Registers the BunRunTask for use in project files
 - Provides default properties
+- Integrates platform-specific runtime packages
 
 ## How to Build
 
@@ -162,15 +209,15 @@ If all three commands succeed, the project is in good shape.
 ### Detailed Verification Checklist
 
 - [ ] **Build succeeds** - `dotnet build` completes without errors
-- [ ] **All unit tests pass** - 13 unit tests should pass
-- [ ] **All integration tests pass** - 3 integration tests should pass
+- [ ] **All unit tests pass** - Run `dotnet test tests/Scarlet.Bun.MSBuild.Tests/`
+- [ ] **All integration tests pass** - Run `dotnet test tests/Scarlet.Bun.MSBuild.IntegrationTests/`
   - Dependencies are installed
   - Build script executes
   - Output files are created
   - Content is minified/bundled correctly
 - [ ] **Package creation succeeds** - `dotnet pack` creates .nupkg file
 - [ ] **No unexpected files in source control** - Check `git status`
-- [ ] **Runtime files are present** - Verify all 5 platform runtimes exist in `src/Scarlet.Bun.MSBuild/runtimes/`
+- [ ] **Runtime packages build correctly** - All 5 platform-specific runtime packages compile
 
 ### Common Issues and Solutions
 
@@ -241,6 +288,7 @@ When setting up CI/CD:
 
 ## Notes for AI Agents
 
+- **CRITICAL:** Before working on Bun-related functionality, read `.github/agents/bun-llms-full.txt` to understand Bun's full capabilities and proper usage
 - This project uses **netstandard2.0** for maximum compatibility
 - Runtime binaries are large (~100MB each) and should not be modified
 - Integration tests require actual Bun execution, so they're slower than unit tests
@@ -248,3 +296,4 @@ When setting up CI/CD:
 - MSBuild packages have security warnings - this is expected and acceptable for build-time tools
 - Always run both unit and integration tests before claiming success
 - The package is designed as a development dependency (`DevelopmentDependency=true`)
+- When implementing new Bun features, verify against the official Bun documentation in `.github/agents/bun-llms-full.txt` to ensure correctness
