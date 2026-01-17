@@ -43,7 +43,11 @@ echo "Extracting to $EXTRACT_DIR"
 unzip -o "$TMP_ZIP" -d "$EXTRACT_DIR"
 
 # Bun zip files contain a directory structure - find and move the executable
-BUN_EXE=$(find "$EXTRACT_DIR" -type f -name "bun" -not -path "*/.*" | head -n 1)
+# Extract the expected filename (e.g., "bun" or "bun.exe") from the target path
+EXPECTED_FILENAME=$(basename "$EXECUTABLE_PATH")
+echo "Looking for executable named: $EXPECTED_FILENAME"
+
+BUN_EXE=$(find "$EXTRACT_DIR" -type f -name "$EXPECTED_FILENAME" -not -path "*/.*" | head -n 1)
 if [ -n "$BUN_EXE" ] && [ "$BUN_EXE" != "$EXECUTABLE_PATH" ]; then
   echo "Moving $BUN_EXE to $EXECUTABLE_PATH"
   mv "$BUN_EXE" "$EXECUTABLE_PATH"
