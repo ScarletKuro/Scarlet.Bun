@@ -1,0 +1,46 @@
+<Project>
+  <!-- Reference the output of the task project, using properties that expand to match the real output. -->
+  <PropertyGroup>
+    <_BunTaskProjectDir>$(MSBuildThisFileDirectory)</_BunTaskProjectDir>
+    <_BunTaskAssembly>$(_BunTaskProjectDir)bin\$(Configuration)\netstandard2.0\Scarlet.Bun.MSBuild.dll</_BunTaskAssembly>
+    <!-- Set the runtime directory for development scenarios -->
+    <BunRuntimeDirectory>$(_BunTaskProjectDir)bin\runtimes</BunRuntimeDirectory>
+  </PropertyGroup>
+
+  <!-- Using TaskHostFactory ensures that the task assembly will not be locked at the end of the build.
+       If it's omitted, that can cause build failures in subsequent builds because the task assembly
+       can't be written by the next build. -->
+  <UsingTask TaskName="Scarlet.Bun.MSBuild.BunRunTask" 
+             AssemblyFile="$(_BunTaskAssembly)" 
+             TaskFactory="TaskHostFactory" />
+
+  <ItemGroup>
+    <!-- Add a ProjectReference to ensure that the task gets built before it needs to be called. -->
+    <ProjectReference Include="$(_BunTaskProjectDir)Scarlet.Bun.MSBuild.csproj"
+                      ReferenceOutputAssembly="false" />
+  </ItemGroup>
+  
+  <!-- 
+    Expose the Bun target wrapper for development scenarios.
+    This is the same target that's in build/Scarlet.Bun.MSBuild.targets for NuGet consumption.
+  -->
+  <Target Name="Bun">
+    <Error Text="BunCommand property is required" Condition="'$(BunCommand)' == ''" />
+    <BunRunTask Command="$(BunCommand)"
+                Arguments="$(BunArguments)"
+                WorkingDirectory="$(BunWorkingDirectory)"
+                TimeoutMilliseconds="$(BunTimeoutMilliseconds)"
+                RuntimeDirectory="$(BunRuntimeDirectory)"
+                BunRuntimeDownload="$(BunRuntimeDownload)"
+                BunVersionDownload="$(BunVersionDownload)"
+                BunRuntime_win_x64="$(BunRuntime_win_x64)"
+                BunRuntime_linux_x64="$(BunRuntime_linux_x64)"
+                BunRuntime_linux_arm64="$(BunRuntime_linux_arm64)"
+                BunRuntime_osx_x64="$(BunRuntime_osx_x64)"
+                BunRuntime_osx_arm64="$(BunRuntime_osx_arm64)">
+      <Output TaskParameter="ExitCode" PropertyName="BunExitCode" />
+      <Output TaskParameter="StandardOutput" PropertyName="BunStandardOutput" />
+      <Output TaskParameter="StandardError" PropertyName="BunStandardError" />
+    </BunRunTask>
+  </Target>
+</Project>

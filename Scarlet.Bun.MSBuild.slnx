@@ -1,0 +1,23 @@
+<Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Folder Name="/samples/">
+    <Project Path="samples/Scarlet.Bun.Sample.Download/Scarlet.Bun.Sample.Download.csproj" />
+    <Project Path="samples/Scarlet.Bun.Sample/Scarlet.Bun.Sample.csproj" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/Scarlet.Bun.MSBuild/Scarlet.Bun.MSBuild.csproj" />
+    <Project Path="src/Scarlet.Bun.Runtime.darwin-aarch64/Scarlet.Bun.Runtime.darwin-aarch64.csproj" />
+    <Project Path="src/Scarlet.Bun.Runtime.darwin-x64-baseline/Scarlet.Bun.Runtime.darwin-x64-baseline.csproj" />
+    <Project Path="src/Scarlet.Bun.Runtime.linux-aarch64/Scarlet.Bun.Runtime.linux-aarch64.csproj" />
+    <Project Path="src/Scarlet.Bun.Runtime.linux-x64-baseline/Scarlet.Bun.Runtime.linux-x64-baseline.csproj" />
+    <Project Path="src/Scarlet.Bun.Runtime.windows-x64-baseline/Scarlet.Bun.Runtime.windows-x64-baseline.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Scarlet.Bun.MSBuild.IntegrationTests/Scarlet.Bun.MSBuild.IntegrationTests.csproj" />
+    <Project Path="tests/Scarlet.Bun.MSBuild.Tests/Scarlet.Bun.MSBuild.Tests.csproj" />
+  </Folder>
+</Solution>

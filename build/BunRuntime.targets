@@ -1,0 +1,32 @@
+<Project>
+  <!-- Common targets for all Bun runtime packages -->
+  <!-- Copies bun into bin/.../runtimes/<rid>/native and packs it into NuGet the same way -->
+  <Target Name="CopyBunToRuntimeFolder" AfterTargets="Build">
+    <PropertyGroup>
+      <RidOutputDir>$(TargetDir)runtimes/$(RuntimeRid)/native</RidOutputDir>
+      <BunSrc>$(MSBuildProjectDirectory)/$(BunFileName)</BunSrc>
+      <BunDst>$(RidOutputDir)/$(BunFileName)</BunDst>
+    </PropertyGroup>
+
+    <Message Importance="high" Text="Copying $(BunFileName) from: $(BunSrc) to: $(BunDst)" />
+    <MakeDir Directories="$(RidOutputDir)" />
+
+    <Copy Condition="Exists('$(BunSrc)')" SourceFiles="$(BunSrc)"
+          DestinationFiles="$(BunDst)" SkipUnchangedFiles="true" />
+
+    <!-- Ensure executable bit on Unix -->
+    <Exec Condition="$([MSBuild]::IsOsUnixLike()) and Exists('$(BunDst)')" Command="chmod +x '$(BunDst)'" />
+  </Target>
+
+  <!-- NuGet packaging layout -->
+  <ItemGroup>
+    <None Include="$(MSBuildProjectDirectory)/$(BunFileName)"
+          Pack="true"
+          PackagePath="runtimes/$(RuntimeRid)/native" />
+    <!-- Include version marker file -->
+    <None Include="$(MSBuildProjectDirectory)/$(BunFileName).version"
+          Pack="true"
+          PackagePath="runtimes/$(RuntimeRid)/native"
+          Condition="Exists('$(MSBuildProjectDirectory)/$(BunFileName).version')" />
+  </ItemGroup>
+</Project>

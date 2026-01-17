@@ -1,0 +1,6 @@
+<Project>
+  <!-- Set the runtime package path for Linux ARM64 -->
+  <PropertyGroup>
+    <BunRuntime_linux_arm64>$(MSBuildThisFileDirectory)..</BunRuntime_linux_arm64>
+  </PropertyGroup>
+</Project>

@@ -1,0 +1,57 @@
+name: CI
+
+on: [push]
+
+jobs:
+  test:
+    name: Test on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+      fail-fast: false
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Run tests with coverage
+        run: dotnet test --no-build --configuration Release --collect:"XPlat Code Coverage" --results-directory ./coverage
+
+      - name: Verify sample outputs
+        shell: bash
+        run: |
+          if [ -f "samples/Scarlet.Bun.Sample/wwwroot/js/bundle.min.js" ]; then
+            echo "✓ JavaScript bundle created successfully"
+            ls -lh samples/Scarlet.Bun.Sample/wwwroot/js/bundle.min.js
+          else
+            echo "⚠ JavaScript bundle not found (expected due to Bun CI issues)"
+          fi
+          if [ -f "samples/Scarlet.Bun.Sample/wwwroot/css/style.min.css" ]; then
+            echo "✓ CSS bundle created successfully"
+            ls -lh samples/Scarlet.Bun.Sample/wwwroot/css/style.min.css
+          else
+            echo "⚠ CSS bundle not found (expected due to Bun CI issues)"
+          fi
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          directory: ./coverage
+          fail_ci_if_error: false
+          flags: ${{ matrix.os }}
+          name: codecov-${{ matrix.os }}

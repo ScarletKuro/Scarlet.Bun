@@ -1,0 +1,11 @@
+{
+  "name": "scarlet-bun-sample",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Sample application demonstrating Scarlet.Bun.MSBuild",
+  "dependencies": {
+    "terser": "^5.36.0",
+    "sass": "^1.83.4"
+  },
+  "trustedDependencies": ["terser", "sass"]
+}

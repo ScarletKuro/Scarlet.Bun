@@ -1,0 +1,50 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" Version="6.0.4" />
+    <PackageReference Include="Microsoft.Build.Framework" Version="18.0.2" />
+    <PackageReference Include="Microsoft.Build.Utilities.Core" Version="18.0.2" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.0.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Scarlet.Bun.MSBuild\Scarlet.Bun.MSBuild.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Copy test assets to output directory -->
+    <None Include="TestAssets\**\*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <!-- Copy runtime binaries from MSBuild project to test output for integration tests -->
+  <Target Name="CopyRuntimeBinariesForTests" AfterTargets="Build">
+    <ItemGroup>
+      <!-- Copy runtimes from the MSBuild project's bin directory (not configuration-specific) -->
+      <RuntimeFiles Include="..\..\src\Scarlet.Bun.MSBuild\bin\runtimes\**\*.*" />
+    </ItemGroup>
+    
+    <Copy SourceFiles="@(RuntimeFiles)" 
+          DestinationFolder="$(OutputPath)runtimes\%(RecursiveDir)" 
+          SkipUnchangedFiles="true"
+          Condition="'@(RuntimeFiles)' != ''" />
+    
+    <Message Importance="high" Text="Copied @(RuntimeFiles->Count()) runtime files to test output" Condition="'@(RuntimeFiles)' != ''" />
+  </Target>
+
+</Project>

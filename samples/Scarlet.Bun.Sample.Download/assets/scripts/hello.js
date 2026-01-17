@@ -1,0 +1,19 @@
+// hello.js - Sample JavaScript file
+function sayHello(name) {
+  console.log("Hello, " + name + "!");
+  return "Hello, " + name + "!";
+}
+
+// Initialize on page load
+document.addEventListener("DOMContentLoaded", function() {
+  console.log("Sample app loaded!");
+  sayHello("Scarlet.Bun.MSBuild");
+  
+  // Add click handler to button
+  var button = document.querySelector(".button");
+  if (button) {
+    button.addEventListener("click", function() {
+      alert(sayHello("User"));
+    });
+  }
+});

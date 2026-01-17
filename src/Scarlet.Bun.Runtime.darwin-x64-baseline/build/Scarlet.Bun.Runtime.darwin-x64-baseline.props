@@ -1,0 +1,6 @@
+<Project>
+  <!-- Set the runtime package path for macOS x64 -->
+  <PropertyGroup>
+    <BunRuntime_osx_x64>$(MSBuildThisFileDirectory)..</BunRuntime_osx_x64>
+  </PropertyGroup>
+</Project>

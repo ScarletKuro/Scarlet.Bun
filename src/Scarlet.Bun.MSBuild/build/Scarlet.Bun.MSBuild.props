@@ -1,0 +1,16 @@
+<Project>
+  <PropertyGroup>
+    <!-- Default Bun command timeout (0 means no timeout) -->
+    <BunTimeoutMilliseconds Condition="'$(BunTimeoutMilliseconds)' == ''">0</BunTimeoutMilliseconds>
+    
+    <!-- Whether to continue build on Bun command failure -->
+    <BunContinueOnError Condition="'$(BunContinueOnError)' == ''">false</BunContinueOnError>
+    
+    <!-- Whether to download Bun runtime from GitHub releases instead of using embedded runtimes -->
+    <!-- No default - must be explicitly set by the user -->
+    
+    <!-- Specific Bun version to download (e.g., "1.3.6"). If not specified, downloads latest version. -->
+    <!-- Only used when BunRuntimeDownload is true. -->
+    <BunVersionDownload Condition="'$(BunVersionDownload)' == ''"></BunVersionDownload>
+  </PropertyGroup>
+</Project>
