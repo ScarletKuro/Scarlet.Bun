@@ -6,6 +6,26 @@ This document provides information for AI agents and developers about the Scarle
 
 This is an MSBuild task package that integrates Bun (a fast JavaScript runtime) into .NET build processes. It allows developers to execute Bun commands as part of their .NET project builds.
 
+## Understanding Bun
+
+**IMPORTANT: Before making any changes related to Bun functionality, capabilities, or commands, you MUST first consult the comprehensive Bun documentation.**
+
+The complete Bun documentation for LLMs is available at `.github/agents/bun-llms-full.txt`. This file contains:
+- Complete API reference for all Bun commands and features
+- Usage examples and best practices
+- Performance characteristics and optimization techniques
+- Platform-specific behavior and compatibility notes
+- Build, bundler, test runner, and runtime capabilities
+
+**When to consult the Bun documentation:**
+- Before implementing or modifying any Bun command execution
+- When adding new Bun features or capabilities to the MSBuild task
+- When troubleshooting Bun-related issues or errors
+- When optimizing Bun command parameters or flags
+- When updating integration tests that use Bun commands
+
+This ensures that any Bun-related implementations leverage the full capabilities of the tool and follow recommended practices.
+
 ## Project Structure
 
 ```
@@ -241,6 +261,7 @@ When setting up CI/CD:
 
 ## Notes for AI Agents
 
+- **CRITICAL:** Before working on Bun-related functionality, read `.github/agents/bun-llms-full.txt` to understand Bun's full capabilities and proper usage
 - This project uses **netstandard2.0** for maximum compatibility
 - Runtime binaries are large (~100MB each) and should not be modified
 - Integration tests require actual Bun execution, so they're slower than unit tests
@@ -248,3 +269,4 @@ When setting up CI/CD:
 - MSBuild packages have security warnings - this is expected and acceptable for build-time tools
 - Always run both unit and integration tests before claiming success
 - The package is designed as a development dependency (`DevelopmentDependency=true`)
+- When implementing new Bun features, verify against the official Bun documentation in `.github/agents/bun-llms-full.txt` to ensure correctness
