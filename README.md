@@ -1,8 +1,8 @@
 # Scarlet.Bun.MSBuild
 
-![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/ScarletKuro/ScarletKuro.Bun/.github/workflows/ci.yml?branch=master&logo=github&style=flat-square)
-[![codecov](https://codecov.io/gh/ScarletKuro/ScarletKuro.Bun/graph/badge.svg?token=K5FKEEWJ8T)](https://codecov.io/gh/ScarletKuro/ScarletKuro.Bun)
-[![GitHub](https://img.shields.io/github/license/ScarletKuro/ScarletKuro.Bun?color=594ae2&logo=github&style=flat-square)](https://github.com/ScarletKuro/ScarletKuro.Bun/blob/master/LICENSE)
+![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/ScarletKuro/Scarlet.Bun/.github/workflows/ci.yml?branch=master&logo=github&style=flat-square)
+[![codecov](https://codecov.io/gh/ScarletKuro/Scarlet.Bun/graph/badge.svg?token=A7MOQE06ZQ)](https://codecov.io/gh/ScarletKuro/Scarlet.Bun)
+[![GitHub](https://img.shields.io/github/license/ScarletKuro/Scarlet.Bun?color=594ae2&logo=github&style=flat-square)](https://github.com/ScarletKuro/Scarlet.Bun/blob/master/LICENSE)
 [![NuGet version](https://img.shields.io/nuget/v/Scarlet.Bun.MSBuild?color=ff4081&label=nuget%20version&logo=nuget&style=flat-square)](https://www.nuget.org/packages/Scarlet.Bun.MSBuild/)
 
 An MSBuild task package that integrates [Bun](https://bun.sh/) - a fast all-in-one JavaScript runtime - into your .NET build process. This package allows you to run Bun commands as part of your .NET project build, enabling JavaScript/TypeScript bundling, minification, and other Bun-powered operations.
