@@ -12,7 +12,7 @@ An MSBuild task package that integrates [Bun](https://bun.sh/) - a fast all-in-o
 - [Features](#features)
 - [Installation](#installation)
 - [Runtime Options](#runtime-options)
-  - [Option 1: Runtime Download (Recommended for CI/CD)](#option-1-runtime-download-recommended-for-cicd)
+  - [Option 1: Runtime Download](#option-1-runtime-download)
   - [Option 2: Platform-Specific Runtime Packages](#option-2-platform-specific-runtime-packages)
   - [Option 3: Conditional Package References (Multi-Platform Teams)](#option-3-conditional-package-references-multi-platform-teams)
 - [Usage](#usage)
@@ -192,6 +192,8 @@ Use MSBuild conditions to reference only the runtime package matching the curren
 </Project>
 ```
 
+**NB!** You can add them without conditions, but the runtime packages have big size.
+
 **Advantages:**
 - Builds work on any platform without modification
 - Each developer/CI agent only downloads the runtime package they need
@@ -204,7 +206,6 @@ Use MSBuild conditions to reference only the runtime package matching the curren
 - More verbose project file configuration
 - Need to maintain platform detection logic
 
-**NB!** You can add them without conditions, but the runtime packages have big size.
 ---
 
 **Which option should I choose?**
