@@ -17,13 +17,13 @@ An MSBuild task package that integrates [Bun](https://bun.sh/) - a fast all-in-o
 
 ## Supported Platforms
 
-| Platform | Runtime |
-|----------|---------|
-| Windows x64 | bun-windows-x64-baseline |
-| Linux x64 | bun-linux-x64-baseline |
-| Linux ARM64 | bun-linux-aarch64 |
-| macOS x64 | bun-darwin-x64-baseline |
-| macOS ARM64 | bun-darwin-aarch64 |
+| Platform | Runtime | Package |
+|----------|---------|---------|
+| Windows x64 | bun-windows-x64-baseline | [![NuGet](https://img.shields.io/nuget/v/Scarlet.Bun.Runtime.windows-x64-baseline?color=ff4081&logo=nuget&style=flat-square)](https://www.nuget.org/packages/Scarlet.Bun.Runtime.windows-x64-baseline/) |
+| Linux x64 | bun-linux-x64-baseline | [![NuGet](https://img.shields.io/nuget/v/Scarlet.Bun.Runtime.linux-x64-baseline?color=ff4081&logo=nuget&style=flat-square)](https://www.nuget.org/packages/Scarlet.Bun.Runtime.linux-x64-baseline/) |
+| Linux ARM64 | bun-linux-aarch64 | [![NuGet](https://img.shields.io/nuget/v/Scarlet.Bun.Runtime.linux-aarch64?color=ff4081&logo=nuget&style=flat-square)](https://www.nuget.org/packages/Scarlet.Bun.Runtime.linux-aarch64/) |
+| macOS x64 | bun-darwin-x64-baseline | [![NuGet](https://img.shields.io/nuget/v/Scarlet.Bun.Runtime.darwin-x64-baseline?color=ff4081&logo=nuget&style=flat-square)](https://www.nuget.org/packages/Scarlet.Bun.Runtime.darwin-x64-baseline/) |
+| macOS ARM64 | bun-darwin-aarch64 | [![NuGet](https://img.shields.io/nuget/v/Scarlet.Bun.Runtime.darwin-aarch64?color=ff4081&logo=nuget&style=flat-square)](https://www.nuget.org/packages/Scarlet.Bun.Runtime.darwin-aarch64/) |
 
 ## Installation
 
@@ -229,7 +229,29 @@ dotnet pack src/Scarlet.Bun.MSBuild/Scarlet.Bun.MSBuild.csproj
 
 ## License
 
-MIT
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+### Bundled Software Licenses
+
+This package distributes Bun binaries, which include:
+
+- **Bun**: MIT License - Copyright (c) Jarred Sumner and contributors
+- **JavaScriptCore/WebKit**: LGPL-2.1 License - Bun statically links JavaScriptCore and WebKit components
+
+Per the LGPL-2.1 license requirements, the complete source code and build instructions for Bun (including its statically linked JavaScriptCore components) are available at:
+- Bun source: https://github.com/oven-sh/bun
+- Patched WebKit/JavaScriptCore: https://github.com/oven-sh/webkit
+
+To relink Bun with modifications to JavaScriptCore:
+```bash
+git clone https://github.com/oven-sh/bun
+cd bun
+git submodule update --init --recursive
+make jsc
+zig build
+```
+
+For more information, see the [Bun License Documentation](https://bun.sh/docs/project/license).
 
 ## Credits
 

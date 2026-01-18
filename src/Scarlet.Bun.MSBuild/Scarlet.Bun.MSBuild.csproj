@@ -18,6 +18,7 @@
     <RepositoryUrl>https://github.com/ScarletKuro/Scarlet.Bun</RepositoryUrl>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>icon.png</PackageIcon>
     <Description>MSBuild task for integrating Bun (a fast JavaScript runtime) into .NET build processes. Downloads Bun runtimes on-demand for all supported platforms (Windows, Linux, macOS - x64 and ARM64).</Description>
     <PackageTags>bun;msbuild;javascript;build;bundler;minifier;sass;scss;typescript</PackageTags>
   </PropertyGroup>
@@ -42,6 +43,12 @@
     
     <!-- pack the README -->
     <None Include="..\..\README.md">
+      <Pack>true</Pack>
+      <PackagePath>\</PackagePath>
+    </None>
+    
+    <!-- pack the icon -->
+    <None Include="..\..\icon.png">
       <Pack>true</Pack>
       <PackagePath>\</PackagePath>
     </None>

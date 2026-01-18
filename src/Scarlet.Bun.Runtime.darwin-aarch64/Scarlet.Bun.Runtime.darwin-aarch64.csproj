@@ -15,12 +15,17 @@
     <Authors>ScarletKuro</Authors>
     <RepositoryUrl>https://github.com/ScarletKuro/Scarlet.Bun</RepositoryUrl>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageIcon>icon.png</PackageIcon>
     <PackageTags>bun;runtime;macos;darwin;arm64</PackageTags>
   </PropertyGroup>
 
-  <!-- Pack README.md, build, and buildTransitive props into package -->
+  <!-- Pack README.md, icon, build, and buildTransitive props into package -->
   <ItemGroup>
     <None Update="README.md">
+      <Pack>true</Pack>
+      <PackagePath>\</PackagePath>
+    </None>
+    <None Include="..\..\icon.png">
       <Pack>true</Pack>
       <PackagePath>\</PackagePath>
     </None>
