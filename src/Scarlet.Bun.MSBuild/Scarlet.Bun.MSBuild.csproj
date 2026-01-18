@@ -65,6 +65,17 @@
     <PackageReference Include="System.IO.Abstractions" Version="22.1.0" />
   </ItemGroup>
 
+  <!-- Copy System.IO.Abstractions dependencies to output for MSBuild task execution -->
+  <Target Name="CopyAbstractionsDependencies" AfterTargets="Build">
+    <ItemGroup>
+      <AbstractionsDlls Include="$(NuGetPackageRoot)testableio.system.io.abstractions/22.1.0/lib/netstandard2.0/*.dll" />
+      <AbstractionsDlls Include="$(NuGetPackageRoot)testableio.system.io.abstractions.wrappers/22.1.0/lib/netstandard2.0/*.dll" />
+      <AbstractionsDlls Include="$(NuGetPackageRoot)testably.abstractions.filesystem.interface/10.0.0/lib/netstandard2.0/*.dll" />
+      <AbstractionsDlls Include="$(NuGetPackageRoot)system.io.abstractions/22.1.0/lib/netstandard2.0/*.dll" />
+    </ItemGroup>
+    <Copy SourceFiles="@(AbstractionsDlls)" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" />
+  </Target>
+
   <ItemGroup>
     <!-- Reference all runtime packages as ProjectReferences during build, but they will be separate NuGet packages -->
     <!-- ReferenceOutputAssembly="false" because we only need the runtime binaries they produce, not their DLLs -->
