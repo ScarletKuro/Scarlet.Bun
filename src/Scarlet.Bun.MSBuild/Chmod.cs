@@ -1,5 +1,6 @@
 ﻿using System;
 using System.ComponentModel;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Runtime.InteropServices;
 
@@ -12,6 +13,7 @@ namespace Scarlet.Bun.MSBuild;
 /// This implementation uses P/Invoke to call libc <c>stat</c> and <c>chmod</c>
 /// and is intended for Unix-like platforms only (Linux, macOS).
 /// </remarks>
+[ExcludeFromCodeCoverage]
 public static class Chmod
 {
     /// <summary>
@@ -98,8 +100,9 @@ public static class Chmod
         {
             public ulong st_dev;
             public ulong st_ino;
-            public ulong st_nlink;
-            public uint st_mode;
+            public uint st_mode;    // mode_t
+            public uint st_nlink;   // nlink_t
+            // optionally add other fields for padding if needed
         }
     }
 }
