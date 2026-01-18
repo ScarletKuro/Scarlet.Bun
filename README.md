@@ -55,9 +55,9 @@ Install-Package Scarlet.Bun.MSBuild
 
 After installing `Scarlet.Bun.MSBuild`, you need to provide the Bun runtime. There are three approaches to choose from based on your needs:
 
-### Option 1: Runtime Download (Recommended for CI/CD)
+### Option 1: Runtime Download
 
-**Best for:** CI/CD pipelines, automated builds, and development environments where you want automatic runtime management.
+**Best for:** Projects where you want the simplest setup and prefer downloading the runtime on-demand rather than embedding it in packages.
 
 Download the Bun runtime automatically during build by setting the `BunRuntimeDownload` property:
 
@@ -70,10 +70,10 @@ Download the Bun runtime automatically during build by setting the `BunRuntimeDo
 ```
 
 **Advantages:**
-- No additional package dependencies
-- Automatically downloads only the runtime needed for your platform
-- Easy to pin specific Bun versions
-- Cached locally for subsequent builds
+- Simplest configuration - just set a few properties
+- No additional package dependencies to manage
+- Runtime downloaded only once and cached locally for subsequent builds
+- Can easily switch Bun versions by changing `BunVersionDownload` property
 
 See [Using Runtime Download](#using-runtime-download) for detailed configuration.
 
@@ -118,7 +118,7 @@ dotnet add package Scarlet.Bun.Runtime.darwin-aarch64
 
 ### Option 3: Conditional Package References (Multi-Platform Teams)
 
-**Best for:** Large teams using different operating systems (Windows, Linux, macOS) where you want the project to build on any platform without runtime downloads.
+**Best for:** Multi-platform teams and CI/CD pipelines where you want the project to build on any platform (Windows, Linux, macOS) without runtime downloads.
 
 Use MSBuild conditions to reference only the runtime package matching the current build platform:
 
@@ -186,9 +186,10 @@ Use MSBuild conditions to reference only the runtime package matching the curren
 
 **Advantages:**
 - Builds work on any platform without modification
-- Each developer/CI agent only downloads the runtime they need
-- No runtime downloads during build
+- Each developer/CI agent only downloads the runtime package they need
+- No runtime downloads during build (runtimes come from NuGet packages)
 - Deterministic builds with version-locked packages
+- Ideal for CI/CD environments with multiple platforms
 
 **Trade-offs:**
 - More verbose project file configuration
@@ -198,9 +199,9 @@ Use MSBuild conditions to reference only the runtime package matching the curren
 
 **Which option should I choose?**
 
-- **Use Option 1 (Runtime Download)** if you want simplicity and don't mind downloading ~20-40MB on first build
-- **Use Option 2 (Single Runtime Package)** if you're targeting a single platform and want offline builds
-- **Use Option 3 (Conditional References)** if you have a multi-platform team and want embedded runtimes without downloads
+- **Use Option 1 (Runtime Download)** if you want the simplest setup with minimal configuration
+- **Use Option 2 (Single Runtime Package)** if you're targeting a single platform and want explicit control
+- **Use Option 3 (Conditional References)** if you have a multi-platform team or multi-platform CI/CD and want embedded runtimes without downloads
 
 ## Usage
 
