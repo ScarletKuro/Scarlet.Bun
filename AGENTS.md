@@ -26,6 +26,37 @@ The complete Bun documentation for LLMs is available at `.github/agents/bun-llms
 
 This ensures that any Bun-related implementations leverage the full capabilities of the tool and follow recommended practices.
 
+## Understanding MSBuild
+
+**⚠️ CRITICAL: Before making ANY changes related to MSBuild tasks, targets, properties, or build logic, you MUST first read the comprehensive MSBuild documentation. This is an absolute requirement.**
+
+The complete MSBuild documentation for LLMs is available at `.github/agents/msbuild-llms-full.txt`. This file contains:
+- MSBuild architecture, properties, items, targets, and tasks
+- Custom task development and best practices
+- Dependency management (CopyLocalLockFileAssemblies, PrivateAssets)
+- Build process and lifecycle understanding
+- Inline tasks with RoslynCodeTaskFactory
+- Common patterns for multi-platform support and file system abstraction
+- Troubleshooting and debugging techniques
+- Testing strategies with MockBuildEngine
+
+**This documentation MUST be read before:**
+- Creating or modifying MSBuild tasks (BunRunTask, custom tasks)
+- Adding package dependencies to MSBuild tasks
+- Working with .targets or .props files
+- Debugging "Could not load assembly" or other build errors
+- Implementing custom build logic
+- Packaging MSBuild tasks for NuGet
+- Understanding why CopyLocalLockFileAssemblies is used
+
+**Critical MSBuild concepts for this project:**
+- How MSBuild loads and executes custom tasks in a separate context
+- Why task dependencies must be explicitly copied with CopyLocalLockFileAssemblies
+- Proper error handling and logging in custom tasks
+- Testing custom tasks with MockBuildEngine
+- Using IFileSystem abstraction for testable file operations
+- InternalsVisibleTo for exposing internal methods to tests
+
 ## Project Structure
 
 ```
@@ -33,6 +64,7 @@ This ensures that any Bun-related implementations leverage the full capabilities
 ├── .github/
 │   └── agents/                        # AI agent resources
 │       ├── bun-llms-full.txt              # Comprehensive Bun documentation for LLMs
+│       ├── msbuild-llms-full.txt          # Comprehensive MSBuild documentation for LLMs
 │       └── README.md                      # Documentation about agent resources
 ├── build/
 │   └── BunRuntime.targets             # Shared MSBuild targets for runtime packages
