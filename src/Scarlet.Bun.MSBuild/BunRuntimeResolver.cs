@@ -133,43 +133,9 @@ public static class BunRuntimeResolver
                 $"Try cleaning and rebuilding your project.");
         }
 
-        // On Unix systems, ensure the file is executable
-        if (targetPlatform != Platform.WindowsX64)
-        {
-            EnsureExecutablePermission(bunPath);
-        }
+        Chmod.EnsureExecutablePermissions(bunPath);
 
         return bunPath;
-    }
-
-    private static void EnsureExecutablePermission(string path)
-    {
-        try
-        {
-            var processInfo = new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = "chmod",
-                Arguments = $"+x \"{path}\"",
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardError = true
-            };
-
-            using var process = System.Diagnostics.Process.Start(processInfo);
-            if (process is not null)
-            {
-                process.WaitForExit();
-                if (process.ExitCode != 0)
-                {
-                    var error = process.StandardError.ReadToEnd();
-                    System.Diagnostics.Debug.WriteLine($"chmod warning: {error}");
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            System.Diagnostics.Debug.WriteLine($"Could not set execute permissions: {ex.Message}");
-        }
     }
 
     private static PlatformInfo GetInfo(Platform platform)

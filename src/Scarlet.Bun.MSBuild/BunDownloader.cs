@@ -57,10 +57,7 @@ public static class BunDownloader
             if (fileSystem.File.Exists(bunExecutablePath))
             {
                 // Verify it's executable on Unix
-                if (targetPlatform != Platform.WindowsX64)
-                {
-                    EnsureExecutablePermissions(bunExecutablePath);
-                }
+                Chmod.EnsureExecutablePermissions(bunExecutablePath);
                 return bunExecutablePath;
             }
 
@@ -78,13 +75,9 @@ public static class BunDownloader
             // Download and extract
             fileSystem.Directory.CreateDirectory(fullRuntimePath);
             await DownloadAndExtractAsync(downloadUrl, fullRuntimePath, platformName, executableName, httpClient, fileSystem);
-            
-            // Ensure executable permissions on Unix
-            if (targetPlatform != Platform.WindowsX64)
-            {
-                EnsureExecutablePermissions(bunExecutablePath);
-            }
-            
+
+            Chmod.EnsureExecutablePermissions(bunExecutablePath);
+
             return bunExecutablePath;
         }
         finally
@@ -175,33 +168,6 @@ public static class BunDownloader
         finally
         {
             // No temp file cleanup needed since we use memory stream
-        }
-    }
-
-    /// <summary>
-    /// Ensures the file has executable permissions on Unix systems.
-    /// </summary>
-    private static void EnsureExecutablePermissions(string filePath)
-    {
-        try
-        {
-            var chmodProcess = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-            {
-                FileName = "chmod",
-                Arguments = $"+x \"{filePath}\"",
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardError = true
-            });
-            
-            if (chmodProcess != null)
-            {
-                chmodProcess.WaitForExit();
-            }
-        }
-        catch
-        {
-            // Ignore errors - permissions might already be set
         }
     }
 }
