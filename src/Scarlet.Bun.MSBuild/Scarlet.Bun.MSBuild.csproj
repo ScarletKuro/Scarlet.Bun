@@ -56,8 +56,13 @@
 
 
   <ItemGroup>
+    <InternalsVisibleTo Include="Scarlet.Bun.MSBuild.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Microsoft.Build.Framework" Version="18.0.2" />
     <PackageReference Include="Microsoft.Build.Tasks.Core" Version="18.0.2" PrivateAssets="all" />
+    <PackageReference Include="System.IO.Abstractions" Version="22.1.0" />
   </ItemGroup>
 
   <ItemGroup>
@@ -79,9 +84,7 @@
       <RuntimeFiles Include="..\Scarlet.Bun.Runtime.darwin-x64-baseline\bin\$(Configuration)\netstandard2.0\runtimes\**\*.*" />
       <RuntimeFiles Include="..\Scarlet.Bun.Runtime.darwin-aarch64\bin\$(Configuration)\netstandard2.0\runtimes\**\*.*" />
     </ItemGroup>
-    <Copy SourceFiles="@(RuntimeFiles)" 
-          DestinationFolder="$(OutputPath)..\..\runtimes\%(RecursiveDir)" 
-          SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(RuntimeFiles)" DestinationFolder="$(OutputPath)..\..\runtimes\%(RecursiveDir)" SkipUnchangedFiles="true" />
   </Target>
 
 </Project>

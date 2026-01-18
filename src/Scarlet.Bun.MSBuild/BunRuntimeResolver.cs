@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.IO.Abstractions;
 using System.Runtime.InteropServices;
 
 namespace Scarlet.Bun.MSBuild;
@@ -79,7 +80,7 @@ public static class BunRuntimeResolver
     /// <summary>
     /// Gets the runtime package name for the specified platform.
     /// </summary>
-    private static string GetRuntimePackageName(Platform platform)
+    internal static string GetRuntimePackageName(Platform platform)
     {
         return platform switch
         {
@@ -98,9 +99,13 @@ public static class BunRuntimeResolver
     /// <param name="taskAssemblyPath">Path to the task assembly.</param>
     /// <param name="platform">Target platform.</param>
     /// <param name="runtimeDirectory">Optional path to the runtime directory. If not specified, throws an error.</param>
+    /// <param name="fileSystem">File system abstraction for testability. If null, uses the real file system.</param>
     /// <returns>Full path to the Bun executable.</returns>
-    public static string ResolveBunExecutable(string taskAssemblyPath, Platform? platform = null, string? runtimeDirectory = null)
+    public static string ResolveBunExecutable(string taskAssemblyPath, Platform? platform = null, string? runtimeDirectory = null, IFileSystem? fileSystem = null)
     {
+        // Use real file system if none provided
+        fileSystem ??= new FileSystem();
+        
         var targetPlatform = platform ?? GetCurrentPlatform();
         var runtimeId = GetRuntimeIdentifier(targetPlatform);
         var executableName = GetExecutableName(targetPlatform);
@@ -119,7 +124,7 @@ public static class BunRuntimeResolver
 
         var bunPath = Path.GetFullPath(Path.Combine(runtimeDirectory, runtimeId, "native", executableName));
 
-        if (!File.Exists(bunPath))
+        if (!fileSystem.File.Exists(bunPath))
         {
             var runtimePackageName = GetRuntimePackageName(targetPlatform);
             throw new FileNotFoundException(
