@@ -78,6 +78,8 @@
   <ItemGroup>
     <None Include="$(OutputPath)System.IO.Abstractions.dll" Pack="true" PackagePath="tools/netstandard2.0/" />
     <None Include="$(OutputPath)Testably.Abstractions.*.dll" Pack="true" PackagePath="tools/netstandard2.0/" />
+    <None Include="$(OutputPath)TestableIO.System.IO.Abstractions.Wrappers.*.dll" Pack="true" PackagePath="tools/netstandard2.0/" />
+    <None Include="$(OutputPath)Testably.Abstractions.FileSystem.Interface.*.dll" Pack="true" PackagePath="tools/netstandard2.0/" />
   </ItemGroup>
 
   <ItemGroup>
