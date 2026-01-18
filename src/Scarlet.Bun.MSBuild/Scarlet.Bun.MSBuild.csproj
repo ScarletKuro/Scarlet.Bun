@@ -4,39 +4,38 @@
     <TargetFrameworks>netstandard2.0</TargetFrameworks>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
-    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
-  </PropertyGroup>
-  
-  <PropertyGroup>
+	
+    <!-- NuGet package metadata -->
     <PackageId>Scarlet.Bun.MSBuild</PackageId>
-    <DevelopmentDependency>True</DevelopmentDependency>
-    <IsPackable>true</IsPackable>
-	<BuildOutputTargetFolder>tools</BuildOutputTargetFolder>
-  </PropertyGroup>
-  
-  <PropertyGroup>
     <Authors>ScarletKuro</Authors>
+    <Description>MSBuild task for integrating Bun (a fast JavaScript runtime) into .NET build processes. Downloads Bun runtimes on-demand for all supported platforms (Windows, Linux, macOS - x64 and ARM64).</Description>
+    <PackageTags>bun;msbuild;javascript;build;bundler;minifier;sass;scss;typescript</PackageTags>
     <RepositoryUrl>https://github.com/ScarletKuro/Scarlet.Bun</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageIcon>icon.png</PackageIcon>
-    <Description>MSBuild task for integrating Bun (a fast JavaScript runtime) into .NET build processes. Downloads Bun runtimes on-demand for all supported platforms (Windows, Linux, macOS - x64 and ARM64).</Description>
-    <PackageTags>bun;msbuild;javascript;build;bundler;minifier;sass;scss;typescript</PackageTags>
-  </PropertyGroup>
-  
-  <PropertyGroup>
+	
+    <!-- Packaging behavior -->
+    <IsPackable>true</IsPackable>
+    <DevelopmentDependency>True</DevelopmentDependency>
+    <Deterministic>true</Deterministic>
+	<BuildOutputTargetFolder>tools</BuildOutputTargetFolder>
+	
+    <!-- Symbols -->
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
     <EmbedUntrackedSources>true</EmbedUntrackedSources>
     <IncludeSymbols>true</IncludeSymbols>
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
-  </PropertyGroup>
-  
-  <PropertyGroup Condition="'$(GITHUB_ACTIONS)' == 'true'">
-    <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
+	
+    <!-- CI -->
+    <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
   </PropertyGroup>
   
   <ItemGroup>
-	<!-- pack the build props and targets -->
+    <!-- Pack the build props and targets files.
+    These are what make your package an MSBuild task package.
+    They define the tasks and targets consumers can use. -->
 	<None Include="build\**\*">
       <Pack>true</Pack>
       <PackagePath>build\</PackagePath>
@@ -54,16 +53,35 @@
       <PackagePath>\</PackagePath>
     </None>
   </ItemGroup>
-
-
-  <ItemGroup>
-    <InternalsVisibleTo Include="Scarlet.Bun.MSBuild.Tests" />
-  </ItemGroup>
-
+  
   <ItemGroup>
     <PackageReference Include="Microsoft.Build.Framework" Version="18.0.2" />
     <PackageReference Include="Microsoft.Build.Tasks.Core" Version="18.0.2" PrivateAssets="all" />
-    <PackageReference Include="System.IO.Abstractions" Version="22.1.0" />
+    <PackageReference Include="System.IO.Abstractions" Version="22.1.0" PrivateAssets="all" />
+  </ItemGroup>
+
+  <!-- Copy 3rd‑party dependencies into tools/ -->
+  <Target Name="CopyAbstractionsDependencies" AfterTargets="Build">
+    <ItemGroup>
+      <AbstractionsDlls Include="$(NuGetPackageRoot)testableio.system.io.abstractions/*/lib/netstandard2.0/*.dll" />
+      <AbstractionsDlls Include="$(NuGetPackageRoot)testableio.system.io.abstractions.wrappers/*/lib/netstandard2.0/*.dll" />
+      <AbstractionsDlls Include="$(NuGetPackageRoot)testably.abstractions.filesystem.interface/*/lib/netstandard2.0/*.dll" />
+      <AbstractionsDlls Include="$(NuGetPackageRoot)system.io.abstractions/*/lib/netstandard2.0/*.dll" />
+    </ItemGroup>
+
+    <Copy SourceFiles="@(AbstractionsDlls)"
+          DestinationFolder="$(OutputPath)"
+          SkipUnchangedFiles="true" />
+  </Target>
+
+  <!-- Pack copied DLLs -->
+  <ItemGroup>
+    <None Include="$(OutputPath)System.IO.Abstractions.dll" Pack="true" PackagePath="tools/netstandard2.0/" />
+    <None Include="$(OutputPath)Testably.Abstractions.*.dll" Pack="true" PackagePath="tools/netstandard2.0/" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Scarlet.Bun.MSBuild.Tests" />
   </ItemGroup>
 
   <ItemGroup>
