@@ -58,34 +58,28 @@ jobs:
           dotnet pack src/Scarlet.Bun.MSBuild/Scarlet.Bun.MSBuild.csproj \
             --no-build \
             --configuration Release \
-            --output ./packages \
-            /p:Version=$VERSION
+            --output ./packages /p:Version=$VERSION
           
           # Pack all runtime packages (without --no-build because they need to restore and copy binaries)
           dotnet pack src/Scarlet.Bun.Runtime.windows-x64-baseline/Scarlet.Bun.Runtime.windows-x64-baseline.csproj \
             --configuration Release \
-            --output ./packages \
-            /p:Version=$VERSION
+            --output ./packages /p:Version=$VERSION
           
           dotnet pack src/Scarlet.Bun.Runtime.linux-x64-baseline/Scarlet.Bun.Runtime.linux-x64-baseline.csproj \
             --configuration Release \
-            --output ./packages \
-            /p:Version=$VERSION
+            --output ./packages /p:Version=$VERSION
           
           dotnet pack src/Scarlet.Bun.Runtime.linux-aarch64/Scarlet.Bun.Runtime.linux-aarch64.csproj \
             --configuration Release \
-            --output ./packages \
-            /p:Version=$VERSION
+            --output ./packages /p:Version=$VERSION
           
           dotnet pack src/Scarlet.Bun.Runtime.darwin-x64-baseline/Scarlet.Bun.Runtime.darwin-x64-baseline.csproj \
             --configuration Release \
-            --output ./packages \
-            /p:Version=$VERSION
+            --output ./packages /p:Version=$VERSION
           
           dotnet pack src/Scarlet.Bun.Runtime.darwin-aarch64/Scarlet.Bun.Runtime.darwin-aarch64.csproj \
             --configuration Release \
-            --output ./packages \
-            /p:Version=$VERSION
+            --output ./packages /p:Version=$VERSION
           
           echo "VERSION=$VERSION" >> $GITHUB_ENV
 
