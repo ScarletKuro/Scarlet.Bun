@@ -1,3 +1,7 @@
+using System.IO.Abstractions.TestingHelpers;
+using System.IO.Compression;
+using RichardSzalay.MockHttp;
+
 namespace Scarlet.Bun.MSBuild.Tests;
 
 public class BunDownloaderTests
@@ -5,177 +9,235 @@ public class BunDownloaderTests
     [Fact]
     public async Task DownloadRuntimeAsync_WithNullRuntimeDirectory_ShouldThrowArgumentException()
     {
+        // Arrange
+        var mockHttp = new MockHttpMessageHandler();
+        var httpClient = mockHttp.ToHttpClient();
+        var mockFileSystem = new MockFileSystem();
+
         // Act & Assert
-        await Assert.ThrowsAsync<ArgumentException>(() => BunDownloader.DownloadRuntimeAsync(null!));
+        await Assert.ThrowsAsync<ArgumentException>(() => 
+            BunDownloader.DownloadRuntimeAsync(null!, httpClient: httpClient, fileSystem: mockFileSystem));
     }
 
     [Fact]
     public async Task DownloadRuntimeAsync_WithEmptyRuntimeDirectory_ShouldThrowArgumentException()
     {
+        // Arrange
+        var mockHttp = new MockHttpMessageHandler();
+        var httpClient = mockHttp.ToHttpClient();
+        var mockFileSystem = new MockFileSystem();
+
         // Act & Assert
-        await Assert.ThrowsAsync<ArgumentException>(() => BunDownloader.DownloadRuntimeAsync(string.Empty));
+        await Assert.ThrowsAsync<ArgumentException>(() => 
+            BunDownloader.DownloadRuntimeAsync(string.Empty, httpClient: httpClient, fileSystem: mockFileSystem));
     }
 
     [Fact]
     public async Task DownloadRuntimeAsync_WithWhitespaceRuntimeDirectory_ShouldThrowArgumentException()
     {
+        // Arrange
+        var mockHttp = new MockHttpMessageHandler();
+        var httpClient = mockHttp.ToHttpClient();
+        var mockFileSystem = new MockFileSystem();
+
         // Act & Assert
-        await Assert.ThrowsAsync<ArgumentException>(() => BunDownloader.DownloadRuntimeAsync("   "));
+        await Assert.ThrowsAsync<ArgumentException>(() => 
+            BunDownloader.DownloadRuntimeAsync("   ", httpClient: httpClient, fileSystem: mockFileSystem));
     }
 
     [Fact]
     public async Task DownloadRuntimeAsync_WithValidDirectory_ShouldReturnExecutablePath()
     {
         // Arrange
-        var tempDir = Path.Combine(Path.GetTempPath(), $"bun-test-{Guid.NewGuid()}");
-        try
-        {
-            Directory.CreateDirectory(tempDir);
-            var platform = BunRuntimeResolver.GetCurrentPlatform();
-            var runtimeId = BunRuntimeResolver.GetRuntimeIdentifier(platform);
-            var executableName = BunRuntimeResolver.GetExecutableName(platform);
-            var expectedPath = Path.Combine(tempDir, runtimeId, "native", executableName);
+        var tempDir = "/test-runtime";
+        var platform = Platform.LinuxX64;
+        var runtimeId = BunRuntimeResolver.GetRuntimeIdentifier(platform);
+        var executableName = BunRuntimeResolver.GetExecutableName(platform);
+        var expectedPath = Path.Combine(tempDir, runtimeId, "native", executableName);
 
-            // Act - download latest version (this is a real download, might take time)
-            var result = await BunDownloader.DownloadRuntimeAsync(tempDir);
+        var mockFileSystem = new MockFileSystem();
+        var mockHttp = new MockHttpMessageHandler();
+        
+        // Create a mock zip file with the Bun executable
+        var zipContent = CreateMockBunZip(executableName);
+        mockHttp.When("https://github.com/oven-sh/bun/releases/latest/download/bun-linux-x64-baseline.zip")
+                .Respond("application/zip", zipContent);
 
-            // Assert
-            Assert.Equal(expectedPath, result);
-            Assert.True(File.Exists(result), $"Expected executable to exist at {result}");
+        var httpClient = mockHttp.ToHttpClient();
 
-            // Verify it's executable on Unix
-            if (platform != Platform.WindowsX64)
-            {
-                var fileInfo = new FileInfo(result);
-                Assert.True(fileInfo.Exists);
-            }
-        }
-        finally
-        {
-            // Cleanup
-            if (Directory.Exists(tempDir))
-            {
-                try
-                {
-                    Directory.Delete(tempDir, recursive: true);
-                }
-                catch
-                {
-                    // Ignore cleanup errors
-                }
-            }
-        }
+        // Act
+        var result = await BunDownloader.DownloadRuntimeAsync(tempDir, platform: platform, httpClient: httpClient, fileSystem: mockFileSystem);
+
+        // Assert
+        Assert.Equal(expectedPath, result);
+        Assert.True(mockFileSystem.File.Exists(result), $"Expected executable to exist at {result}");
     }
 
     [Fact]
     public async Task DownloadRuntimeAsync_WithSpecificVersion_ShouldDownloadThatVersion()
     {
         // Arrange
-        var tempDir = Path.Combine(Path.GetTempPath(), $"bun-test-{Guid.NewGuid()}");
-        try
-        {
-            Directory.CreateDirectory(tempDir);
-            var version = "1.3.6"; // Use a known stable version
-            var platform = BunRuntimeResolver.GetCurrentPlatform();
-            var runtimeId = BunRuntimeResolver.GetRuntimeIdentifier(platform);
-            var executableName = BunRuntimeResolver.GetExecutableName(platform);
-            var expectedPath = Path.Combine(tempDir, runtimeId, "native", executableName);
+        var tempDir = "/test-runtime";
+        var version = "1.3.6";
+        var platform = Platform.LinuxX64;
+        var runtimeId = BunRuntimeResolver.GetRuntimeIdentifier(platform);
+        var executableName = BunRuntimeResolver.GetExecutableName(platform);
+        var expectedPath = Path.Combine(tempDir, runtimeId, "native", executableName);
 
-            // Act
-            var result = await BunDownloader.DownloadRuntimeAsync(tempDir, version);
+        var mockFileSystem = new MockFileSystem();
+        var mockHttp = new MockHttpMessageHandler();
+        
+        // Create a mock zip file with the Bun executable
+        var zipContent = CreateMockBunZip(executableName);
+        mockHttp.When($"https://github.com/oven-sh/bun/releases/download/bun-v{version}/bun-linux-x64-baseline.zip")
+                .Respond("application/zip", zipContent);
 
-            // Assert
-            Assert.Equal(expectedPath, result);
-            Assert.True(File.Exists(result), $"Expected executable to exist at {result}");
-        }
-        finally
-        {
-            // Cleanup
-            if (Directory.Exists(tempDir))
-            {
-                try
-                {
-                    Directory.Delete(tempDir, recursive: true);
-                }
-                catch
-                {
-                    // Ignore cleanup errors
-                }
-            }
-        }
+        var httpClient = mockHttp.ToHttpClient();
+
+        // Act
+        var result = await BunDownloader.DownloadRuntimeAsync(tempDir, version, platform, httpClient, mockFileSystem);
+
+        // Assert
+        Assert.Equal(expectedPath, result);
+        Assert.True(mockFileSystem.File.Exists(result), $"Expected executable to exist at {result}");
     }
 
     [Fact]
     public async Task DownloadRuntimeAsync_CalledTwice_ShouldReuseExistingRuntime()
     {
         // Arrange
-        var tempDir = Path.Combine(Path.GetTempPath(), $"bun-test-{Guid.NewGuid()}");
-        try
-        {
-            Directory.CreateDirectory(tempDir);
-            var version = "1.3.6";
+        var tempDir = "/test-runtime";
+        var version = "1.3.6";
+        var platform = Platform.LinuxX64;
+        var runtimeId = BunRuntimeResolver.GetRuntimeIdentifier(platform);
+        var executableName = BunRuntimeResolver.GetExecutableName(platform);
+        var expectedPath = Path.Combine(tempDir, runtimeId, "native", executableName);
 
-            // Act - first download
-            var result1 = await BunDownloader.DownloadRuntimeAsync(tempDir, version);
-            var fileInfo1 = new FileInfo(result1);
-            var firstWriteTime = fileInfo1.LastWriteTimeUtc;
-
-            // Wait a bit to ensure timestamps would be different if file was rewritten
-            await Task.Delay(100);
-
-            // Act - second download (should reuse)
-            var result2 = await BunDownloader.DownloadRuntimeAsync(tempDir, version);
-            var fileInfo2 = new FileInfo(result2);
-            var secondWriteTime = fileInfo2.LastWriteTimeUtc;
-
-            // Assert
-            Assert.Equal(result1, result2);
-            Assert.Equal(firstWriteTime, secondWriteTime); // File was not rewritten
-        }
-        finally
-        {
-            // Cleanup
-            if (Directory.Exists(tempDir))
-            {
-                try
+        var mockFileSystem = new MockFileSystem();
+        var mockHttp = new MockHttpMessageHandler();
+        
+        // Track request count
+        var requestCount = 0;
+        
+        // Create a mock zip file with the Bun executable
+        var zipContent = CreateMockBunZip(executableName);
+        mockHttp.When($"https://github.com/oven-sh/bun/releases/download/bun-v{version}/bun-linux-x64-baseline.zip")
+                .Respond(() =>
                 {
-                    Directory.Delete(tempDir, recursive: true);
-                }
-                catch
-                {
-                    // Ignore cleanup errors
-                }
-            }
-        }
+                    requestCount++;
+                    var response = new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                    {
+                        Content = new StreamContent(zipContent)
+                    };
+                    response.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/zip");
+                    return Task.FromResult(response);
+                });
+
+        var httpClient = mockHttp.ToHttpClient();
+
+        // Act - first download
+        var result1 = await BunDownloader.DownloadRuntimeAsync(tempDir, version, platform, httpClient, mockFileSystem);
+        
+        // Verify file was created
+        Assert.True(mockFileSystem.File.Exists(result1));
+
+        // Act - second download (should reuse without downloading)
+        var result2 = await BunDownloader.DownloadRuntimeAsync(tempDir, version, platform, httpClient, mockFileSystem);
+
+        // Assert
+        Assert.Equal(result1, result2);
+        
+        // Verify HTTP was called only once (file was reused on second call)
+        Assert.Equal(1, requestCount);
     }
 
     [Fact]
     public async Task DownloadRuntimeAsync_WithInvalidVersion_ShouldThrowException()
     {
         // Arrange
-        var tempDir = Path.Combine(Path.GetTempPath(), $"bun-test-{Guid.NewGuid()}");
-        try
-        {
-            Directory.CreateDirectory(tempDir);
-            var invalidVersion = "invalid_version"; // This version doesn't exist
+        var tempDir = "/test-runtime";
+        var invalidVersion = "invalid_version";
+        var platform = Platform.LinuxX64;
 
-            // Act & Assert
-            await Assert.ThrowsAsync<HttpRequestException>(() => BunDownloader.DownloadRuntimeAsync(tempDir, invalidVersion));
-        }
-        finally
+        var mockFileSystem = new MockFileSystem();
+        var mockHttp = new MockHttpMessageHandler();
+        
+        // Mock a 404 response for invalid version
+        mockHttp.When($"https://github.com/oven-sh/bun/releases/download/bun-v{invalidVersion}/bun-linux-x64-baseline.zip")
+                .Respond(System.Net.HttpStatusCode.NotFound);
+
+        var httpClient = mockHttp.ToHttpClient();
+
+        // Act & Assert
+        await Assert.ThrowsAsync<HttpRequestException>(() => 
+            BunDownloader.DownloadRuntimeAsync(tempDir, invalidVersion, platform, httpClient, mockFileSystem));
+    }
+
+    [Theory]
+    [InlineData(Platform.WindowsX64, "bun.exe")]
+    [InlineData(Platform.LinuxX64, "bun")]
+    [InlineData(Platform.LinuxArm64, "bun")]
+    [InlineData(Platform.MacOsX64, "bun")]
+    [InlineData(Platform.MacOsArm64, "bun")]
+    public async Task DownloadRuntimeAsync_ForAllPlatforms_ShouldDownloadCorrectExecutable(Platform platform, string expectedExecutable)
+    {
+        // Arrange
+        var tempDir = "/test-runtime";
+        var runtimeId = BunRuntimeResolver.GetRuntimeIdentifier(platform);
+        var executableName = BunRuntimeResolver.GetExecutableName(platform);
+        var expectedPath = Path.Combine(tempDir, runtimeId, "native", executableName);
+
+        var mockFileSystem = new MockFileSystem();
+        var mockHttp = new MockHttpMessageHandler();
+        
+        // Create a mock zip file with the Bun executable
+        var zipContent = CreateMockBunZip(executableName);
+        var platformName = GetPlatformDownloadName(platform);
+        mockHttp.When($"https://github.com/oven-sh/bun/releases/latest/download/{platformName}.zip")
+                .Respond("application/zip", zipContent);
+
+        var httpClient = mockHttp.ToHttpClient();
+
+        // Act
+        var result = await BunDownloader.DownloadRuntimeAsync(tempDir, platform: platform, httpClient: httpClient, fileSystem: mockFileSystem);
+
+        // Assert
+        Assert.Equal(expectedPath, result);
+        Assert.True(mockFileSystem.File.Exists(result));
+        Assert.EndsWith(expectedExecutable, result);
+    }
+
+    /// <summary>
+    /// Creates a mock ZIP file containing a Bun executable.
+    /// </summary>
+    private static Stream CreateMockBunZip(string executableName)
+    {
+        var memoryStream = new MemoryStream();
+        using (var archive = new ZipArchive(memoryStream, ZipArchiveMode.Create, true))
         {
-            // Cleanup
-            if (Directory.Exists(tempDir))
-            {
-                try
-                {
-                    Directory.Delete(tempDir, recursive: true);
-                }
-                catch
-                {
-                    // Ignore cleanup errors
-                }
-            }
+            // Create entry with platform folder structure (e.g., "bun-linux-x64-baseline/bun")
+            var entry = archive.CreateEntry($"bun-linux-x64-baseline/{executableName}");
+            using var entryStream = entry.Open();
+            var content = System.Text.Encoding.UTF8.GetBytes("mock bun executable");
+            entryStream.Write(content, 0, content.Length);
         }
+        memoryStream.Position = 0;
+        return memoryStream;
+    }
+
+    /// <summary>
+    /// Gets the platform-specific download archive name (same logic as in BunDownloader).
+    /// </summary>
+    private static string GetPlatformDownloadName(Platform platform)
+    {
+        return platform switch
+        {
+            Platform.WindowsX64 => "bun-windows-x64-baseline",
+            Platform.LinuxX64 => "bun-linux-x64-baseline",
+            Platform.LinuxArm64 => "bun-linux-aarch64",
+            Platform.MacOsX64 => "bun-darwin-x64-baseline",
+            Platform.MacOsArm64 => "bun-darwin-aarch64",
+            _ => throw new ArgumentException($"Unknown platform: {platform}", nameof(platform))
+        };
     }
 }
