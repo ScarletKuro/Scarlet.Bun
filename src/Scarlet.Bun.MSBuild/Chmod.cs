@@ -85,7 +85,7 @@ public static class Chmod
         /// <returns>
         /// <c>0</c> on success; <c>-1</c> on failure with errno set.
         /// </returns>
-        [DllImport("libc", SetLastError = true)]
+        [DllImport("libc", SetLastError = true, CharSet = CharSet.Unicode)]
         public static extern int stat(string path, out Stat buf);
 
         /// <summary>
@@ -98,11 +98,10 @@ public static class Chmod
         [StructLayout(LayoutKind.Sequential)]
         public struct Stat
         {
-            public ulong st_dev;
-            public ulong st_ino;
-            public uint st_mode;    // mode_t
-            public uint st_nlink;   // nlink_t
-            // optionally add other fields for padding if needed
+            public uint st_dev;
+            public uint st_ino;
+            public uint st_mode;
+            public uint st_nlink;
         }
     }
 }
