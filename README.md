@@ -14,7 +14,7 @@ An MSBuild task package that integrates [Bun](https://bun.sh/) - a fast all-in-o
 - [Runtime Options](#runtime-options)
   - [Option 1: Runtime Download](#option-1-runtime-download)
   - [Option 2: Platform-Specific Runtime Packages](#option-2-platform-specific-runtime-packages)
-  - [Option 3: Conditional Package References (Multi-Platform Teams)](#option-3-conditional-package-references)
+  - [Option 3: Conditional Package References](#option-3-conditional-package-references)
 - [Usage](#usage)
   - [Basic Example](#basic-example)
   - [Using Runtime Download](#using-runtime-download)
