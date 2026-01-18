@@ -57,8 +57,6 @@ After installing `Scarlet.Bun.MSBuild`, you need to provide the Bun runtime. The
 
 ### Option 1: Runtime Download
 
-**Best for:** Multi-platform teams and CI/CD pipelines where you want the simplest setup and prefer downloading the runtime on-demand rather than embedded via Nuget packages.
-
 Download the Bun runtime automatically during build by setting the `BunRuntimeDownload` property:
 
 ```xml
@@ -79,8 +77,6 @@ Download the Bun runtime automatically during build by setting the `BunRuntimeDo
 See [Using Runtime Download](#using-runtime-download) for detailed configuration.
 
 ### Option 2: Platform-Specific Runtime Packages
-
-**Best for:** Single-platform projects or when you want to explicitly control which runtime is included.
 
 Install only the runtime package(s) you need for your target platform(s):
 
@@ -121,8 +117,6 @@ dotnet add package Scarlet.Bun.Runtime.darwin-aarch64
 
 ### Option 3: Conditional Package References
 
-**Best for:** Multi-platform teams and CI/CD pipelines where you want the project to build on any platform (Windows, Linux, macOS) without runtime downloads.
-
 Use MSBuild conditions to reference only the runtime package matching the current build platform:
 
 ```xml
@@ -134,10 +128,7 @@ Use MSBuild conditions to reference only the runtime package matching the curren
 
   <!-- Reference Scarlet.Bun.MSBuild -->
   <ItemGroup>
-    <PackageReference Include="Scarlet.Bun.MSBuild" Version="*">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
+    <PackageReference Include="Scarlet.Bun.MSBuild" Version="*" PrivateAssets="all" IncludeAssets="runtime; build; native; contentfiles; analyzers; buildtransitive" />
   </ItemGroup>
 
   <!-- Detect current platform -->
@@ -155,38 +146,23 @@ Use MSBuild conditions to reference only the runtime package matching the curren
 
   <!-- Conditionally reference runtime packages based on platform -->
   <ItemGroup Condition="'$(IsWindows)' == 'true' AND '$(IsX64)' == 'true'">
-    <PackageReference Include="Scarlet.Bun.Runtime.windows-x64-baseline" Version="*">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
+    <PackageReference Include="Scarlet.Bun.Runtime.windows-x64-baseline" Version="*" PrivateAssets="all" IncludeAssets="runtime; build; native; contentfiles; analyzers; buildtransitive" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(IsLinux)' == 'true' AND '$(IsX64)' == 'true'">
-    <PackageReference Include="Scarlet.Bun.Runtime.linux-x64-baseline" Version="*">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
+    <PackageReference Include="Scarlet.Bun.Runtime.linux-x64-baseline" Version="*" PrivateAssets="all" IncludeAssets="runtime; build; native; contentfiles; analyzers; buildtransitive" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(IsLinux)' == 'true' AND '$(IsARM64)' == 'true'">
-    <PackageReference Include="Scarlet.Bun.Runtime.linux-aarch64" Version="*">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
+    <PackageReference Include="Scarlet.Bun.Runtime.linux-aarch64" Version="*" PrivateAssets="all" IncludeAssets="runtime; build; native; contentfiles; analyzers; buildtransitive" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(IsMacOS)' == 'true' AND '$(IsX64)' == 'true'">
-    <PackageReference Include="Scarlet.Bun.Runtime.darwin-x64-baseline" Version="*">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
+    <PackageReference Include="Scarlet.Bun.Runtime.darwin-x64-baseline" Version="*" PrivateAssets="all" IncludeAssets="runtime; build; native; contentfiles; analyzers; buildtransitive" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(IsMacOS)' == 'true' AND '$(IsARM64)' == 'true'">
-    <PackageReference Include="Scarlet.Bun.Runtime.darwin-aarch64" Version="*">
-      <PrivateAssets>all</PrivateAssets>
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>
+    <PackageReference Include="Scarlet.Bun.Runtime.darwin-aarch64" Version="*" PrivateAssets="all" IncludeAssets="runtime; build; native; contentfiles; analyzers; buildtransitive" />
   </ItemGroup>
 
 </Project>
@@ -210,9 +186,9 @@ Use MSBuild conditions to reference only the runtime package matching the curren
 
 **Which option should I choose?**
 
-- **Use Option 1 (Runtime Download)** if you want the simplest setup with minimal configuration
-- **Use Option 2 (Single Runtime Package)** if you're targeting a single platform and want explicit control
-- **Use Option 3 (Conditional References)** if you have a multi-platform team or multi-platform CI/CD and want embedded runtimes without downloads
+- **Use Option 1 (Runtime Download)** if you want a multi-platform with the simplest setup and configuration
+- **Use Option 2 (Single Runtime Package)** if you want a single platform and want embedded runtime (without downloads)
+- **Use Option 3 (Conditional References)** if you want a multi-platform and want embedded runtimes (without downloads)
 
 ## Usage
 
