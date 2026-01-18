@@ -57,7 +57,7 @@ After installing `Scarlet.Bun.MSBuild`, you need to provide the Bun runtime. The
 
 ### Option 1: Runtime Download
 
-**Best for:** Projects where you want the simplest setup and prefer downloading the runtime on-demand rather than embedding it in packages.
+**Best for:** Multi-platform teams and CI/CD pipelines where you want the simplest setup and prefer downloading the runtime on-demand rather than embedded via Nuget packages.
 
 Download the Bun runtime automatically during build by setting the `BunRuntimeDownload` property:
 
@@ -72,6 +72,7 @@ Download the Bun runtime automatically during build by setting the `BunRuntimeDo
 **Advantages:**
 - Simplest configuration - just set a few properties
 - No additional package dependencies to manage
+- Each developer/CI agent only downloads the runtime package they need
 - Runtime downloaded only once and cached locally for subsequent builds
 - Can easily switch Bun versions by changing `BunVersionDownload` property
 
@@ -102,13 +103,15 @@ dotnet add package Scarlet.Bun.Runtime.darwin-aarch64
 
 **Advantages:**
 - Explicit control over which runtimes are included
-- Runtimes are embedded in your project
-- No download required during build
+- No runtime downloads during build (runtimes come from NuGet packages)
 - Works offline
+
+**Trade-offs:**
+- Package with needed runtime version might be missing
 
 **Available Runtime Packages:**
 
-| Platform     | Runtime                    | Package Name                                      | Version |
+| Platform     | Runtime                    | Package Name                                      | Package Version |
 |--------------|----------------------------|--------------------------------------------------|---------|
 | Windows x64  | bun-windows-x64-baseline   | Scarlet.Bun.Runtime.windows-x64-baseline         | [![NuGet](https://img.shields.io/nuget/v/Scarlet.Bun.Runtime.windows-x64-baseline?color=ff4081&logo=nuget&style=flat-square)](https://www.nuget.org/packages/Scarlet.Bun.Runtime.windows-x64-baseline/) |
 | Linux x64    | bun-linux-x64-baseline     | Scarlet.Bun.Runtime.linux-x64-baseline           | [![NuGet](https://img.shields.io/nuget/v/Scarlet.Bun.Runtime.linux-x64-baseline?color=ff4081&logo=nuget&style=flat-square)](https://www.nuget.org/packages/Scarlet.Bun.Runtime.linux-x64-baseline/) |
@@ -194,12 +197,14 @@ Use MSBuild conditions to reference only the runtime package matching the curren
 - Each developer/CI agent only downloads the runtime package they need
 - No runtime downloads during build (runtimes come from NuGet packages)
 - Deterministic builds with version-locked packages
-- Ideal for CI/CD environments with multiple platforms
+- Works offline
 
 **Trade-offs:**
+- Package with needed runtime version might be missing
 - More verbose project file configuration
 - Need to maintain platform detection logic
 
+**NB!** You can add them without conditions, but the runtime packages have big size.
 ---
 
 **Which option should I choose?**
