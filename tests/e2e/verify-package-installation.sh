@@ -29,6 +29,27 @@ echo "Workspace: $WORKSPACE_PATH"
 echo "Version: $PACKAGE_VERSION"
 echo "=========================================="
 
+# Get the directory where this script is located
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+TEMPLATES_DIR="$SCRIPT_DIR/templates"
+
+# Helper function to process templates by replacing {{VARIABLE}} placeholders
+process_template() {
+    local template_file="$1"
+    local output_file="$2"
+    
+    if [ ! -f "$template_file" ]; then
+        echo "Error: Template file not found: $template_file"
+        exit 1
+    fi
+    
+    # Use sed to replace {{VARIABLE}} with actual values
+    sed -e "s|{{WORKSPACE_PATH}}|$WORKSPACE_PATH|g" \
+        -e "s|{{PACKAGE_VERSION}}|$PACKAGE_VERSION|g" \
+        -e "s|{{RUNTIME_PACKAGE}}|$RUNTIME_PACKAGE|g" \
+        "$template_file" > "$output_file"
+}
+
 # Create a temporary directory for testing
 TEST_DIR="/tmp/nuget-verification-$$"
 mkdir -p "$TEST_DIR"
@@ -36,17 +57,8 @@ cd "$TEST_DIR"
 
 echo "✓ Created test directory: $TEST_DIR"
 
-# Create nuget.config to use local packages
-cat > nuget.config << EOF
-<?xml version="1.0" encoding="utf-8"?>
-<configuration>
-  <packageSources>
-    <add key="nuget.org" value="https://api.nuget.org/v3/index.json" protocolVersion="3" />
-    <add key="LocalPackages" value="$WORKSPACE_PATH/packages" />
-  </packageSources>
-</configuration>
-EOF
-
+# Create nuget.config from template
+process_template "$TEMPLATES_DIR/nuget.config.template" "nuget.config"
 echo "✓ Created nuget.config with local package source"
 
 # Create a simple console app that will use the packages
@@ -79,61 +91,16 @@ dotnet add package "$RUNTIME_PACKAGE" --version "$PACKAGE_VERSION"
 
 echo "✓ Packages added successfully"
 
-# Create a simple package.json
-cat > package.json << 'EOF'
-{
-  "name": "test-bun-package",
-  "version": "1.0.0",
-  "dependencies": {}
-}
-EOF
-
+# Create package.json from template
+process_template "$TEMPLATES_DIR/package.json.template" "package.json"
 echo "✓ Created package.json"
 
-# Create a simple build.mjs script
-cat > build.mjs << 'EOF'
-console.log("Bun is working!");
-const fs = require('fs');
-fs.writeFileSync('output.txt', 'Build succeeded!');
-EOF
-
+# Create build.mjs from template
+process_template "$TEMPLATES_DIR/build.mjs.template" "build.mjs"
 echo "✓ Created build.mjs test script"
 
-# Update project file to use Bun target (testing real-world scenario)
-cat > TestBunPackage.csproj << EOF
-<Project Sdk="Microsoft.NET.Sdk">
-  <PropertyGroup>
-    <OutputType>Exe</OutputType>
-    <TargetFramework>net10.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-  </PropertyGroup>
-  
-  <ItemGroup>
-    <PackageReference Include="Scarlet.Bun.MSBuild" Version="$PACKAGE_VERSION">
-      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-      <PrivateAssets>all</PrivateAssets>
-    </PackageReference>
-    <PackageReference Include="$RUNTIME_PACKAGE" Version="$PACKAGE_VERSION">
-      <PrivateAssets>all</PrivateAssets>
-    </PackageReference>
-  </ItemGroup>
-  
-  <Target Name="BunInstall" AfterTargets="Build">
-    <MSBuild Projects="\$(MSBuildProjectFullPath)"
-             Targets="Bun"
-             Properties="BunCommand=install;BunWorkingDirectory=\$(MSBuildProjectDirectory)" />
-  </Target>
-  
-  <!-- Using MSBuild task to pass per-call properties -->
-  <Target Name="BunBuildTest" AfterTargets="Build">
-    <MSBuild Projects="\$(MSBuildProjectFullPath)"
-             Targets="Bun"
-             Properties="BunCommand=run;BunArguments=build.mjs;BunWorkingDirectory=\$(MSBuildProjectDirectory)" />
-  </Target>
-</Project>
-EOF
-
+# Update project file from template
+process_template "$TEMPLATES_DIR/TestBunPackage.csproj.template" "TestBunPackage.csproj"
 echo "✓ Updated project file with MSBuild Bun targets"
 
 # Build the test project (this should trigger BunRunTask)

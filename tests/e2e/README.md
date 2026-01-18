@@ -2,6 +2,19 @@
 
 This directory contains end-to-end tests that validate the complete package installation and execution flow.
 
+## Directory Structure
+
+```
+tests/e2e/
+├── verify-package-installation.sh   # Main E2E test script
+├── templates/                        # Template files for test projects
+│   ├── nuget.config.template        # NuGet configuration template
+│   ├── package.json.template        # NPM package.json template
+│   ├── build.mjs.template           # Bun test script template
+│   └── TestBunPackage.csproj.template # Test project file template
+└── README.md                         # This file
+```
+
 ## Overview
 
 The E2E tests verify that:
@@ -26,14 +39,26 @@ The E2E tests verify that:
 - `package-version`: The version of the packages to test (e.g., "0.0.1-ci.26")
 
 **What it does**:
-1. Creates a temporary test directory
+1. Creates a temporary test directory (`/tmp/nuget-verification-<pid>`)
 2. Sets up a local NuGet source pointing to the workspace packages
 3. Creates a simple .NET console application
 4. Adds the Scarlet.Bun.MSBuild package and appropriate runtime package
-5. Creates test files (package.json, build.mjs)
-6. Configures MSBuild targets to execute Bun
-7. Builds the test project
-8. Verifies that Bun executed successfully
+5. Uses template files to create test project files:
+   - `nuget.config` - NuGet configuration with local package source
+   - `package.json` - Simple package.json for Bun
+   - `build.mjs` - Test script that creates output.txt
+   - `TestBunPackage.csproj` - Project file with MSBuild Bun targets
+6. Builds the test project (triggers Bun execution via MSBuild)
+7. Verifies that Bun executed successfully by checking for output.txt
+
+**Template System**:
+
+The script uses template files located in `tests/e2e/templates/` with `{{VARIABLE}}` placeholders:
+- `{{WORKSPACE_PATH}}` - Repository root path
+- `{{PACKAGE_VERSION}}` - Package version being tested
+- `{{RUNTIME_PACKAGE}}` - Platform-specific runtime package (auto-detected)
+
+Template files are processed during execution to create actual project files with correct values.
 
 **Exit codes**:
 - `0`: Success - package installation and execution worked, or build succeeded with Bun execution warning
