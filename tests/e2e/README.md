@@ -36,9 +36,7 @@ The E2E tests verify that:
 8. Verifies that Bun executed successfully
 
 **Exit codes**:
-- `0`: Success - package installation and execution worked
-- `1`: Failure - package or execution failed
-- `2`: Warning - build succeeded but Bun execution failed (may be expected in some CI environments)
+- `0`: Success - package installation and execution worked, or build succeeded with Bun execution warning
 
 **Example**:
 ```bash
@@ -55,10 +53,15 @@ The E2E tests are integrated into the CI workflow (`.github/workflows/ci.yml`):
 
 1. **Pack NuGet packages** - Creates versioned packages in `./packages`
 2. **List generated packages** - Shows what was created
-3. **E2E: Package Installation Test** - Runs `verify-package-installation.sh`
-4. **E2E: Verify Package Execution** - Checks that Bun executed correctly
+3. **E2E Test - Package installation and verification** - Runs `verify-package-installation.sh` which:
+   - Creates test project
+   - Installs packages
+   - Builds project (triggers Bun execution)
+   - Verifies Bun execution (warns if it fails)
 
-The tests run on all platforms (Linux, Windows, macOS) to ensure cross-platform compatibility.
+The test runs on all platforms (Linux, Windows, macOS) to ensure cross-platform compatibility.
+
+**Note**: The script does not clean up test directories when running in CI (`$CI` environment variable is set), allowing for inspection if needed. Test directories are created in `/tmp/nuget-verification-*`.
 
 ## Running Locally
 

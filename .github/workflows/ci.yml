@@ -87,36 +87,11 @@ jobs:
         shell: bash
         run: ls -lh ./packages/
 
-      - name: E2E Test - Install packages and create test project
+      - name: E2E Test - Package installation and verification
         shell: bash
         run: |
           chmod +x tests/e2e/verify-package-installation.sh
           tests/e2e/verify-package-installation.sh "${{ github.workspace }}" "${{ env.VERSION }}"
-
-      - name: E2E Test - Verify Bun execution
-        shell: bash
-        run: |
-          # The test directory will be in /tmp/nuget-verification-* (created by previous step)
-          # Find the most recent test directory
-          TEST_DIR=$(ls -td /tmp/nuget-verification-* 2>/dev/null | head -1)
-          
-          if [ -z "$TEST_DIR" ]; then
-            echo "⚠ Test directory not found - E2E test may have cleaned up early"
-            exit 0
-          fi
-          
-          cd "$TEST_DIR/TestBunPackage"
-          
-          # Verify that the build.mjs created the output file
-          if [ -f "output.txt" ]; then
-            echo "✓ Bun executed successfully via NuGet package!"
-            cat output.txt
-          else
-            echo "⚠ Bun execution failed - output.txt not found (may be expected in CI)"
-            # Don't fail CI for this - Bun may not work in all CI environments
-          fi
-          
-          echo "✓ E2E package verification completed!"
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
