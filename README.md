@@ -131,7 +131,10 @@ Use MSBuild conditions to reference only the runtime package matching the curren
 
   <!-- Reference Scarlet.Bun.MSBuild -->
   <ItemGroup>
-    <PackageReference Include="Scarlet.Bun.MSBuild" Version="*" />
+    <PackageReference Include="Scarlet.Bun.MSBuild" Version="*">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
   </ItemGroup>
 
   <!-- Detect current platform -->
@@ -149,37 +152,39 @@ Use MSBuild conditions to reference only the runtime package matching the curren
 
   <!-- Conditionally reference runtime packages based on platform -->
   <ItemGroup Condition="'$(IsWindows)' == 'true' AND '$(IsX64)' == 'true'">
-    <PackageReference Include="Scarlet.Bun.Runtime.windows-x64-baseline" Version="*" />
+    <PackageReference Include="Scarlet.Bun.Runtime.windows-x64-baseline" Version="*">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
   </ItemGroup>
 
   <ItemGroup Condition="'$(IsLinux)' == 'true' AND '$(IsX64)' == 'true'">
-    <PackageReference Include="Scarlet.Bun.Runtime.linux-x64-baseline" Version="*" />
+    <PackageReference Include="Scarlet.Bun.Runtime.linux-x64-baseline" Version="*">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
   </ItemGroup>
 
   <ItemGroup Condition="'$(IsLinux)' == 'true' AND '$(IsARM64)' == 'true'">
-    <PackageReference Include="Scarlet.Bun.Runtime.linux-aarch64" Version="*" />
+    <PackageReference Include="Scarlet.Bun.Runtime.linux-aarch64" Version="*">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
   </ItemGroup>
 
   <ItemGroup Condition="'$(IsMacOS)' == 'true' AND '$(IsX64)' == 'true'">
-    <PackageReference Include="Scarlet.Bun.Runtime.darwin-x64-baseline" Version="*" />
+    <PackageReference Include="Scarlet.Bun.Runtime.darwin-x64-baseline" Version="*">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
   </ItemGroup>
 
   <ItemGroup Condition="'$(IsMacOS)' == 'true' AND '$(IsARM64)' == 'true'">
-    <PackageReference Include="Scarlet.Bun.Runtime.darwin-aarch64" Version="*" />
+    <PackageReference Include="Scarlet.Bun.Runtime.darwin-aarch64" Version="*">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
   </ItemGroup>
-
-  <!-- Use Bun in your build process -->
-  <Target Name="BunInstall" BeforeTargets="Build">
-    <MSBuild Projects="$(MSBuildProjectFullPath)"
-             Targets="Bun"
-             Properties="BunCommand=install;BunWorkingDirectory=$(MSBuildProjectDirectory)" />
-  </Target>
-
-  <Target Name="BunBuildAssets" AfterTargets="BunInstall">
-    <MSBuild Projects="$(MSBuildProjectFullPath)"
-             Targets="Bun"
-             Properties="BunCommand=run;BunArguments=build.mjs;BunWorkingDirectory=$(MSBuildProjectDirectory)" />
-  </Target>
 
 </Project>
 ```
