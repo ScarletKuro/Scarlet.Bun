@@ -61,19 +61,6 @@ Add the following to your `.csproj` file to run a Bun script during build:
 </Target>
 ```
 
-### Alternative: Using BunRunTask Directly
-
-You can also use the `BunRunTask` directly in your targets:
-
-```xml
-<Target Name="BunBuild" BeforeTargets="Build">
-  <BunRunTask 
-    Command="run" 
-    Arguments="build.mjs"
-    WorkingDirectory="$(MSBuildProjectDirectory)" />
-</Target>
-```
-
 ### Bundle and Minify Assets
 
 Example of bundling JavaScript and compiling SCSS with timeout:
