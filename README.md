@@ -168,6 +168,19 @@ Use MSBuild conditions to reference only the runtime package matching the curren
     <PackageReference Include="Scarlet.Bun.Runtime.darwin-aarch64" Version="*" />
   </ItemGroup>
 
+  <!-- Use Bun in your build process -->
+  <Target Name="BunInstall" BeforeTargets="Build">
+    <MSBuild Projects="$(MSBuildProjectFullPath)"
+             Targets="Bun"
+             Properties="BunCommand=install;BunWorkingDirectory=$(MSBuildProjectDirectory)" />
+  </Target>
+
+  <Target Name="BunBuildAssets" AfterTargets="BunInstall">
+    <MSBuild Projects="$(MSBuildProjectFullPath)"
+             Targets="Bun"
+             Properties="BunCommand=run;BunArguments=build.mjs;BunWorkingDirectory=$(MSBuildProjectDirectory)" />
+  </Target>
+
 </Project>
 ```
 
