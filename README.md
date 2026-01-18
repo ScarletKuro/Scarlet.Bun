@@ -7,28 +7,37 @@
 
 An MSBuild task package that integrates [Bun](https://bun.sh/) - a fast all-in-one JavaScript runtime - into your .NET build process. This package allows you to run Bun commands as part of your .NET project build, enabling JavaScript/TypeScript bundling, minification, and other Bun-powered operations.
 
+## Table of Contents
+
+- [Features](#features)
+- [Installation](#installation)
+- [Runtime Options](#runtime-options)
+  - [Option 1: Runtime Download](#option-1-runtime-download)
+  - [Option 2: Platform-Specific Runtime Packages](#option-2-platform-specific-runtime-packages)
+  - [Option 3: Conditional Package References](#option-3-conditional-package-references)
+- [Usage](#usage)
+  - [Basic Example](#basic-example)
+  - [Using Runtime Download](#using-runtime-download)
+  - [Task Parameters](#task-parameters)
+  - [Output Parameters](#output-parameters)
+- [Example: JavaScript/SCSS Build Script](#example-javascriptscss-build-script)
+- [Development](#development)
+- [Requirements](#requirements)
+- [License](#license)
+- [Credits](#credits)
+- [Contributing](#contributing)
+
 ## Features
 
 - ✅ Cross-platform support (Windows, Linux, macOS - x64 and ARM64)
-- ✅ Embedded Bun runtimes - no separate installation required
+- ✅ Multiple runtime options: embedded packages or on-demand download
 - ✅ Easy MSBuild integration
 - ✅ Supports modern .NET / .NET Core (no .NET Framework support)
 - ✅ Execute any Bun command during build
 
-## Supported Platforms
-
-| Platform     | Runtime                    | Package Name                                      | Version |
-|--------------|----------------------------|--------------------------------------------------|---------|
-| Windows x64  | bun-windows-x64-baseline   | Scarlet.Bun.Runtime.windows-x64-baseline         | [![NuGet](https://img.shields.io/nuget/v/Scarlet.Bun.Runtime.windows-x64-baseline?color=ff4081&logo=nuget&style=flat-square)](https://www.nuget.org/packages/Scarlet.Bun.Runtime.windows-x64-baseline/) |
-| Linux x64    | bun-linux-x64-baseline     | Scarlet.Bun.Runtime.linux-x64-baseline           | [![NuGet](https://img.shields.io/nuget/v/Scarlet.Bun.Runtime.linux-x64-baseline?color=ff4081&logo=nuget&style=flat-square)](https://www.nuget.org/packages/Scarlet.Bun.Runtime.linux-x64-baseline/) |
-| Linux ARM64  | bun-linux-aarch64          | Scarlet.Bun.Runtime.linux-aarch64                | [![NuGet](https://img.shields.io/nuget/v/Scarlet.Bun.Runtime.linux-aarch64?color=ff4081&logo=nuget&style=flat-square)](https://www.nuget.org/packages/Scarlet.Bun.Runtime.linux-aarch64/) |
-| macOS x64    | bun-darwin-x64-baseline    | Scarlet.Bun.Runtime.darwin-x64-baseline          | [![NuGet](https://img.shields.io/nuget/v/Scarlet.Bun.Runtime.darwin-x64-baseline?color=ff4081&logo=nuget&style=flat-square)](https://www.nuget.org/packages/Scarlet.Bun.Runtime.darwin-x64-baseline/) |
-| macOS ARM64  | bun-darwin-aarch64         | Scarlet.Bun.Runtime.darwin-aarch64               | [![NuGet](https://img.shields.io/nuget/v/Scarlet.Bun.Runtime.darwin-aarch64?color=ff4081&logo=nuget&style=flat-square)](https://www.nuget.org/packages/Scarlet.Bun.Runtime.darwin-aarch64/) |
-
-
 ## Installation
 
-Install the NuGet package:
+Install the main MSBuild task package:
 
 ```bash
 dotnet add package Scarlet.Bun.MSBuild
@@ -39,6 +48,147 @@ Or via Package Manager:
 ```powershell
 Install-Package Scarlet.Bun.MSBuild
 ```
+
+> **Note:** The base package does not include any Bun runtime. You must choose a runtime option (see [Runtime Options](#runtime-options) below).
+
+## Runtime Options
+
+After installing `Scarlet.Bun.MSBuild`, you need to provide the Bun runtime. There are three approaches to choose from based on your needs:
+
+### Option 1: Runtime Download
+
+Download the Bun runtime automatically during build by setting the `BunRuntimeDownload` property:
+
+```xml
+<PropertyGroup>
+  <BunRuntimeDownload>true</BunRuntimeDownload>
+  <BunVersionDownload>1.3.6</BunVersionDownload> <!-- Optional: specify version -->
+  <BunRuntimeDirectory>$(MSBuildProjectDirectory)/runtimes</BunRuntimeDirectory>
+</PropertyGroup>
+```
+
+**Advantages:**
+- Simplest configuration - just set a few properties
+- No additional package dependencies to manage
+- Each developer/CI agent only downloads the runtime package they need
+- Runtime downloaded only once and cached locally for subsequent builds
+- Can easily switch Bun versions by changing `BunVersionDownload` property
+
+See [Using Runtime Download](#using-runtime-download) for detailed configuration.
+
+### Option 2: Platform-Specific Runtime Packages
+
+Install only the runtime package(s) you need for your target platform(s):
+
+```bash
+# For Windows x64
+dotnet add package Scarlet.Bun.Runtime.windows-x64-baseline
+
+# For Linux x64
+dotnet add package Scarlet.Bun.Runtime.linux-x64-baseline
+
+# For Linux ARM64
+dotnet add package Scarlet.Bun.Runtime.linux-aarch64
+
+# For macOS x64
+dotnet add package Scarlet.Bun.Runtime.darwin-x64-baseline
+
+# For macOS ARM64 (Apple Silicon)
+dotnet add package Scarlet.Bun.Runtime.darwin-aarch64
+```
+
+**Advantages:**
+- Explicit control over which runtimes are included
+- No runtime downloads during build (runtimes come from NuGet packages)
+- Works offline
+
+**Trade-offs:**
+- Package with needed runtime version might be missing
+
+**Available Runtime Packages:**
+
+| Platform     | Runtime                    | Package Name                                      | Package Version |
+|--------------|----------------------------|--------------------------------------------------|---------|
+| Windows x64  | bun-windows-x64-baseline   | Scarlet.Bun.Runtime.windows-x64-baseline         | [![NuGet](https://img.shields.io/nuget/v/Scarlet.Bun.Runtime.windows-x64-baseline?color=ff4081&logo=nuget&style=flat-square)](https://www.nuget.org/packages/Scarlet.Bun.Runtime.windows-x64-baseline/) |
+| Linux x64    | bun-linux-x64-baseline     | Scarlet.Bun.Runtime.linux-x64-baseline           | [![NuGet](https://img.shields.io/nuget/v/Scarlet.Bun.Runtime.linux-x64-baseline?color=ff4081&logo=nuget&style=flat-square)](https://www.nuget.org/packages/Scarlet.Bun.Runtime.linux-x64-baseline/) |
+| Linux ARM64  | bun-linux-aarch64          | Scarlet.Bun.Runtime.linux-aarch64                | [![NuGet](https://img.shields.io/nuget/v/Scarlet.Bun.Runtime.linux-aarch64?color=ff4081&logo=nuget&style=flat-square)](https://www.nuget.org/packages/Scarlet.Bun.Runtime.linux-aarch64/) |
+| macOS x64    | bun-darwin-x64-baseline    | Scarlet.Bun.Runtime.darwin-x64-baseline          | [![NuGet](https://img.shields.io/nuget/v/Scarlet.Bun.Runtime.darwin-x64-baseline?color=ff4081&logo=nuget&style=flat-square)](https://www.nuget.org/packages/Scarlet.Bun.Runtime.darwin-x64-baseline/) |
+| macOS ARM64  | bun-darwin-aarch64         | Scarlet.Bun.Runtime.darwin-aarch64               | [![NuGet](https://img.shields.io/nuget/v/Scarlet.Bun.Runtime.darwin-aarch64?color=ff4081&logo=nuget&style=flat-square)](https://www.nuget.org/packages/Scarlet.Bun.Runtime.darwin-aarch64/) |
+
+### Option 3: Conditional Package References
+
+Use MSBuild conditions to reference only the runtime package matching the current build platform:
+
+```xml
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+  </PropertyGroup>
+
+  <!-- Reference Scarlet.Bun.MSBuild -->
+  <ItemGroup>
+    <PackageReference Include="Scarlet.Bun.MSBuild" Version="*" PrivateAssets="all" IncludeAssets="runtime; build; native; contentfiles; analyzers; buildtransitive" />
+  </ItemGroup>
+
+  <!-- Detect current platform -->
+  <PropertyGroup>
+    <IsWindows Condition="'$(OS)' == 'Windows_NT'">true</IsWindows>
+    <IsLinux Condition="Exists('/proc')">true</IsLinux>
+    <IsMacOS Condition="Exists('/System/Library/CoreServices/SystemVersion.plist')">true</IsMacOS>
+  </PropertyGroup>
+
+  <!-- Detect architecture -->
+  <PropertyGroup>
+    <IsARM64 Condition="'$(PROCESSOR_ARCHITECTURE)' == 'ARM64' OR '$(PROCESSOR_IDENTIFIER)' == 'ARM64'">true</IsARM64>
+    <IsX64 Condition="'$(PROCESSOR_ARCHITECTURE)' == 'AMD64' OR '$(PROCESSOR_IDENTIFIER)' == 'AMD64'">true</IsX64>
+  </PropertyGroup>
+
+  <!-- Conditionally reference runtime packages based on platform -->
+  <ItemGroup Condition="'$(IsWindows)' == 'true' AND '$(IsX64)' == 'true'">
+    <PackageReference Include="Scarlet.Bun.Runtime.windows-x64-baseline" Version="*" PrivateAssets="all" IncludeAssets="runtime; build; native; contentfiles; analyzers; buildtransitive" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(IsLinux)' == 'true' AND '$(IsX64)' == 'true'">
+    <PackageReference Include="Scarlet.Bun.Runtime.linux-x64-baseline" Version="*" PrivateAssets="all" IncludeAssets="runtime; build; native; contentfiles; analyzers; buildtransitive" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(IsLinux)' == 'true' AND '$(IsARM64)' == 'true'">
+    <PackageReference Include="Scarlet.Bun.Runtime.linux-aarch64" Version="*" PrivateAssets="all" IncludeAssets="runtime; build; native; contentfiles; analyzers; buildtransitive" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(IsMacOS)' == 'true' AND '$(IsX64)' == 'true'">
+    <PackageReference Include="Scarlet.Bun.Runtime.darwin-x64-baseline" Version="*" PrivateAssets="all" IncludeAssets="runtime; build; native; contentfiles; analyzers; buildtransitive" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(IsMacOS)' == 'true' AND '$(IsARM64)' == 'true'">
+    <PackageReference Include="Scarlet.Bun.Runtime.darwin-aarch64" Version="*" PrivateAssets="all" IncludeAssets="runtime; build; native; contentfiles; analyzers; buildtransitive" />
+  </ItemGroup>
+
+</Project>
+```
+
+**NB!** You can add them without conditions, but the runtime packages have big size.
+
+**Advantages:**
+- Builds work on any platform without modification
+- Each developer/CI agent only downloads the runtime package they need
+- No runtime downloads during build (runtimes come from NuGet packages)
+- Deterministic builds with version-locked packages
+- Works offline
+
+**Trade-offs:**
+- Package with needed runtime version might be missing
+- More verbose project file configuration
+- Need to maintain platform detection logic
+
+---
+
+**Which option should I choose?**
+
+- **Use Option 1 (Runtime Download)** if you want a multi-platform with the simplest setup and configuration
+- **Use Option 2 (Single Runtime Package)** if you want a single platform and want embedded runtime (without downloads)
+- **Use Option 3 (Conditional References)** if you want a multi-platform and want embedded runtimes (without downloads)
 
 ## Usage
 
