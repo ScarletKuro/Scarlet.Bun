@@ -4,6 +4,7 @@
     <TargetFrameworks>netstandard2.0</TargetFrameworks>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
   </PropertyGroup>
   
   <PropertyGroup>
@@ -64,17 +65,6 @@
     <PackageReference Include="Microsoft.Build.Tasks.Core" Version="18.0.2" PrivateAssets="all" />
     <PackageReference Include="System.IO.Abstractions" Version="22.1.0" />
   </ItemGroup>
-
-  <!-- Copy System.IO.Abstractions dependencies to output for MSBuild task execution -->
-  <Target Name="CopyAbstractionsDependencies" AfterTargets="Build">
-    <ItemGroup>
-      <AbstractionsDlls Include="$(NuGetPackageRoot)testableio.system.io.abstractions/22.1.0/lib/netstandard2.0/*.dll" />
-      <AbstractionsDlls Include="$(NuGetPackageRoot)testableio.system.io.abstractions.wrappers/22.1.0/lib/netstandard2.0/*.dll" />
-      <AbstractionsDlls Include="$(NuGetPackageRoot)testably.abstractions.filesystem.interface/10.0.0/lib/netstandard2.0/*.dll" />
-      <AbstractionsDlls Include="$(NuGetPackageRoot)system.io.abstractions/22.1.0/lib/netstandard2.0/*.dll" />
-    </ItemGroup>
-    <Copy SourceFiles="@(AbstractionsDlls)" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" />
-  </Target>
 
   <ItemGroup>
     <!-- Reference all runtime packages as ProjectReferences during build, but they will be separate NuGet packages -->
