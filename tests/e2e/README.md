@@ -54,11 +54,11 @@ The E2E tests verify that:
 **Template System**:
 
 The script uses template files located in `tests/e2e/templates/` with `{{VARIABLE}}` placeholders:
-- `{{WORKSPACE_PATH}}` - Repository root path
+- `{{WORKSPACE_PATH}}` - Repository root path (automatically handles Windows backslashes)
 - `{{PACKAGE_VERSION}}` - Package version being tested
 - `{{RUNTIME_PACKAGE}}` - Platform-specific runtime package (auto-detected)
 
-Template files are processed during execution to create actual project files with correct values.
+Template files are processed during execution using `sed` to replace placeholders with actual values. The script automatically escapes backslashes in paths for Windows compatibility, preventing issues with Windows path separators (e.g., `D:\a\path` won't be misinterpreted as escape sequences).
 
 **Exit codes**:
 - `0`: Success - package installation and execution worked, or build succeeded with Bun execution warning
@@ -126,6 +126,11 @@ The E2E test creates the following structure in `/tmp/nuget-verification`:
 - This may be expected in some CI environments
 - The test will show a warning but not fail the build
 - Check that the correct runtime package for your platform is installed
+
+**Windows-specific issues**:
+- If you see "invalid character" errors in NuGet.Config, this is due to path escaping
+- The script automatically handles Windows backslashes in paths
+- Ensure you're using Git Bash or a compatible shell on Windows
 
 **Build errors**:
 - Check that the package structure is correct

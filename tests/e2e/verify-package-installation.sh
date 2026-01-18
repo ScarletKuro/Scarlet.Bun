@@ -43,10 +43,16 @@ process_template() {
         exit 1
     fi
     
+    # Escape backslashes for sed on Windows (Git Bash converts paths like D:\a to D:\\a)
+    local workspace_escaped="${WORKSPACE_PATH//\\/\\\\}"
+    local package_escaped="${PACKAGE_VERSION//\\/\\\\}"
+    local runtime_escaped="${RUNTIME_PACKAGE//\\/\\\\}"
+    
     # Use sed to replace {{VARIABLE}} with actual values
-    sed -e "s|{{WORKSPACE_PATH}}|$WORKSPACE_PATH|g" \
-        -e "s|{{PACKAGE_VERSION}}|$PACKAGE_VERSION|g" \
-        -e "s|{{RUNTIME_PACKAGE}}|$RUNTIME_PACKAGE|g" \
+    # Use | as delimiter to avoid issues with forward slashes in paths
+    sed -e "s|{{WORKSPACE_PATH}}|$workspace_escaped|g" \
+        -e "s|{{PACKAGE_VERSION}}|$package_escaped|g" \
+        -e "s|{{RUNTIME_PACKAGE}}|$runtime_escaped|g" \
         "$template_file" > "$output_file"
 }
 
