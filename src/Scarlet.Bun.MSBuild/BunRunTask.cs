@@ -166,9 +166,6 @@ public class BunRunTask : Task
             }
             else
             {
-                // Use embedded runtime mode (original behavior)
-                var taskAssemblyPath = GetType().Assembly.Location;
-                
                 // Determine runtime directory from MSBuild properties if not explicitly set
                 if (string.IsNullOrEmpty(RuntimeDirectory))
                 {
@@ -184,7 +181,7 @@ public class BunRunTask : Task
                     }
                 }
                 
-                bunPath = BunRuntimeResolver.ResolveBunExecutable(taskAssemblyPath, runtimeDirectory: RuntimeDirectory);
+                bunPath = BunRuntimeResolver.ResolveBunExecutable(runtimeDirectory: RuntimeDirectory);
                 Log.LogMessage(MessageImportance.High, $"Platform: {BunRuntimeResolver.GetCurrentPlatform()}");
             }
             

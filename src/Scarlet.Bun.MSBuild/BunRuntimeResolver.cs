@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.IO.Abstractions;
 using System.Runtime.InteropServices;
@@ -10,6 +11,42 @@ namespace Scarlet.Bun.MSBuild;
 /// </summary>
 public static class BunRuntimeResolver
 {
+    private static readonly IReadOnlyDictionary<Platform, PlatformInfo> PlatformMap =
+        new Dictionary<Platform, PlatformInfo>
+        {
+            [Platform.WindowsX64] = new(
+                rid: "win-x64",
+                directoryName: "bun-windows-x64-baseline",
+                packageName: "Scarlet.Bun.Runtime.windows-x64-baseline",
+                executableName: "bun.exe"
+            ),
+            [Platform.LinuxX64] = new(
+                rid: "linux-x64",
+                directoryName: "bun-linux-x64-baseline",
+                packageName: "Scarlet.Bun.Runtime.linux-x64-baseline",
+                executableName: "bun"
+            ),
+            [Platform.LinuxArm64] = new(
+                rid: "linux-arm64",
+                directoryName: "bun-linux-aarch64",
+                packageName: "Scarlet.Bun.Runtime.linux-aarch64",
+                executableName: "bun"
+            ),
+            [Platform.MacOsX64] = new(
+                rid: "osx-x64",
+                directoryName: "bun-darwin-x64-baseline",
+                packageName: "Scarlet.Bun.Runtime.darwin-x64-baseline",
+                executableName: "bun"
+            ),
+            [Platform.MacOsArm64] = new(
+                rid: "osx-arm64",
+                directoryName: "bun-darwin-aarch64",
+                packageName: "Scarlet.Bun.Runtime.darwin-aarch64",
+                executableName: "bun"
+            )
+        };
+
+
     /// <summary>
     /// Gets the current platform.
     /// </summary>
@@ -40,68 +77,31 @@ public static class BunRuntimeResolver
     /// <summary>
     /// Gets the runtime identifier (RID) for the specified platform.
     /// </summary>
-    public static string GetRuntimeIdentifier(Platform platform)
-    {
-        return platform switch
-        {
-            Platform.WindowsX64 => "win-x64",
-            Platform.LinuxX64 => "linux-x64",
-            Platform.LinuxArm64 => "linux-arm64",
-            Platform.MacOsX64 => "osx-x64",
-            Platform.MacOsArm64 => "osx-arm64",
-            _ => throw new ArgumentException($"Unknown platform: {platform}", nameof(platform))
-        };
-    }
+    public static string GetRuntimeIdentifier(Platform platform) => GetInfo(platform).Rid;
 
     /// <summary>
     /// Gets the runtime directory name for the specified platform (for backwards compatibility).
     /// </summary>
-    public static string GetRuntimeDirectoryName(Platform platform)
-    {
-        return platform switch
-        {
-            Platform.WindowsX64 => "bun-windows-x64-baseline",
-            Platform.LinuxX64 => "bun-linux-x64-baseline",
-            Platform.LinuxArm64 => "bun-linux-aarch64",
-            Platform.MacOsX64 => "bun-darwin-x64-baseline",
-            Platform.MacOsArm64 => "bun-darwin-aarch64",
-            _ => throw new ArgumentException($"Unknown platform: {platform}", nameof(platform))
-        };
-    }
+    public static string GetRuntimeDirectoryName(Platform platform) => GetInfo(platform).DirectoryName;
 
     /// <summary>
     /// Gets the Bun executable name for the specified platform.
     /// </summary>
-    public static string GetExecutableName(Platform platform)
-    {
-        return platform == Platform.WindowsX64 ? "bun.exe" : "bun";
-    }
+    public static string GetExecutableName(Platform platform) => GetInfo(platform).ExecutableName;
 
     /// <summary>
     /// Gets the runtime package name for the specified platform.
     /// </summary>
-    internal static string GetRuntimePackageName(Platform platform)
-    {
-        return platform switch
-        {
-            Platform.WindowsX64 => "Scarlet.Bun.Runtime.windows-x64-baseline",
-            Platform.LinuxX64 => "Scarlet.Bun.Runtime.linux-x64-baseline",
-            Platform.LinuxArm64 => "Scarlet.Bun.Runtime.linux-aarch64",
-            Platform.MacOsX64 => "Scarlet.Bun.Runtime.darwin-x64-baseline",
-            Platform.MacOsArm64 => "Scarlet.Bun.Runtime.darwin-aarch64",
-            _ => throw new ArgumentException($"Unknown platform: {platform}", nameof(platform))
-        };
-    }
+    public static string GetRuntimePackageName(Platform platform) => GetInfo(platform).PackageName;
 
     /// <summary>
     /// Resolves the full path to the Bun executable.
     /// </summary>
-    /// <param name="taskAssemblyPath">Path to the task assembly.</param>
     /// <param name="platform">Target platform.</param>
     /// <param name="runtimeDirectory">Optional path to the runtime directory. If not specified, throws an error.</param>
     /// <param name="fileSystem">File system abstraction for testability. If null, uses the real file system.</param>
     /// <returns>Full path to the Bun executable.</returns>
-    public static string ResolveBunExecutable(string taskAssemblyPath, Platform? platform = null, string? runtimeDirectory = null, IFileSystem? fileSystem = null)
+    public static string ResolveBunExecutable(Platform? platform = null, string? runtimeDirectory = null, IFileSystem? fileSystem = null)
     {
         // Use real file system if none provided
         fileSystem ??= new FileSystem();
@@ -136,36 +136,46 @@ public static class BunRuntimeResolver
         // On Unix systems, ensure the file is executable
         if (targetPlatform != Platform.WindowsX64)
         {
-            try
-            {
-                // Use chmod to set execute permissions
-                var chmodProcess = System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo
-                {
-                    FileName = "chmod",
-                    Arguments = $"+x \"{bunPath}\"",
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                    RedirectStandardError = true
-                });
-                
-                if (chmodProcess != null)
-                {
-                    chmodProcess.WaitForExit();
-                    if (chmodProcess.ExitCode != 0)
-                    {
-                        var error = chmodProcess.StandardError.ReadToEnd();
-                        // Log but don't fail - permissions might already be set
-                        System.Diagnostics.Debug.WriteLine($"chmod warning: {error}");
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                // Log but don't fail - permissions might already be set or chmod not available
-                System.Diagnostics.Debug.WriteLine($"Could not set execute permissions: {ex.Message}");
-            }
+            EnsureExecutablePermission(bunPath);
         }
 
         return bunPath;
+    }
+
+    private static void EnsureExecutablePermission(string path)
+    {
+        try
+        {
+            var processInfo = new System.Diagnostics.ProcessStartInfo
+            {
+                FileName = "chmod",
+                Arguments = $"+x \"{path}\"",
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                RedirectStandardError = true
+            };
+
+            using var process = System.Diagnostics.Process.Start(processInfo);
+            if (process is not null)
+            {
+                process.WaitForExit();
+                if (process.ExitCode != 0)
+                {
+                    var error = process.StandardError.ReadToEnd();
+                    System.Diagnostics.Debug.WriteLine($"chmod warning: {error}");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Could not set execute permissions: {ex.Message}");
+        }
+    }
+
+    private static PlatformInfo GetInfo(Platform platform)
+    {
+        return PlatformMap.TryGetValue(platform, out var info)
+            ? info
+            : throw new ArgumentException($"Unknown platform: {platform}", nameof(platform));
     }
 }
