@@ -14,7 +14,7 @@ An MSBuild task package that integrates [Bun](https://bun.sh/) - a fast all-in-o
 - [Runtime Options](#runtime-options)
   - [Option 1: Runtime Download](#option-1-runtime-download)
   - [Option 2: Platform-Specific Runtime Packages](#option-2-platform-specific-runtime-packages)
-  - [Option 3: Conditional Package References (Multi-Platform Teams)](#option-3-conditional-package-references-multi-platform-teams)
+  - [Option 3: Conditional Package References (Multi-Platform Teams)](#option-3-conditional-package-references)
 - [Usage](#usage)
   - [Basic Example](#basic-example)
   - [Using Runtime Download](#using-runtime-download)
@@ -119,7 +119,7 @@ dotnet add package Scarlet.Bun.Runtime.darwin-aarch64
 | macOS x64    | bun-darwin-x64-baseline    | Scarlet.Bun.Runtime.darwin-x64-baseline          | [![NuGet](https://img.shields.io/nuget/v/Scarlet.Bun.Runtime.darwin-x64-baseline?color=ff4081&logo=nuget&style=flat-square)](https://www.nuget.org/packages/Scarlet.Bun.Runtime.darwin-x64-baseline/) |
 | macOS ARM64  | bun-darwin-aarch64         | Scarlet.Bun.Runtime.darwin-aarch64               | [![NuGet](https://img.shields.io/nuget/v/Scarlet.Bun.Runtime.darwin-aarch64?color=ff4081&logo=nuget&style=flat-square)](https://www.nuget.org/packages/Scarlet.Bun.Runtime.darwin-aarch64/) |
 
-### Option 3: Conditional Package References (Multi-Platform Teams)
+### Option 3: Conditional Package References
 
 **Best for:** Multi-platform teams and CI/CD pipelines where you want the project to build on any platform (Windows, Linux, macOS) without runtime downloads.
 
