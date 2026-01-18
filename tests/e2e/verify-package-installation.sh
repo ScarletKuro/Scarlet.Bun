@@ -12,7 +12,6 @@ set -e
 # Exit codes:
 #   0: Success
 #   1: Failure
-#   2: Warning (build succeeded but Bun execution may have failed)
 
 if [ $# -ne 2 ]; then
     echo "Usage: $0 <workspace-path> <package-version>"
@@ -188,7 +187,5 @@ if [ "$BUN_SUCCESS" = true ]; then
     echo "✓ E2E test completed successfully - Bun executed"
     exit 0
 else
-    echo "⚠ E2E test completed with warnings - build succeeded but Bun execution skipped"
-    echo "This is expected in some CI environments"
-    exit 0
+    exit 1
 fi
