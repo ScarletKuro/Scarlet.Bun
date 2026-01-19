@@ -30,21 +30,37 @@ internal sealed class UnixChmodProvider : IChmodProvider
             return;
         }
 
-        if (LibsC.stat(filePath, out var st) != 0)
-        {
-            throw new IOException(
-                "Failed to set executable permissions.",
-                new Win32Exception(Marshal.GetLastWin32Error()));
-        }
+        // Set to 0755 (rwxr-xr-x) which is standard for executables
+        // 0755 = 0x1ED in hex = 493 in decimal
+        const int mode0755 = 0x1ED;
 
-        int newMode = (int)(st.st_mode | LibsC.S_IXUSR | LibsC.S_IXGRP | LibsC.S_IXOTH);
-
-        if (LibsC.chmod(filePath, newMode) != 0)
+        if (LibsC.chmod(filePath, mode0755) != 0)
         {
+            int errno = Marshal.GetLastWin32Error();
             throw new IOException(
-                "Failed to set executable permissions.",
-                new Win32Exception(Marshal.GetLastWin32Error()));
+                $"Failed to set executable permissions for {filePath} (errno: {errno})",
+                new Win32Exception(errno));
         }
+        //if (Environment.OSVersion.Platform == PlatformID.Win32NT)
+        //{
+        //    return;
+        //}
+
+        //if (LibsC.stat(filePath, out var st) != 0)
+        //{
+        //    throw new IOException(
+        //        "Failed to set executable permissions.",
+        //        new Win32Exception(Marshal.GetLastWin32Error()));
+        //}
+
+        //int newMode = (int)(st.st_mode | LibsC.S_IXUSR | LibsC.S_IXGRP | LibsC.S_IXOTH);
+
+        //if (LibsC.chmod(filePath, newMode) != 0)
+        //{
+        //    throw new IOException(
+        //        "Failed to set executable permissions.",
+        //        new Win32Exception(Marshal.GetLastWin32Error()));
+        //}
     }
 
     private static class LibsC
