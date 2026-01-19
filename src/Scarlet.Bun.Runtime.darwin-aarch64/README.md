@@ -1,3 +1,6 @@
 # Scarlet.Bun.Runtime.darwin-aarch64
 
-This package contains the Bun runtime for macOS ARM64. It is a dependency of the Scarlet.Bun.MSBuild package and should not be installed directly.
+This package contains the Bun runtime for macOS ARM64.
+
+`Scarlet.Bun.MSBuild` does **not** depend on this package directly.  
+Install it only if you want to provide a pre-packaged Bun runtime — `Scarlet.Bun.MSBuild` will discover it automatically when present.
