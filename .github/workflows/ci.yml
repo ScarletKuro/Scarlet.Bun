@@ -31,21 +31,54 @@ jobs:
       - name: Run tests with coverage
         run: dotnet test --no-build --configuration Release --collect:"XPlat Code Coverage" --results-directory ./coverage
 
-      - name: Verify sample outputs
+      - name: Verify Scarlet.Bun.Sample outputs
         shell: bash
         run: |
+          failed=0
           if [ -f "samples/Scarlet.Bun.Sample/wwwroot/js/bundle.min.js" ]; then
             echo "✓ JavaScript bundle created successfully"
             ls -lh samples/Scarlet.Bun.Sample/wwwroot/js/bundle.min.js
           else
-            echo "⚠ JavaScript bundle not found (expected due to Bun CI issues)"
+            echo "⚠ JavaScript bundle not found"
+            failed=1
           fi
           if [ -f "samples/Scarlet.Bun.Sample/wwwroot/css/style.min.css" ]; then
             echo "✓ CSS bundle created successfully"
             ls -lh samples/Scarlet.Bun.Sample/wwwroot/css/style.min.css
           else
-            echo "⚠ CSS bundle not found (expected due to Bun CI issues)"
+            echo "⚠ CSS bundle not found"
+            failed=1
           fi
+          
+          exit $failed
+
+      - name: Verify Scarlet.Bun.Sample.Download outputs
+        shell: bash
+        run: |
+          failed=0
+          if find samples/Scarlet.Bun.Sample.Download/runtimes -type f \( -name "bun" -o -name "bun.exe" \) | grep -q .; then
+            echo "✓ Runtime was downloaded successfully"
+            find samples/Scarlet.Bun.Sample.Download/runtimes -type f \( -name "bun" -o -name "bun.exe" \) -ls
+          else
+            echo "⚠ Runtime not found"
+            failed=1
+          fi
+          if [ -f "samples/Scarlet.Bun.Sample.Download/wwwroot/js/bundle.min.js" ]; then
+            echo "✓ JavaScript bundle created successfully"
+            ls -lh samples/Scarlet.Bun.Sample.Download/wwwroot/js/bundle.min.js
+          else
+            echo "⚠ JavaScript bundle not found"
+            failed=1
+          fi
+          if [ -f "samples/Scarlet.Bun.Sample.Download/wwwroot/css/style.min.css" ]; then
+            echo "✓ CSS bundle created successfully"
+            ls -lh samples/Scarlet.Bun.Sample.Download/wwwroot/css/style.min.css
+          else
+            echo "⚠ CSS bundle not found"
+            failed=1
+          fi
+          
+          exit $failed
 
       - name: Pack NuGet packages
         shell: bash
