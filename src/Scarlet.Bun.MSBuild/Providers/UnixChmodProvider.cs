@@ -55,7 +55,7 @@ internal sealed class UnixChmodProvider : IChmodProvider
         /// <returns>
         /// <c>0</c> on success; <c>-1</c> on failure with errno set.
         /// </returns>
-        [DllImport("libc", SetLastError = true, CharSet = CharSet.Unicode)]
+        [DllImport("libc", SetLastError = true)]
         public static extern int chmod(string path, int mode);
     }
 }
