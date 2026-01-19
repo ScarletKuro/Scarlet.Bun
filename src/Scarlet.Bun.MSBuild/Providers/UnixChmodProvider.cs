@@ -25,42 +25,42 @@ internal sealed class UnixChmodProvider : IChmodProvider
     /// </exception>
     public void EnsureExecutablePermissions(string filePath)
     {
-        if (Environment.OSVersion.Platform == PlatformID.Win32NT)
-        {
-            return;
-        }
-
-        // Set to 0755 (rwxr-xr-x) which is standard for executables
-        // 0755 = 0x1ED in hex = 493 in decimal
-        const int mode0755 = 0x1ED;
-
-        if (LibsC.chmod(filePath, mode0755) != 0)
-        {
-            int errno = Marshal.GetLastWin32Error();
-            throw new IOException(
-                $"Failed to set executable permissions for {filePath} (errno: {errno})",
-                new Win32Exception(errno));
-        }
         //if (Environment.OSVersion.Platform == PlatformID.Win32NT)
         //{
         //    return;
         //}
 
-        //if (LibsC.stat(filePath, out var st) != 0)
-        //{
-        //    throw new IOException(
-        //        "Failed to set executable permissions.",
-        //        new Win32Exception(Marshal.GetLastWin32Error()));
-        //}
+        //// Set to 0755 (rwxr-xr-x) which is standard for executables
+        //// 0755 = 0x1ED in hex = 493 in decimal
+        //const int mode0755 = 0x1ED;
 
-        //int newMode = (int)(st.st_mode | LibsC.S_IXUSR | LibsC.S_IXGRP | LibsC.S_IXOTH);
-
-        //if (LibsC.chmod(filePath, newMode) != 0)
+        //if (LibsC.chmod(filePath, mode0755) != 0)
         //{
+        //    int errno = Marshal.GetLastWin32Error();
         //    throw new IOException(
-        //        "Failed to set executable permissions.",
-        //        new Win32Exception(Marshal.GetLastWin32Error()));
+        //        $"Failed to set executable permissions for {filePath} (errno: {errno})",
+        //        new Win32Exception(errno));
         //}
+        if (Environment.OSVersion.Platform == PlatformID.Win32NT)
+        {
+            return;
+        }
+
+        if (LibsC.stat(filePath, out var st) != 0)
+        {
+            throw new IOException(
+                "Failed to set executable permissions.",
+                new Win32Exception(Marshal.GetLastWin32Error()));
+        }
+
+        int newMode = (int)(st.st_mode | LibsC.S_IXUSR | LibsC.S_IXGRP | LibsC.S_IXOTH);
+
+        if (LibsC.chmod(filePath, newMode) != 0)
+        {
+            throw new IOException(
+                "Failed to set executable permissions.",
+                new Win32Exception(Marshal.GetLastWin32Error()));
+        }
     }
 
     private static class LibsC
@@ -80,7 +80,7 @@ internal sealed class UnixChmodProvider : IChmodProvider
         /// <returns>
         /// <c>0</c> on success; <c>-1</c> on failure with errno set.
         /// </returns>
-        [DllImport("libc", SetLastError = true)]
+        [DllImport("libc", SetLastError = true, CharSet = CharSet.Unicode)]
         public static extern int chmod(string path, int mode);
 
         /// <summary>
@@ -108,24 +108,29 @@ internal sealed class UnixChmodProvider : IChmodProvider
         public struct Stat
         {
             public ulong st_dev;
-            public ulong st_ino;
+            public ulong st_ino;   // Inode number
             public ulong st_nlink;
             public uint st_mode;
             public uint st_uid;
             public uint st_gid;
-            public ulong __pad0;
+            public uint __pad0;
             public ulong st_rdev;
             public long st_size;
             public long st_blksize;
             public long st_blocks;
-            public long st_atime;
-            public ulong st_atime_nsec;
-            public long st_mtime;
-            public ulong st_mtime_nsec;
-            public long st_ctime;
-            public ulong st_ctime_nsec;
-            public long __unused4;
-            public long __unused5;
+            public Timespec st_atim;
+            public Timespec st_mtim;
+            public Timespec st_ctim;
+            private long __unused1;
+            private long __unused2;
+            private long __unused3;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        public struct Timespec
+        {
+            public long tv_sec;  // seconds
+            public long tv_nsec; // nanoseconds
         }
     }
 }
