@@ -1,4 +1,5 @@
 using System.IO.Abstractions.TestingHelpers;
+using Scarlet.Bun.MSBuild.Providers;
 
 namespace Scarlet.Bun.MSBuild.Tests;
 
@@ -9,7 +10,7 @@ public class BunRuntimeResolverTests
     {
         // Act & Assert
         var exception = Assert.Throws<FileNotFoundException>(() =>
-            BunRuntimeResolver.ResolveBunExecutable(runtimeDirectory: null));
+            BunRuntimeResolver.ResolveBunExecutable(new MockFileSystem(), new NoOpChmodProvider(), runtimeDirectory: null));
         Assert.Contains("Bun runtime package not found", exception.Message);
         Assert.Contains("Scarlet.Bun.Runtime", exception.Message);
     }
@@ -25,10 +26,11 @@ public class BunRuntimeResolverTests
         // Act & Assert
         var exception = Assert.Throws<FileNotFoundException>(() =>
             BunRuntimeResolver.ResolveBunExecutable(
+                mockFileSystem,
+                new NoOpChmodProvider(),
                 platform,
-                runtimeDirectory,
-                mockFileSystem));
-        
+                runtimeDirectory));
+
         Assert.Contains("Bun executable not found at", exception.Message);
         Assert.Contains("Scarlet.Bun.Runtime.linux-x64-baseline", exception.Message);
     }
@@ -47,15 +49,16 @@ public class BunRuntimeResolverTests
         // Arrange
         var runtimeDirectory = "/runtime";
         var expectedPath = Path.GetFullPath(Path.Combine(runtimeDirectory, runtimeId, "native", executableName));
-        
+
         var mockFileSystem = new MockFileSystem();
         mockFileSystem.AddFile(expectedPath, new MockFileData("fake executable"));
 
         // Act
         var result = BunRuntimeResolver.ResolveBunExecutable(
+            mockFileSystem,
+            new NoOpChmodProvider(),
             platform,
-            runtimeDirectory,
-            mockFileSystem);
+            runtimeDirectory);
 
         // Assert
         Assert.Equal(expectedPath, result);
@@ -65,6 +68,7 @@ public class BunRuntimeResolverTests
     public void ResolveBunExecutable_WithInvalidPath_ShouldThrowException()
     {
         // Act & Assert
-        Assert.ThrowsAny<Exception>(() => BunRuntimeResolver.ResolveBunExecutable());
+        Assert.ThrowsAny<Exception>(() =>
+            BunRuntimeResolver.ResolveBunExecutable(new MockFileSystem(), new NoOpChmodProvider()));
     }
 }

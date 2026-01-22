@@ -1,7 +1,9 @@
 using System;
 using System.Diagnostics;
+using System.IO.Abstractions;
 using Microsoft.Build.Framework;
 using Microsoft.Build.Utilities;
+using Scarlet.Bun.MSBuild.Providers;
 
 namespace Scarlet.Bun.MSBuild;
 
@@ -121,8 +123,11 @@ public class BunRunTask : Task
                 return false;
             }
 
+            var fileSystem = new FileSystem();
+            var chmodProvider = Chmod.CreateProvider();
+
             string bunPath;
-            
+
             // Handle runtime download mode
             if (BunRuntimeDownload)
             {
@@ -148,9 +153,9 @@ public class BunRunTask : Task
                 try
                 {
                     // Download runtime asynchronously (RuntimeDirectory is already validated above)
-                    var downloadTask = BunDownloader.DownloadRuntimeAsync(RuntimeDirectory!, BunVersionDownload);
-                    downloadTask.Wait();
-                    bunPath = downloadTask.Result;
+                    using var httpClient = BunDownloader.CreateHttpClient();
+                    var downloader = new BunDownloader(httpClient, fileSystem, ZipArchiveProvider.Instance, chmodProvider);
+                    bunPath = downloader.DownloadRuntimeAsync(RuntimeDirectory!, BunVersionDownload).Result;
                     
                     Log.LogMessage(MessageImportance.High, $"Bun runtime ready at: {bunPath}");
                 }
@@ -181,7 +186,7 @@ public class BunRunTask : Task
                     }
                 }
                 
-                bunPath = BunRuntimeResolver.ResolveBunExecutable(runtimeDirectory: RuntimeDirectory);
+                bunPath = BunRuntimeResolver.ResolveBunExecutable(fileSystem, chmodProvider, runtimeDirectory: RuntimeDirectory);
                 Log.LogMessage(MessageImportance.High, $"Platform: {BunRuntimeResolver.GetCurrentPlatform()}");
             }
             
