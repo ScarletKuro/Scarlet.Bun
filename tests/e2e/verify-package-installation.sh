@@ -2,31 +2,34 @@
 set -e
 
 # End-to-End test script for Scarlet.Bun.MSBuild package installation
-# 
-# Usage: ./verify-package-installation.sh <workspace-path> <package-version>
+#
+# Usage: ./verify-package-installation.sh <workspace-path> <package-version> <runtime-version>
 #
 # Arguments:
-#   workspace-path: Path to the repository root (contains packages folder)
-#   package-version: Version of the packages to test (e.g., "0.0.1-ci.26")
+#   workspace-path:  Path to the repository root (contains packages folder)
+#   package-version: Version of the Scarlet.Bun.MSBuild package to test (e.g., "0.0.1-ci.26")
+#   runtime-version: Version of the runtime packages to test (e.g., "1.3.6")
 #
 # Exit codes:
 #   0: Success
 #   1: Failure
 
-if [ $# -ne 2 ]; then
-    echo "Usage: $0 <workspace-path> <package-version>"
-    echo "Example: $0 /path/to/repo 0.0.1-ci.26"
+if [ $# -ne 3 ]; then
+    echo "Usage: $0 <workspace-path> <package-version> <runtime-version>"
+    echo "Example: $0 /path/to/repo 0.0.1-ci.26 1.3.6"
     exit 1
 fi
 
 WORKSPACE_PATH="$1"
 PACKAGE_VERSION="$2"
+RUNTIME_VERSION="$3"
 
 echo "=========================================="
 echo "E2E Test: Package Installation"
 echo "=========================================="
 echo "Workspace: $WORKSPACE_PATH"
-echo "Version: $PACKAGE_VERSION"
+echo "Scarlet.Bun.MSBuild Version: $PACKAGE_VERSION"
+echo "Runtime Version: $RUNTIME_VERSION"
 echo "=========================================="
 
 # Get the directory where this script is located
@@ -47,12 +50,14 @@ process_template() {
     local workspace_escaped="${WORKSPACE_PATH//\\/\\\\}"
     local package_escaped="${PACKAGE_VERSION//\\/\\\\}"
     local runtime_escaped="${RUNTIME_PACKAGE//\\/\\\\}"
-    
+    local runtime_ver_escaped="${RUNTIME_VERSION//\\/\\\\}"
+
     # Use sed to replace {{VARIABLE}} with actual values
     # Use | as delimiter to avoid issues with forward slashes in paths
     sed -e "s|{{WORKSPACE_PATH}}|$workspace_escaped|g" \
         -e "s|{{PACKAGE_VERSION}}|$package_escaped|g" \
         -e "s|{{RUNTIME_PACKAGE}}|$runtime_escaped|g" \
+        -e "s|{{RUNTIME_VERSION}}|$runtime_ver_escaped|g" \
         "$template_file" > "$output_file"
 }
 
@@ -93,7 +98,7 @@ echo "Adding Scarlet.Bun.MSBuild package..."
 dotnet add package Scarlet.Bun.MSBuild --version "$PACKAGE_VERSION"
 
 echo "Adding $RUNTIME_PACKAGE package..."
-dotnet add package "$RUNTIME_PACKAGE" --version "$PACKAGE_VERSION"
+dotnet add package "$RUNTIME_PACKAGE" --version "$RUNTIME_VERSION"
 
 echo "✓ Packages added successfully"
 

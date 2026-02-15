@@ -68,6 +68,13 @@ jobs:
       - name: Build
         run: dotnet build --no-restore --configuration Release /p:Version=${{ steps.get_version.outputs.version }}
 
+      - name: Extract BunVersion
+        id: get_bun_version
+        run: |
+          BUN_VERSION=$(grep -oP '(?<=<BunVersion>)[^<]+' Directory.Build.props)
+          echo "bun_version=$BUN_VERSION"
+          echo "bun_version=$BUN_VERSION" >> $GITHUB_OUTPUT
+
       - name: Pack NuGet packages
         run: |
           # Pack the main MSBuild package
@@ -76,32 +83,28 @@ jobs:
             --configuration Release \
             --output ./packages \
             /p:Version=${{ steps.get_version.outputs.version }}
-          
+
           # Pack all runtime packages (without --no-build because they need to restore and copy binaries)
+          # Runtime packages use BunVersion from their .csproj, no /p:Version override
           dotnet pack src/Scarlet.Bun.Runtime.windows-x64-baseline/Scarlet.Bun.Runtime.windows-x64-baseline.csproj \
             --configuration Release \
-            --output ./packages \
-            /p:Version=${{ steps.get_version.outputs.version }}
-          
+            --output ./packages
+
           dotnet pack src/Scarlet.Bun.Runtime.linux-x64-baseline/Scarlet.Bun.Runtime.linux-x64-baseline.csproj \
             --configuration Release \
-            --output ./packages \
-            /p:Version=${{ steps.get_version.outputs.version }}
-          
+            --output ./packages
+
           dotnet pack src/Scarlet.Bun.Runtime.linux-aarch64/Scarlet.Bun.Runtime.linux-aarch64.csproj \
             --configuration Release \
-            --output ./packages \
-            /p:Version=${{ steps.get_version.outputs.version }}
-          
+            --output ./packages
+
           dotnet pack src/Scarlet.Bun.Runtime.darwin-x64-baseline/Scarlet.Bun.Runtime.darwin-x64-baseline.csproj \
             --configuration Release \
-            --output ./packages \
-            /p:Version=${{ steps.get_version.outputs.version }}
-          
+            --output ./packages
+
           dotnet pack src/Scarlet.Bun.Runtime.darwin-aarch64/Scarlet.Bun.Runtime.darwin-aarch64.csproj \
             --configuration Release \
-            --output ./packages \
-            /p:Version=${{ steps.get_version.outputs.version }}
+            --output ./packages
 
       - name: List generated packages
         run: ls -lh ./packages/
@@ -156,7 +159,7 @@ jobs:
           
           # Add the packages
           dotnet add package Scarlet.Bun.MSBuild --version ${{ steps.get_version.outputs.version }}
-          dotnet add package $RUNTIME_PACKAGE --version ${{ steps.get_version.outputs.version }}
+          dotnet add package $RUNTIME_PACKAGE --version ${{ steps.get_bun_version.outputs.bun_version }}
           
           # Create a simple package.json
           cat > package.json << 'EOF'
@@ -189,7 +192,7 @@ jobs:
                 <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
                 <PrivateAssets>all</PrivateAssets>
               </PackageReference>
-              <PackageReference Include="$RUNTIME_PACKAGE" Version="${{ steps.get_version.outputs.version }}">
+              <PackageReference Include="$RUNTIME_PACKAGE" Version="${{ steps.get_bun_version.outputs.bun_version }}">
                 <PrivateAssets>all</PrivateAssets>
               </PackageReference>
             </ItemGroup>

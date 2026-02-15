@@ -86,35 +86,41 @@ jobs:
           # Use 0.0.1-ci for testing
           VERSION="0.0.1-ci.${{ github.run_number }}"
           echo "Packing with version: $VERSION"
-          
+
+          # Extract BunVersion from Directory.Build.props
+          BUN_VERSION=$(grep -oP '(?<=<BunVersion>)[^<]+' Directory.Build.props)
+          echo "Runtime package version (BunVersion): $BUN_VERSION"
+
           # Pack the main MSBuild package
           dotnet pack src/Scarlet.Bun.MSBuild/Scarlet.Bun.MSBuild.csproj \
             --no-build \
             --configuration Release \
             --output ./packages -p:Version=$VERSION
-          
+
           # Pack all runtime packages (without --no-build because they need to restore and copy binaries)
+          # Runtime packages use BunVersion from their .csproj, no -p:Version override
           dotnet pack src/Scarlet.Bun.Runtime.windows-x64-baseline/Scarlet.Bun.Runtime.windows-x64-baseline.csproj \
             --configuration Release \
-            --output ./packages -p:Version=$VERSION
-          
+            --output ./packages
+
           dotnet pack src/Scarlet.Bun.Runtime.linux-x64-baseline/Scarlet.Bun.Runtime.linux-x64-baseline.csproj \
             --configuration Release \
-            --output ./packages -p:Version=$VERSION
-          
+            --output ./packages
+
           dotnet pack src/Scarlet.Bun.Runtime.linux-aarch64/Scarlet.Bun.Runtime.linux-aarch64.csproj \
             --configuration Release \
-            --output ./packages -p:Version=$VERSION
-          
+            --output ./packages
+
           dotnet pack src/Scarlet.Bun.Runtime.darwin-x64-baseline/Scarlet.Bun.Runtime.darwin-x64-baseline.csproj \
             --configuration Release \
-            --output ./packages -p:Version=$VERSION
-          
+            --output ./packages
+
           dotnet pack src/Scarlet.Bun.Runtime.darwin-aarch64/Scarlet.Bun.Runtime.darwin-aarch64.csproj \
             --configuration Release \
-            --output ./packages -p:Version=$VERSION
-          
+            --output ./packages
+
           echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "BUN_VERSION=$BUN_VERSION" >> $GITHUB_ENV
 
       - name: List generated packages
         shell: bash
@@ -124,7 +130,7 @@ jobs:
         shell: bash
         run: |
           chmod +x tests/e2e/verify-package-installation.sh
-          tests/e2e/verify-package-installation.sh "${{ github.workspace }}" "${{ env.VERSION }}"
+          tests/e2e/verify-package-installation.sh "${{ github.workspace }}" "${{ env.VERSION }}" "${{ env.BUN_VERSION }}"
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
