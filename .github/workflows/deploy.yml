@@ -71,7 +71,7 @@ jobs:
       - name: Extract BunVersion
         id: get_bun_version
         run: |
-          BUN_VERSION=$(grep -oP '(?<=<BunVersion>)[^<]+' Directory.Build.props)
+          BUN_VERSION=$(sed -n 's/.*<BunVersion>\([^<]*\)<\/BunVersion>.*/\1/p' Directory.Build.props)
           echo "bun_version=$BUN_VERSION"
           echo "bun_version=$BUN_VERSION" >> $GITHUB_OUTPUT
 

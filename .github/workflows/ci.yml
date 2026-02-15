@@ -88,7 +88,7 @@ jobs:
           echo "Packing with version: $VERSION"
 
           # Extract BunVersion from Directory.Build.props
-          BUN_VERSION=$(grep -oP '(?<=<BunVersion>)[^<]+' Directory.Build.props)
+          BUN_VERSION=$(sed -n 's/.*<BunVersion>\([^<]*\)<\/BunVersion>.*/\1/p' Directory.Build.props)
           echo "Runtime package version (BunVersion): $BUN_VERSION"
 
           # Pack the main MSBuild package
