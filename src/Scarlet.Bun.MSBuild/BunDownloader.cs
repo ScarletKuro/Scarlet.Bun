@@ -14,13 +14,15 @@ public sealed class BunDownloader
 {
     private const string GithubReleasesUrl = "https://github.com/oven-sh/bun/releases";
 
+    private readonly Platform _platform;
     private readonly HttpClient _httpClient;
     private readonly IFileSystem _fileSystem;
-    private readonly IZipArchiveProvider _zipProvider;
     private readonly IChmodProvider _chmodProvider;
+    private readonly IZipArchiveProvider _zipProvider;
 
-    public BunDownloader(HttpClient httpClient, IFileSystem fileSystem, IZipArchiveProvider zipProvider, IChmodProvider chmodProvider)
+    public BunDownloader(HttpClient httpClient, IFileSystem fileSystem, IZipArchiveProvider zipProvider, IChmodProvider chmodProvider, Platform platform)
     {
+        _platform = platform;
         _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
         _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
         _zipProvider = zipProvider ?? throw new ArgumentNullException(nameof(zipProvider));
@@ -32,19 +34,17 @@ public sealed class BunDownloader
     /// </summary>
     /// <param name="runtimeDirectory">Directory where the runtime should be downloaded.</param>
     /// <param name="version">Specific version to download (e.g., "1.3.6"). If null or empty, downloads latest.</param>
-    /// <param name="platform">Target platform. If null, uses current platform.</param>
     /// <returns>Path to the downloaded Bun executable.</returns>
     public async Task<string> DownloadRuntimeAsync(
         string runtimeDirectory,
-        string? version = null,
-        Platform? platform = null)
+        string? version = null)
     {
         if (string.IsNullOrWhiteSpace(runtimeDirectory))
         {
             throw new ArgumentException("Runtime directory must be specified when using BunRuntimeDownload", nameof(runtimeDirectory));
         }
 
-        var targetPlatform = platform ?? BunRuntimeResolver.GetCurrentPlatform();
+        var targetPlatform = _platform;
         var runtimeId = BunRuntimeResolver.GetRuntimeIdentifier(targetPlatform);
         var platformName = BunRuntimeResolver.GetDownloadName(targetPlatform);
         var executableName = BunRuntimeResolver.GetExecutableName(targetPlatform);
