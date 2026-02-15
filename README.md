@@ -97,6 +97,8 @@ dotnet add package Scarlet.Bun.Runtime.darwin-x64-baseline
 dotnet add package Scarlet.Bun.Runtime.darwin-aarch64
 ```
 
+> **Note:** Runtime packages are versioned independently from `Scarlet.Bun.MSBuild`. Their package version corresponds to the bundled Bun version (e.g., package version `1.3.6` contains Bun `1.3.6`).
+
 **Advantages:**
 - Explicit control over which runtimes are included
 - No runtime downloads during build (runtimes come from NuGet packages)
