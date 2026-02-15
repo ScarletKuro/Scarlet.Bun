@@ -226,7 +226,7 @@ public class BunDownloaderTests
                 .Respond("application/zip", zipContent);
 
         var httpClient = mockHttp.ToHttpClient();
-        var downloader = new BunDownloader(httpClient, mockFileSystem, new NoWriteZipArchiveProvider(), new NoOpChmodProvider());
+        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeNoWriteZipArchiveProvider(), new NoOpChmodProvider());
 
         // Act & Assert
         var ex = await Assert.ThrowsAsync<FileNotFoundException>(() =>
@@ -324,29 +324,6 @@ public class BunDownloaderTests
         public void ExtractToFile(ZipArchiveEntry source, string destinationFileName, bool overwrite)
         {
             source.ExtractToFile(destinationFileName, overwrite);
-        }
-    }
-
-    private sealed class NoWriteZipArchiveProvider : IZipArchiveProvider
-    {
-        public ZipArchive OpenRead(string archiveFileName)
-        {
-            var stream = new MemoryStream();
-            using (var archive = new ZipArchive(stream, ZipArchiveMode.Create, leaveOpen: true))
-            {
-                var entry = archive.CreateEntry("bun-linux-x64-baseline/bun");
-                using var writer = new StreamWriter(entry.Open());
-                writer.Write("bun exists in archive");
-            }
-
-            stream.Position = 0;
-            return new ZipArchive(stream, ZipArchiveMode.Read);
-        }
-
-        public void ExtractToFile(ZipArchiveEntry source, string destinationFileName, bool overwrite)
-        {
-            // Intentionally no-op to simulate a provider that reports extraction path
-            // without writing the file, so post-extraction existence validation is exercised.
         }
     }
 }
