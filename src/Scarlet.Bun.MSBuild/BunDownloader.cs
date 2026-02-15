@@ -23,10 +23,10 @@ public sealed class BunDownloader
     public BunDownloader(HttpClient httpClient, IFileSystem fileSystem, IZipArchiveProvider zipProvider, IChmodProvider chmodProvider, Platform platform)
     {
         _platform = platform;
-        _httpClient = httpClient
-        _fileSystem = fileSystem
-        _zipProvider = zipProvider
-        _chmodProvider = chmodProvider
+        _httpClient = httpClient;
+        _fileSystem = fileSystem;
+        _zipProvider = zipProvider;
+        _chmodProvider = chmodProvider;
     }
 
     /// <summary>
