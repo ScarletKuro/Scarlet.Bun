@@ -207,6 +207,35 @@ public class BunDownloaderTests
         Assert.Contains("did not contain expected executable", ex.Message);
     }
 
+    [Fact]
+    public async Task DownloadRuntimeAsync_WhenExtractionDoesNotCreateFile_ShouldThrowFileNotFoundException()
+    {
+        // Arrange
+        var tempDir = "/test-runtime";
+        var platform = Platform.LinuxX64;
+        var runtimeId = BunRuntimeResolver.GetRuntimeIdentifier(platform);
+        var executableName = BunRuntimeResolver.GetExecutableName(platform);
+        var expectedPath = Path.Combine(tempDir, runtimeId, "native", executableName);
+
+        var mockFileSystem = new MockFileSystem();
+        var mockHttp = new MockHttpMessageHandler();
+
+        // Content is irrelevant for this test because the ZIP provider is faked.
+        var zipContent = CreateMockBunZip(executableName);
+        mockHttp.When("https://github.com/oven-sh/bun/releases/latest/download/bun-linux-x64-baseline.zip")
+                .Respond("application/zip", zipContent);
+
+        var httpClient = mockHttp.ToHttpClient();
+        var downloader = new BunDownloader(httpClient, mockFileSystem, new NoWriteZipArchiveProvider(), new NoOpChmodProvider());
+
+        // Act & Assert
+        var ex = await Assert.ThrowsAsync<FileNotFoundException>(() =>
+            downloader.DownloadRuntimeAsync(tempDir, platform: platform));
+
+        Assert.Contains("not found after extraction", ex.Message);
+        Assert.Contains(expectedPath, ex.Message);
+    }
+
     [Theory]
     [InlineData(Platform.WindowsX64, "bun.exe")]
     [InlineData(Platform.LinuxX64, "bun")]
@@ -295,6 +324,29 @@ public class BunDownloaderTests
         public void ExtractToFile(ZipArchiveEntry source, string destinationFileName, bool overwrite)
         {
             source.ExtractToFile(destinationFileName, overwrite);
+        }
+    }
+
+    private sealed class NoWriteZipArchiveProvider : IZipArchiveProvider
+    {
+        public ZipArchive OpenRead(string archiveFileName)
+        {
+            var stream = new MemoryStream();
+            using (var archive = new ZipArchive(stream, ZipArchiveMode.Create, leaveOpen: true))
+            {
+                var entry = archive.CreateEntry("bun-linux-x64-baseline/bun");
+                using var writer = new StreamWriter(entry.Open());
+                writer.Write("bun exists in archive");
+            }
+
+            stream.Position = 0;
+            return new ZipArchive(stream, ZipArchiveMode.Read);
+        }
+
+        public void ExtractToFile(ZipArchiveEntry source, string destinationFileName, bool overwrite)
+        {
+            // Intentionally no-op to simulate a provider that reports extraction path
+            // without writing the file, so post-extraction existence validation is exercised.
         }
     }
 }
