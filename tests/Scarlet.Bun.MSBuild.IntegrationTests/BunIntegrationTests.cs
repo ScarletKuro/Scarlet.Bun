@@ -125,7 +125,7 @@ public class BunIntegrationTests
         // Create a simple task that will try to get Bun version
         var task = new BunRunTask
         {
-            Command = "--version",
+            Command = "run",
             WorkingDirectory = testAssetsDir,
             RuntimeDirectory = runtimesDirectory,
             BuildEngine = new MockBuildEngine(_output),
@@ -189,5 +189,108 @@ public class BunIntegrationTests
 
         // Assert
         Assert.False(result);
+    }
+
+    [Fact]
+    public void BunRunTask_WithRuntimeDownloadAndInvalidRuntimePath_ShouldHitDownloadCatch()
+    {
+        // Forces BunDownloader to throw before any network call (invalid path chars),
+        // which is handled by BunRunTask's runtime-download catch block.
+        var task = new BunRunTask
+        {
+            Command = "run",
+            BunRuntimeDownload = true,
+            RuntimeDirectory = "invalid\0path",
+            BuildEngine = new MockBuildEngine(_output)
+        };
+
+        var result = task.Execute();
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public void BunRunTask_WithoutRuntimeDirectory_UsesPlatformRuntimeProperty()
+    {
+        var runtimePackagePath = Directory.GetCurrentDirectory();
+        var task = new BunRunTask
+        {
+            Command = "run",
+            RuntimeDirectory = null,
+            ContinueOnError = true,
+            BuildEngine = new MockBuildEngine(_output)
+        };
+
+        SetCurrentPlatformRuntimePath(task, runtimePackagePath);
+
+        var result = task.Execute();
+
+        // ContinueOnError keeps task green even if Bun process exits non-zero.
+        Assert.True(result);
+        Assert.NotEqual(-1, task.ExitCode);
+    }
+
+    [Fact]
+    public void BunRunTask_WithTimeout_ShouldKillProcessAndFail()
+    {
+        var runtimesDirectory = Path.Combine(Directory.GetCurrentDirectory(), "runtimes");
+        var task = new BunRunTask
+        {
+            Command = "run",
+            Arguments = "build.mjs",
+            RuntimeDirectory = runtimesDirectory,
+            TimeoutMilliseconds = 50,
+            BuildEngine = new MockBuildEngine(_output)
+        };
+
+        var result = task.Execute();
+
+        Assert.False(result);
+    }
+
+    [Fact]
+    public void BunRunTask_WithInvalidWorkingDirectory_ShouldHitOuterCatch()
+    {
+        var runtimesDirectory = Path.Combine(Directory.GetCurrentDirectory(), "runtimes");
+        var task = new BunRunTask
+        {
+            Command = "install",
+            RuntimeDirectory = runtimesDirectory,
+            WorkingDirectory = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N")),
+            ContinueOnError = true,
+            BuildEngine = new MockBuildEngine(_output)
+        };
+
+        var result = task.Execute();
+
+        Assert.True(result);
+        Assert.Equal(-1, task.ExitCode);
+    }
+
+    private static void SetCurrentPlatformRuntimePath(BunRunTask task, string runtimePackagePath)
+    {
+        var platform = BunRuntimeResolver.GetCurrentPlatform();
+        var rid = BunRuntimeResolver.GetRuntimeIdentifier(platform);
+
+        switch (rid)
+        {
+            case "win-x64":
+                task.BunRuntime_win_x64 = runtimePackagePath;
+                break;
+            case "linux-x64":
+                task.BunRuntime_linux_x64 = runtimePackagePath;
+                break;
+            case "linux-arm64":
+                task.BunRuntime_linux_arm64 = runtimePackagePath;
+                break;
+            case "osx-x64":
+                task.BunRuntime_osx_x64 = runtimePackagePath;
+                break;
+            case "osx-arm64":
+                task.BunRuntime_osx_arm64 = runtimePackagePath;
+                break;
+            default:
+                throw new InvalidOperationException($"Unsupported runtime identifier: {rid}");
+        }
     }
 }
