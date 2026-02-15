@@ -23,10 +23,10 @@ public sealed class BunDownloader
     public BunDownloader(HttpClient httpClient, IFileSystem fileSystem, IZipArchiveProvider zipProvider, IChmodProvider chmodProvider, Platform platform)
     {
         _platform = platform;
-        _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
-        _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
-        _zipProvider = zipProvider ?? throw new ArgumentNullException(nameof(zipProvider));
-        _chmodProvider = chmodProvider ?? throw new ArgumentNullException(nameof(chmodProvider));
+        _httpClient = httpClient;
+        _fileSystem = fileSystem;
+        _zipProvider = zipProvider;
+        _chmodProvider = chmodProvider;
     }
 
     /// <summary>
@@ -75,6 +75,12 @@ public sealed class BunDownloader
         // Download and extract
         _fileSystem.Directory.CreateDirectory(fullRuntimePath);
         await DownloadAndExtractAsync(downloadUrl, fullRuntimePath, platformName, executableName);
+
+        if (!_fileSystem.File.Exists(bunExecutablePath))
+        {
+            throw new FileNotFoundException(
+                $"Bun executable was not found after extraction at expected path: {bunExecutablePath}");
+        }
 
         _chmodProvider.EnsureExecutablePermissions(bunExecutablePath);
 
@@ -128,6 +134,7 @@ public sealed class BunDownloader
             // The zip contains a folder like "bun-windows-x64-baseline/bun.exe"
             // We need to extract just the executable to our target path
             using var archive = _zipProvider.OpenRead(tempZipPath);
+            var extracted = false;
             foreach (var entry in archive.Entries)
             {
                 // Look for the bun executable in the archive
@@ -135,8 +142,15 @@ public sealed class BunDownloader
                 {
                     var destinationPath = Path.Combine(extractPath, executableName);
                     _zipProvider.ExtractToFile(entry, destinationPath, overwrite: true);
+                    extracted = true;
                     break;
                 }
+            }
+
+            if (!extracted)
+            {
+                throw new InvalidDataException(
+                    $"Downloaded Bun archive for '{platformName}' from '{downloadUrl}' did not contain expected executable '{executableName}'.");
             }
         }
         finally

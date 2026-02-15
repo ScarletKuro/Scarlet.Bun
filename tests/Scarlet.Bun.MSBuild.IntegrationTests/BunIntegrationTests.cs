@@ -146,9 +146,12 @@ public class BunIntegrationTests
             _output.WriteLine($"Error: {task.StandardError}");
         }
         
-        // The task should have attempted execution
-        // If exit code is 0, Bun worked. If non-zero, Bun may have crashed but our task still functioned
-        Assert.True(task.ExitCode == 0 || task.ExitCode != 0, "Task should have executed and returned an exit code");
+        // ContinueOnError=true should keep the task successful even if Bun exits non-zero.
+        Assert.True(result, "Task should return true when ContinueOnError is enabled.");
+        Assert.NotEqual(-1, task.ExitCode);
+        Assert.False(
+            string.IsNullOrWhiteSpace(task.StandardOutput) && string.IsNullOrWhiteSpace(task.StandardError),
+            "Expected Bun invocation to produce stdout or stderr.");
     }
 
     [Fact]

@@ -182,6 +182,60 @@ public class BunDownloaderTests
             downloader.DownloadRuntimeAsync(tempDir, invalidVersion));
     }
 
+    [Fact]
+    public async Task DownloadRuntimeAsync_WhenArchiveDoesNotContainExecutable_ShouldThrowInvalidDataException()
+    {
+        // Arrange
+        var tempDir = "/test-runtime";
+        var platform = Platform.LinuxX64;
+
+        var mockFileSystem = new MockFileSystem();
+        var mockHttp = new MockHttpMessageHandler();
+
+        // Content is irrelevant for this test because the ZIP provider is faked.
+        var zipContent = CreateMockBunZip("bun");
+        mockHttp.When("https://github.com/oven-sh/bun/releases/latest/download/bun-linux-x64-baseline.zip")
+                .Respond("application/zip", zipContent);
+
+        var httpClient = mockHttp.ToHttpClient();
+        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeMissingExecutableZipArchiveProvider(), new NoOpChmodProvider(), platform);
+
+        // Act & Assert
+        var ex = await Assert.ThrowsAsync<InvalidDataException>(() =>
+            downloader.DownloadRuntimeAsync(tempDir));
+
+        Assert.Contains("did not contain expected executable", ex.Message);
+    }
+
+    [Fact]
+    public async Task DownloadRuntimeAsync_WhenExtractionDoesNotCreateFile_ShouldThrowFileNotFoundException()
+    {
+        // Arrange
+        var tempDir = "/test-runtime";
+        var platform = Platform.LinuxX64;
+        var runtimeId = BunRuntimeResolver.GetRuntimeIdentifier(platform);
+        var executableName = BunRuntimeResolver.GetExecutableName(platform);
+        var expectedPath = Path.Combine(tempDir, runtimeId, "native", executableName);
+
+        var mockFileSystem = new MockFileSystem();
+        var mockHttp = new MockHttpMessageHandler();
+
+        // Content is irrelevant for this test because the ZIP provider is faked.
+        var zipContent = CreateMockBunZip(executableName);
+        mockHttp.When("https://github.com/oven-sh/bun/releases/latest/download/bun-linux-x64-baseline.zip")
+                .Respond("application/zip", zipContent);
+
+        var httpClient = mockHttp.ToHttpClient();
+        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeNoWriteZipArchiveProvider(), new NoOpChmodProvider(), platform);
+
+        // Act & Assert
+        var ex = await Assert.ThrowsAsync<FileNotFoundException>(() =>
+            downloader.DownloadRuntimeAsync(tempDir));
+
+        Assert.Contains("not found after extraction", ex.Message);
+        Assert.Contains(expectedPath, ex.Message);
+    }
+
     [Theory]
     [InlineData(Platform.WindowsX64, "bun.exe")]
     [InlineData(Platform.LinuxX64, "bun")]
@@ -194,6 +248,7 @@ public class BunDownloaderTests
         var tempDir = "/test-runtime";
         var runtimeId = BunRuntimeResolver.GetRuntimeIdentifier(platform);
         var executableName = BunRuntimeResolver.GetExecutableName(platform);
+        var downloadName = BunRuntimeResolver.GetDownloadName(platform);
         var expectedPath = Path.Combine(tempDir, runtimeId, "native", executableName);
 
         var mockFileSystem = new MockFileSystem();
@@ -201,8 +256,7 @@ public class BunDownloaderTests
 
         // Create a mock zip file with the Bun executable
         var zipContent = CreateMockBunZip(executableName);
-        var platformName = GetPlatformDownloadName(platform);
-        mockHttp.When($"https://github.com/oven-sh/bun/releases/latest/download/{platformName}.zip")
+        mockHttp.When($"https://github.com/oven-sh/bun/releases/latest/download/{downloadName}.zip")
                 .Respond("application/zip", zipContent);
 
         var httpClient = mockHttp.ToHttpClient();
@@ -217,9 +271,6 @@ public class BunDownloaderTests
         Assert.EndsWith(expectedExecutable, result);
     }
 
-    /// <summary>
-    /// Creates a mock ZIP file containing a Bun executable.
-    /// </summary>
     private static MemoryStream CreateMockBunZip(string executableName)
     {
         var memoryStream = new MemoryStream();
@@ -233,21 +284,5 @@ public class BunDownloaderTests
         }
         memoryStream.Position = 0;
         return memoryStream;
-    }
-
-    /// <summary>
-    /// Gets the platform-specific download archive name (same logic as in BunDownloader).
-    /// </summary>
-    private static string GetPlatformDownloadName(Platform platform)
-    {
-        return platform switch
-        {
-            Platform.WindowsX64 => "bun-windows-x64-baseline",
-            Platform.LinuxX64 => "bun-linux-x64-baseline",
-            Platform.LinuxArm64 => "bun-linux-aarch64",
-            Platform.MacOsX64 => "bun-darwin-x64-baseline",
-            Platform.MacOsArm64 => "bun-darwin-aarch64",
-            _ => throw new ArgumentException($"Unknown platform: {platform}", nameof(platform))
-        };
     }
 }

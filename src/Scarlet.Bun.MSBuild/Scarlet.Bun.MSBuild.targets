@@ -5,6 +5,7 @@
     <_BunTaskAssembly>$(_BunTaskProjectDir)bin\$(Configuration)\netstandard2.0\Scarlet.Bun.MSBuild.dll</_BunTaskAssembly>
     <!-- Set the runtime directory for development scenarios -->
     <BunRuntimeDirectory>$(_BunTaskProjectDir)bin\runtimes</BunRuntimeDirectory>
+    <BunContinueOnError Condition="'$(BunContinueOnError)' == ''">false</BunContinueOnError>
   </PropertyGroup>
 
   <!-- Using TaskHostFactory ensures that the task assembly will not be locked at the end of the build.
@@ -30,6 +31,7 @@
                 Arguments="$(BunArguments)"
                 WorkingDirectory="$(BunWorkingDirectory)"
                 TimeoutMilliseconds="$(BunTimeoutMilliseconds)"
+                ContinueOnError="$(BunContinueOnError)"
                 RuntimeDirectory="$(BunRuntimeDirectory)"
                 BunRuntimeDownload="$(BunRuntimeDownload)"
                 BunVersionDownload="$(BunVersionDownload)"
