@@ -198,11 +198,11 @@ public class BunDownloaderTests
                 .Respond("application/zip", zipContent);
 
         var httpClient = mockHttp.ToHttpClient();
-        var downloader = new BunDownloader(httpClient, mockFileSystem, new MissingExecutableZipArchiveProvider(), new NoOpChmodProvider());
+        var downloader = new BunDownloader(httpClient, mockFileSystem, new MissingExecutableZipArchiveProvider(), new NoOpChmodProvider(), platform);
 
         // Act & Assert
         var ex = await Assert.ThrowsAsync<InvalidDataException>(() =>
-            downloader.DownloadRuntimeAsync(tempDir, platform: platform));
+            downloader.DownloadRuntimeAsync(tempDir));
 
         Assert.Contains("did not contain expected executable", ex.Message);
     }
@@ -226,11 +226,11 @@ public class BunDownloaderTests
                 .Respond("application/zip", zipContent);
 
         var httpClient = mockHttp.ToHttpClient();
-        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeNoWriteZipArchiveProvider(), new NoOpChmodProvider());
+        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeNoWriteZipArchiveProvider(), new NoOpChmodProvider(), platform);
 
         // Act & Assert
         var ex = await Assert.ThrowsAsync<FileNotFoundException>(() =>
-            downloader.DownloadRuntimeAsync(tempDir, platform: platform));
+            downloader.DownloadRuntimeAsync(tempDir));
 
         Assert.Contains("not found after extraction", ex.Message);
         Assert.Contains(expectedPath, ex.Message);
