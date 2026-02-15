@@ -5,21 +5,16 @@ using System.Runtime.InteropServices;
 namespace Scarlet.Bun.MSBuild;
 
 /// <summary>
-/// Provides Unix-style file permission helpers.
+/// Factory for creating the platform-correct <see cref="IChmodProvider"/>.
 /// </summary>
-/// <remarks>
-/// This implementation uses P/Invoke to call libc <c>stat</c> and <c>chmod</c>
-/// and is intended for Unix-like platforms only (Linux, macOS).
-/// </remarks>
 [ExcludeFromCodeCoverage]
 public static class Chmod
 {
-    // Default provider, but tests can override it
-    internal static IChmodProvider Provider { get; set; } = InitializeProvider();
-
-    public static void EnsureExecutablePermissions(string filePath) => Provider.EnsureExecutablePermissions(filePath);
-
-    private static IChmodProvider InitializeProvider()
+    /// <summary>
+    /// Creates the platform-correct <see cref="IChmodProvider"/> for the current OS.
+    /// </summary>
+    /// <returns>A <see cref="NoOpChmodProvider"/> on Windows; otherwise a <see cref="UnixChmodProvider"/>.</returns>
+    public static IChmodProvider CreateProvider()
     {
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {

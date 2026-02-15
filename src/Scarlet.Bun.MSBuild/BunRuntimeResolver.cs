@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.IO.Abstractions;
 using System.Runtime.InteropServices;
+using Scarlet.Bun.MSBuild.Providers;
 
 namespace Scarlet.Bun.MSBuild;
 
@@ -97,15 +98,13 @@ public static class BunRuntimeResolver
     /// <summary>
     /// Resolves the full path to the Bun executable.
     /// </summary>
-    /// <param name="platform">Target platform.</param>
+    /// <param name="fileSystem">File system abstraction.</param>
+    /// <param name="chmodProvider">Provider for setting executable permissions.</param>
+    /// <param name="platform">Target platform. If null, uses current platform.</param>
     /// <param name="runtimeDirectory">Optional path to the runtime directory. If not specified, throws an error.</param>
-    /// <param name="fileSystem">File system abstraction for testability. If null, uses the real file system.</param>
     /// <returns>Full path to the Bun executable.</returns>
-    public static string ResolveBunExecutable(Platform? platform = null, string? runtimeDirectory = null, IFileSystem? fileSystem = null)
+    public static string ResolveBunExecutable(IFileSystem fileSystem, IChmodProvider chmodProvider, Platform? platform = null, string? runtimeDirectory = null)
     {
-        // Use real file system if none provided
-        fileSystem ??= new FileSystem();
-        
         var targetPlatform = platform ?? GetCurrentPlatform();
         var runtimeId = GetRuntimeIdentifier(targetPlatform);
         var executableName = GetExecutableName(targetPlatform);
@@ -133,7 +132,7 @@ public static class BunRuntimeResolver
                 $"Try cleaning and rebuilding your project.");
         }
 
-        Chmod.EnsureExecutablePermissions(bunPath);
+        chmodProvider.EnsureExecutablePermissions(bunPath);
 
         return bunPath;
     }

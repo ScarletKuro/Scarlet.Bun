@@ -10,7 +10,7 @@
 /// On platforms that do not support POSIX permissions (such as Windows),
 /// implementations may choose to perform no action.
 /// </remarks>
-internal interface IChmodProvider
+public interface IChmodProvider
 {
     /// <summary>
     /// Ensures that the specified file has executable permissions.
