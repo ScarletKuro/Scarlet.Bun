@@ -11,7 +11,7 @@
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
-    <PackageReference Include="{{RUNTIME_PACKAGE}}" Version="{{PACKAGE_VERSION}}">
+    <PackageReference Include="{{RUNTIME_PACKAGE}}" Version="{{RUNTIME_VERSION}}">
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
   </ItemGroup>
