@@ -10,6 +10,10 @@ namespace Scarlet.Bun.MSBuild;
 [ExcludeFromCodeCoverage]
 public static class Chmod
 {
+    /// <summary>
+    /// Creates the platform-correct <see cref="IChmodProvider"/> for the current OS.
+    /// </summary>
+    /// <returns>A <see cref="NoOpChmodProvider"/> on Windows; otherwise a <see cref="UnixChmodProvider"/>.</returns>
     public static IChmodProvider CreateProvider()
     {
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
