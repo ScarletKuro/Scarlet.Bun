@@ -28,7 +28,7 @@ public sealed class FakeZipArchiveProvider : IZipArchiveProvider
         _zipBytes = ms.ToArray();
     }
 
-    public ZipArchive OpenRead(string path)
+    public ZipArchive OpenRead(string archiveFileName)
     {
         return new ZipArchive(new MemoryStream(_zipBytes), ZipArchiveMode.Read);
     }

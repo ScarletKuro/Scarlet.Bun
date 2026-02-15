@@ -2,14 +2,13 @@
 
 namespace Scarlet.Bun.MSBuild.Providers;
 
-public class ZipArchiveProvider : IZipArchiveProvider
+public sealed class ZipArchiveProvider : IZipArchiveProvider
 {
+    /// <inheritdoc />
     public ZipArchive OpenRead(string path) => ZipFile.OpenRead(path);
 
-    public void ExtractToFile(ZipArchiveEntry source, string destinationFileName, bool overwrite)
-    {
-        source.ExtractToFile(destinationFileName, overwrite);
-    }
+    /// <inheritdoc />
+    public void ExtractToFile(ZipArchiveEntry source, string destinationFileName, bool overwrite) => source.ExtractToFile(destinationFileName, overwrite);
 
     public static ZipArchiveProvider Instance { get; } = new();
 }

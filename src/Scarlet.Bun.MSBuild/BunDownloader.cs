@@ -1,7 +1,6 @@
 using System;
 using System.IO;
 using System.IO.Abstractions;
-using System.IO.Compression;
 using System.Net.Http;
 using System.Threading.Tasks;
 using Scarlet.Bun.MSBuild.Providers;
@@ -11,7 +10,7 @@ namespace Scarlet.Bun.MSBuild;
 /// <summary>
 /// Handles downloading Bun runtimes from GitHub releases.
 /// </summary>
-public class BunDownloader
+public sealed class BunDownloader
 {
     private const string GithubReleasesUrl = "https://github.com/oven-sh/bun/releases";
 
