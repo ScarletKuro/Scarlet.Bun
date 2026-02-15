@@ -198,7 +198,7 @@ public class BunDownloaderTests
                 .Respond("application/zip", zipContent);
 
         var httpClient = mockHttp.ToHttpClient();
-        var downloader = new BunDownloader(httpClient, mockFileSystem, new MissingExecutableZipArchiveProvider(), new NoOpChmodProvider(), platform);
+        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeMissingExecutableZipArchiveProvider(), new NoOpChmodProvider(), platform);
 
         // Act & Assert
         var ex = await Assert.ThrowsAsync<InvalidDataException>(() =>
@@ -303,27 +303,5 @@ public class BunDownloaderTests
             Platform.MacOsArm64 => "bun-darwin-aarch64",
             _ => throw new ArgumentException($"Unknown platform: {platform}", nameof(platform))
         };
-    }
-
-    private sealed class MissingExecutableZipArchiveProvider : IZipArchiveProvider
-    {
-        public ZipArchive OpenRead(string archiveFileName)
-        {
-            var stream = new MemoryStream();
-            using (var archive = new ZipArchive(stream, ZipArchiveMode.Create, leaveOpen: true))
-            {
-                var entry = archive.CreateEntry("bun-linux-x64-baseline/not-bun");
-                using var writer = new StreamWriter(entry.Open());
-                writer.Write("not bun");
-            }
-
-            stream.Position = 0;
-            return new ZipArchive(stream, ZipArchiveMode.Read);
-        }
-
-        public void ExtractToFile(ZipArchiveEntry source, string destinationFileName, bool overwrite)
-        {
-            source.ExtractToFile(destinationFileName, overwrite);
-        }
     }
 }
