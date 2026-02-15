@@ -18,30 +18,35 @@ public static class BunRuntimeResolver
             [Platform.WindowsX64] = new(
                 rid: "win-x64",
                 directoryName: "bun-windows-x64-baseline",
+                downloadName: "bun-windows-x64-baseline",
                 packageName: "Scarlet.Bun.Runtime.windows-x64-baseline",
                 executableName: "bun.exe"
             ),
             [Platform.LinuxX64] = new(
                 rid: "linux-x64",
                 directoryName: "bun-linux-x64-baseline",
+                downloadName: "bun-linux-x64-baseline",
                 packageName: "Scarlet.Bun.Runtime.linux-x64-baseline",
                 executableName: "bun"
             ),
             [Platform.LinuxArm64] = new(
                 rid: "linux-arm64",
                 directoryName: "bun-linux-aarch64",
+                downloadName: "bun-linux-aarch64",
                 packageName: "Scarlet.Bun.Runtime.linux-aarch64",
                 executableName: "bun"
             ),
             [Platform.MacOsX64] = new(
                 rid: "osx-x64",
                 directoryName: "bun-darwin-x64-baseline",
+                downloadName: "bun-darwin-x64-baseline",
                 packageName: "Scarlet.Bun.Runtime.darwin-x64-baseline",
                 executableName: "bun"
             ),
             [Platform.MacOsArm64] = new(
                 rid: "osx-arm64",
                 directoryName: "bun-darwin-aarch64",
+                downloadName: "bun-darwin-aarch64",
                 packageName: "Scarlet.Bun.Runtime.darwin-aarch64",
                 executableName: "bun"
             )
@@ -94,6 +99,11 @@ public static class BunRuntimeResolver
     /// Gets the runtime package name for the specified platform.
     /// </summary>
     public static string GetRuntimePackageName(Platform platform) => GetInfo(platform).PackageName;
+
+    /// <summary>
+    /// Gets the GitHub release download archive name for the specified platform.
+    /// </summary>
+    public static string GetDownloadName(Platform platform) => GetInfo(platform).DownloadName;
 
     /// <summary>
     /// Resolves the full path to the Bun executable.

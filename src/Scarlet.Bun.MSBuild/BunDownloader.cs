@@ -46,7 +46,7 @@ public sealed class BunDownloader
 
         var targetPlatform = platform ?? BunRuntimeResolver.GetCurrentPlatform();
         var runtimeId = BunRuntimeResolver.GetRuntimeIdentifier(targetPlatform);
-        var platformName = GetPlatformDownloadName(targetPlatform);
+        var platformName = BunRuntimeResolver.GetDownloadName(targetPlatform);
         var executableName = BunRuntimeResolver.GetExecutableName(targetPlatform);
 
         // Create the full runtime path: runtimeDirectory/runtimeId/native
@@ -95,22 +95,6 @@ public sealed class BunDownloader
         client.Timeout = TimeSpan.FromMinutes(5);
         client.DefaultRequestHeaders.Add("User-Agent", "Scarlet.Bun.MSBuild");
         return client;
-    }
-
-    /// <summary>
-    /// Gets the platform-specific download archive name.
-    /// </summary>
-    private static string GetPlatformDownloadName(Platform platform)
-    {
-        return platform switch
-        {
-            Platform.WindowsX64 => "bun-windows-x64-baseline",
-            Platform.LinuxX64 => "bun-linux-x64-baseline",
-            Platform.LinuxArm64 => "bun-linux-aarch64",
-            Platform.MacOsX64 => "bun-darwin-x64-baseline",
-            Platform.MacOsArm64 => "bun-darwin-aarch64",
-            _ => throw new ArgumentException($"Unknown platform: {platform}", nameof(platform))
-        };
     }
 
     /// <summary>
