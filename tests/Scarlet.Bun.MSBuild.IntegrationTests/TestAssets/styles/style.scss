@@ -1,3 +1,5 @@
+@use "sass:color";
+
 // Main SCSS file
 $primary-color: #3498db;
 $secondary-color: #2ecc71;
@@ -32,6 +34,6 @@ body {
   cursor: pointer;
   
   &:hover {
-    background-color: darken($primary-color, 10%);
+    background-color: color.adjust($primary-color, $lightness: -10%);
   }
 }
