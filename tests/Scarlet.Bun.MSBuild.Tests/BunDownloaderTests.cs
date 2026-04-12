@@ -77,9 +77,8 @@ public class BunDownloaderTests
         // Assert
         Assert.Equal(expectedPath, result);
         Assert.True(mockFileSystem.File.Exists(result), $"Expected executable to exist at {result}");
-        Assert.False(mockFileSystem.File.Exists(expectedPath + ".complete"));
         Assert.Equal(
-            new[] { Path.GetFullPath(result) },
+            new[] { mockFileSystem.Path.GetFullPath(result) },
             mockFileSystem.Directory.GetFiles(Path.Combine(tempDir, runtimeId, "native")));
     }
 
@@ -399,9 +398,8 @@ public class BunDownloaderTests
 
         Assert.Equal(expectedPath, result);
         Assert.True(mockFileSystem.File.Exists(result), $"Expected executable to exist at {result}");
-        Assert.False(mockFileSystem.File.Exists(expectedPath + ".complete"));
         Assert.Equal(
-            new[] { Path.GetFullPath(result) },
+            new[] { mockFileSystem.Path.GetFullPath(result) },
             mockFileSystem.Directory.GetFiles(Path.Combine(tempDir, runtimeId, "native")));
     }
 
