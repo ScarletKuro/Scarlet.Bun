@@ -123,5 +123,5 @@ jobs:
 
       - name: E2E Test - Package installation and verification
         run: |
-          chmod +x tests/e2e/verify-package-installation.sh
-          tests/e2e/verify-package-installation.sh "${{ github.workspace }}" "${{ steps.get_version.outputs.version }}" "${{ steps.get_bun_version.outputs.bun_version }}"
+          chmod +x tests/e2e/package-installation/verify.sh
+          tests/e2e/package-installation/verify.sh "${{ github.workspace }}" "${{ steps.get_version.outputs.version }}" "${{ steps.get_bun_version.outputs.bun_version }}"

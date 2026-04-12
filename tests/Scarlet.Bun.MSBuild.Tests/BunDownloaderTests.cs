@@ -188,23 +188,7 @@ public class BunDownloaderTests
             Assert.True(chmodProvider.WaitForFirstCall(TimeSpan.FromSeconds(5)));
             Assert.NotNull(chmodProvider.LastPath);
             Assert.NotEqual(expectedPath, chmodProvider.LastPath);
-
-            var filesWhileBlocked = mockFileSystem.Directory
-                .GetFiles(nativeDirectory)
-                .Select(mockFileSystem.Path.GetFullPath)
-                .ToArray();
-
-            Assert.DoesNotContain(normalizedExpectedPath, filesWhileBlocked);
-            Assert.Single(filesWhileBlocked);
-
-            var stagedPath = filesWhileBlocked[0];
-            Assert.NotEqual(normalizedExpectedPath, stagedPath);
-            Assert.Equal(mockFileSystem.Path.GetFullPath(chmodProvider.LastPath), stagedPath);
-            Assert.StartsWith(
-                mockFileSystem.Path.GetFullPath(Path.Combine(nativeDirectory, $".{executableName}.")),
-                stagedPath,
-                StringComparison.Ordinal);
-            Assert.EndsWith(".tmp", stagedPath, StringComparison.Ordinal);
+            Assert.False(mockFileSystem.File.Exists(expectedPath), "Final executable should not be visible before publication");
         }
         finally
         {
@@ -215,7 +199,9 @@ public class BunDownloaderTests
 
         Assert.Equal(expectedPath, result);
         Assert.True(mockFileSystem.File.Exists(expectedPath));
-        Assert.False(mockFileSystem.File.Exists(chmodProvider.LastPath));
+        Assert.Equal(
+            new[] { normalizedExpectedPath },
+            mockFileSystem.Directory.GetFiles(nativeDirectory).Select(mockFileSystem.Path.GetFullPath));
     }
 
     [Fact]
