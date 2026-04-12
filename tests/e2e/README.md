@@ -6,13 +6,13 @@ This directory contains end-to-end tests that validate the complete package inst
 
 ```
 tests/e2e/
-├── verify-package-installation.sh   # Main E2E test script
-├── templates/                        # Template files for test projects
-│   ├── nuget.config.template        # NuGet configuration template
-│   ├── package.json.template        # NPM package.json template
-│   ├── build.mjs.template           # Bun test script template
-│   └── TestBunPackage.csproj.template # Test project file template
-└── README.md                         # This file
+├── package-installation/
+│   ├── verify.sh                    # Package installation E2E test script
+│   └── templates/                   # Template files for the package install test
+├── monorepo-download/
+│   ├── verify.sh                    # Shared runtime download E2E test script
+│   └── templates/                   # Template files for the monorepo download test
+└── README.md                        # This file
 ```
 
 ## Overview
@@ -25,18 +25,19 @@ The E2E tests verify that:
 
 ## Test Scripts
 
-### verify-package-installation.sh
+### package-installation/verify.sh
 
 **Purpose**: Validates that the Scarlet.Bun.MSBuild package works correctly when installed from a local NuGet source.
 
 **Usage**:
 ```bash
-./verify-package-installation.sh <workspace-path> <package-version>
+./tests/e2e/package-installation/verify.sh <workspace-path> <package-version> <runtime-version>
 ```
 
 **Arguments**:
 - `workspace-path`: The root directory containing the `packages` folder with NuGet packages
 - `package-version`: The version of the packages to test (e.g., "0.0.1-ci.26")
+- `runtime-version`: The version of the runtime packages to test (e.g., "1.3.6")
 
 **What it does**:
 1. Creates a temporary test directory (`/tmp/nuget-verification-<pid>`)
@@ -51,12 +52,23 @@ The E2E tests verify that:
 6. Builds the test project (triggers Bun execution via MSBuild)
 7. Verifies that Bun executed successfully by checking for output.txt
 
+The runtime package is selected from the current OS and CPU architecture:
+- Windows ARM64 uses `Scarlet.Bun.Runtime.windows-aarch64`
+- Windows x64 uses `Scarlet.Bun.Runtime.windows-x64-baseline`
+- Linux ARM64 uses `Scarlet.Bun.Runtime.linux-aarch64`
+- Linux x64 uses `Scarlet.Bun.Runtime.linux-x64-baseline`
+- macOS ARM64 uses `Scarlet.Bun.Runtime.darwin-aarch64`
+- macOS x64 uses `Scarlet.Bun.Runtime.darwin-x64-baseline`
+
+The script logs the detected platform, architecture, and selected runtime package before installing packages. Unsupported OS/architecture combinations fail fast with a clear error.
+
 **Template System**:
 
-The script uses template files located in `tests/e2e/templates/` with `{{VARIABLE}}` placeholders:
+The script uses template files located in `tests/e2e/package-installation/templates/` with `{{VARIABLE}}` placeholders:
 - `{{WORKSPACE_PATH}}` - Repository root path (automatically handles Windows backslashes)
 - `{{PACKAGE_VERSION}}` - Package version being tested
 - `{{RUNTIME_PACKAGE}}` - Platform-specific runtime package (auto-detected)
+- `{{RUNTIME_VERSION}}` - Runtime package version being tested
 
 Template files are processed during execution using `sed` to replace placeholders with actual values. The script automatically escapes backslashes in paths for Windows compatibility, preventing issues with Windows path separators (e.g., `D:\a\path` won't be misinterpreted as escape sequences).
 
@@ -66,10 +78,10 @@ Template files are processed during execution using `sed` to replace placeholder
 **Example**:
 ```bash
 # Run from CI
-./tests/e2e/verify-package-installation.sh $GITHUB_WORKSPACE "0.0.1-ci.26"
+./tests/e2e/package-installation/verify.sh "$GITHUB_WORKSPACE" "0.0.1-ci.26" "1.3.6"
 
 # Run locally
-./tests/e2e/verify-package-installation.sh /path/to/repo "1.0.0-local"
+./tests/e2e/package-installation/verify.sh /path/to/repo "1.0.0-local" "1.3.6"
 ```
 
 ## Running in CI
@@ -78,9 +90,10 @@ The E2E tests are integrated into the CI workflow (`.github/workflows/ci.yml`):
 
 1. **Pack NuGet packages** - Creates versioned packages in `./packages`
 2. **List generated packages** - Shows what was created
-3. **E2E Test - Package installation and verification** - Runs `verify-package-installation.sh` which:
+3. **E2E Test - Package installation and verification** - Runs `tests/e2e/package-installation/verify.sh` which:
    - Creates test project
    - Installs packages
+   - Detects the correct platform-specific runtime package, including Windows ARM64
    - Builds project (triggers Bun execution)
    - Verifies Bun execution (warns if it fails)
 
@@ -99,7 +112,7 @@ dotnet pack src/Scarlet.Bun.Runtime.linux-x64-baseline/Scarlet.Bun.Runtime.linux
 # ... pack other runtime packages as needed
 
 # 2. Run the E2E test
-./tests/e2e/verify-package-installation.sh $(pwd) "1.0.0-local"
+./tests/e2e/package-installation/verify.sh "$(pwd)" "1.0.0-local" "1.3.6"
 ```
 
 ## Test Structure
@@ -131,6 +144,7 @@ The E2E test creates the following structure in `/tmp/nuget-verification`:
 - If you see "invalid character" errors in NuGet.Config, this is due to path escaping
 - The script automatically handles Windows backslashes in paths
 - Ensure you're using Git Bash or a compatible shell on Windows
+- Windows runners select the runtime package by architecture, so Windows ARM64 requires the `windows-aarch64` package to be present in `./packages`
 
 **Build errors**:
 - Check that the package structure is correct

@@ -70,32 +70,79 @@ detect_platform_family() {
     esac
 }
 
+detect_dotnet_rid() {
+    local dotnet_info
+    local rid
+
+    dotnet_info="$(dotnet --info 2>/dev/null || true)"
+    rid="$(printf '%s\n' "$dotnet_info" | sed -n 's/^[[:space:]]*RID:[[:space:]]*//p' | head -n 1)"
+    printf '%s' "$rid"
+}
+
 detect_host_architecture() {
-    local detected_arch
-    detected_arch="$(uname -m 2>/dev/null || true)"
-    detected_arch="$(normalize_architecture "$detected_arch")"
+    local uname_arch
+    local processor_arch
+    local wow64_arch
 
-    if [ -n "$detected_arch" ] && [ "$detected_arch" != "unknown" ]; then
-        echo "$detected_arch"
+    uname_arch="$(uname -m 2>/dev/null || true)"
+    uname_arch="$(normalize_architecture "$uname_arch")"
+    processor_arch="$(normalize_architecture "${PROCESSOR_ARCHITECTURE:-}")"
+    wow64_arch="$(normalize_architecture "${PROCESSOR_ARCHITEW6432:-}")"
+
+    # On Windows, an emulated shell may report x64 even on an ARM64 host.
+    # Prefer ARM64 if either native Windows architecture variable reports it.
+    if [ "$processor_arch" = "arm64" ] || [ "$wow64_arch" = "arm64" ]; then
+        echo "arm64"
         return
     fi
 
-    detected_arch="$(normalize_architecture "${PROCESSOR_ARCHITECTURE:-}")"
-    if [ -n "$detected_arch" ]; then
-        echo "$detected_arch"
+    if [ -n "$uname_arch" ] && [ "$uname_arch" != "unknown" ]; then
+        echo "$uname_arch"
         return
     fi
 
-    detected_arch="$(normalize_architecture "${PROCESSOR_ARCHITEW6432:-}")"
-    if [ -n "$detected_arch" ]; then
-        echo "$detected_arch"
+    if [ -n "$wow64_arch" ]; then
+        echo "$wow64_arch"
+        return
+    fi
+
+    if [ -n "$processor_arch" ]; then
+        echo "$processor_arch"
         return
     fi
 
     echo "unknown"
 }
 
-select_runtime_package() {
+select_runtime_package_from_rid() {
+    local rid="$1"
+
+    case "$rid" in
+        win-arm64)
+            echo "Scarlet.Bun.Runtime.windows-aarch64"
+            ;;
+        win-x64)
+            echo "Scarlet.Bun.Runtime.windows-x64-baseline"
+            ;;
+        linux-arm64)
+            echo "Scarlet.Bun.Runtime.linux-aarch64"
+            ;;
+        linux-x64)
+            echo "Scarlet.Bun.Runtime.linux-x64-baseline"
+            ;;
+        osx-arm64)
+            echo "Scarlet.Bun.Runtime.darwin-aarch64"
+            ;;
+        osx-x64)
+            echo "Scarlet.Bun.Runtime.darwin-x64-baseline"
+            ;;
+        *)
+            echo ""
+            ;;
+    esac
+}
+
+select_runtime_package_from_shell() {
     local platform="$1"
     local arch="$2"
 
@@ -169,17 +216,47 @@ echo "✓ Created test console application"
 # Determine the platform-specific runtime package name
 PLATFORM_FAMILY="$(detect_platform_family)"
 HOST_ARCHITECTURE="$(detect_host_architecture)"
-RUNTIME_PACKAGE="$(select_runtime_package "$PLATFORM_FAMILY" "$HOST_ARCHITECTURE")"
+DOTNET_RID="$(detect_dotnet_rid)"
+RUNTIME_PACKAGE=""
+FALLBACK_RUNTIME_PACKAGE=""
+
+if [ -n "$DOTNET_RID" ]; then
+    RUNTIME_PACKAGE="$(select_runtime_package_from_rid "$DOTNET_RID")"
+fi
 
 if [ -z "$RUNTIME_PACKAGE" ]; then
+    FALLBACK_RUNTIME_PACKAGE="$(select_runtime_package_from_shell "$PLATFORM_FAMILY" "$HOST_ARCHITECTURE")"
+    RUNTIME_PACKAGE="$FALLBACK_RUNTIME_PACKAGE"
+fi
+
+if [ -z "$RUNTIME_PACKAGE" ] || { [ -n "$DOTNET_RID" ] && [ -z "$(select_runtime_package_from_rid "$DOTNET_RID")" ]; }; then
     echo "Error: Unsupported platform/runtime combination detected."
+    echo "dotnet RID: ${DOTNET_RID:-<not detected>}"
     echo "OSTYPE: $OSTYPE"
     echo "Platform family: $PLATFORM_FAMILY"
     echo "Architecture: $HOST_ARCHITECTURE"
     exit 1
 fi
 
-echo "✓ Runtime detection: platform=$PLATFORM_FAMILY architecture=$HOST_ARCHITECTURE package=$RUNTIME_PACKAGE"
+if [ -n "$DOTNET_RID" ]; then
+    FALLBACK_RUNTIME_PACKAGE="$(select_runtime_package_from_shell "$PLATFORM_FAMILY" "$HOST_ARCHITECTURE")"
+
+    if [ -n "$FALLBACK_RUNTIME_PACKAGE" ] && [ "$FALLBACK_RUNTIME_PACKAGE" != "$RUNTIME_PACKAGE" ]; then
+        if [ "$PLATFORM_FAMILY" = "windows" ] && [ "$DOTNET_RID" = "win-arm64" ] && [ "$HOST_ARCHITECTURE" = "x64" ]; then
+            echo "Info: shell reports x64, but dotnet RID is win-arm64; using dotnet RID as the source of truth."
+        else
+            echo "Error: dotnet RID and shell fallback detection disagree."
+            echo "dotnet RID: $DOTNET_RID"
+            echo "RID package: $RUNTIME_PACKAGE"
+            echo "Shell platform: $PLATFORM_FAMILY"
+            echo "Shell architecture: $HOST_ARCHITECTURE"
+            echo "Shell fallback package: $FALLBACK_RUNTIME_PACKAGE"
+            exit 1
+        fi
+    fi
+fi
+
+echo "✓ Runtime detection: dotnet_rid=${DOTNET_RID:-<not detected>} shell_platform=$PLATFORM_FAMILY shell_architecture=$HOST_ARCHITECTURE package=$RUNTIME_PACKAGE"
 
 # Add the packages
 echo "Adding Scarlet.Bun.MSBuild package..."
