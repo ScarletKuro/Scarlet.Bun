@@ -576,7 +576,10 @@ public class BunDownloaderTests
         {
             LastPath = filePath;
             _entered.Set();
-            _release.Wait(TimeSpan.FromSeconds(5));
+            if (!_release.Wait(TimeSpan.FromMinutes(1)))
+            {
+                throw new TimeoutException("Timed out waiting for test to release staged executable publication.");
+            }
         }
 
         public void Release() => _release.Set();
