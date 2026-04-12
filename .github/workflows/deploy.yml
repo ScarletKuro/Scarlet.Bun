@@ -102,6 +102,10 @@ jobs:
             --configuration Release \
             --output ./packages
 
+          dotnet pack src/Scarlet.Bun.Runtime.windows-aarch64/Scarlet.Bun.Runtime.windows-aarch64.csproj \
+            --configuration Release \
+            --output ./packages
+
           dotnet pack src/Scarlet.Bun.Runtime.darwin-aarch64/Scarlet.Bun.Runtime.darwin-aarch64.csproj \
             --configuration Release \
             --output ./packages
