@@ -160,7 +160,7 @@ public class BunRunTask : Task
                 {
                     // Download runtime asynchronously (RuntimeDirectory is already validated above)
                     using var httpClient = BunDownloader.CreateHttpClient();
-                    var downloader = new BunDownloader(httpClient, fileSystem, ZipArchiveProvider.Instance, chmodProvider, platform);
+                    var downloader = new BunDownloader(httpClient, fileSystem, ZipArchiveProvider.Instance, chmodProvider, platform, new MsBuildBunLogger(Log));
                     bunPath = downloader.DownloadRuntime(RuntimeDirectory!, BunVersionDownload, DownloadMutexTimeoutSeconds);
                     
                     Log.LogMessage(MessageImportance.High, $"Bun runtime ready at: {bunPath}");

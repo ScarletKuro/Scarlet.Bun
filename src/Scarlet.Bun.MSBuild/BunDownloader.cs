@@ -21,14 +21,16 @@ public sealed class BunDownloader
     private readonly IFileSystem _fileSystem;
     private readonly IChmodProvider _chmodProvider;
     private readonly IZipArchiveProvider _zipProvider;
+    private readonly IBunLogger _log;
 
-    public BunDownloader(HttpClient httpClient, IFileSystem fileSystem, IZipArchiveProvider zipProvider, IChmodProvider chmodProvider, Platform platform)
+    public BunDownloader(HttpClient httpClient, IFileSystem fileSystem, IZipArchiveProvider zipProvider, IChmodProvider chmodProvider, Platform platform, IBunLogger log)
     {
         _platform = platform;
         _httpClient = httpClient;
         _fileSystem = fileSystem;
         _zipProvider = zipProvider;
         _chmodProvider = chmodProvider;
+        _log = log;
     }
 
     /// <summary>
@@ -68,7 +70,12 @@ public sealed class BunDownloader
         _fileSystem.Directory.CreateDirectory(fullRuntimePath);
 
         var mutexName = CreateMutexName(bunExecutablePath);
-        using var mutex = new Mutex(false, mutexName, out _);
+        using var mutex = new Mutex(false, mutexName, out var createdNew);
+
+        if (!createdNew)
+        {
+            _log.LogMessage("Another process is downloading the Bun runtime. Waiting...");
+        }
 
         bool acquired;
         try
@@ -85,6 +92,11 @@ public sealed class BunDownloader
         {
             throw new TimeoutException(
                 "Timed out waiting for another process to finish downloading the Bun runtime.");
+        }
+
+        if (!createdNew)
+        {
+            _log.LogMessage("Finished waiting. Resuming Bun runtime setup.");
         }
 
         try

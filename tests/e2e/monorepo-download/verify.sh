@@ -66,6 +66,12 @@ TEST_DIR="/tmp/monorepo-download-$$"
 mkdir -p "$TEST_DIR"
 cd "$TEST_DIR"
 
+# Resolve to native path so MSBuild on Windows interprets it correctly.
+# Git Bash's /tmp maps to C:\Users\...\AppData\Local\Temp, but MSBuild (a native
+# Windows process) interprets /tmp as D:\tmp (root of current drive).
+# pwd -W returns the Windows-native path (e.g., C:/Users/.../Temp/...).
+TEST_DIR="$(pwd -W 2>/dev/null || pwd)"
+
 # Shared runtime directory — both projects download to the same location
 SHARED_RUNTIME_DIR="$TEST_DIR/tools"
 mkdir -p "$SHARED_RUNTIME_DIR"
