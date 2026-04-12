@@ -1,9 +1,10 @@
 #!/bin/bash
 set -e
 
-# End-to-End test for multi-target framework support (net8.0, net9.0, net10.0).
-# Proves that the netstandard2.0 MSBuild task loads and resolves runtimes
-# correctly when a consumer project multi-targets across .NET 8, 9, and 10.
+# End-to-End test for multi-target framework support using a Razor Class Library.
+# Proves that the netstandard2.0 MSBuild task loads and resolves runtimes correctly
+# when a Blazor/Razor class library multi-targets net8.0, net9.0, and net10.0.
+# Also verifies that the packed NuGet package contains static web assets (JS/CSS).
 #
 # Usage: ./verify.sh <workspace-path> <package-version> <runtime-version>
 #
@@ -27,7 +28,7 @@ PACKAGE_VERSION="$2"
 RUNTIME_VERSION="$3"
 
 echo "=========================================="
-echo "E2E Test: Multi-Target Framework"
+echo "E2E Test: Multi-Target Framework (RCL)"
 echo "=========================================="
 echo "Workspace: $WORKSPACE_PATH"
 echo "Scarlet.Bun.MSBuild Version: $PACKAGE_VERSION"
@@ -198,6 +199,19 @@ process_template() {
         "$template_file" > "$output_file"
 }
 
+# Copy a template file without variable substitution
+copy_template() {
+    local template_file="$1"
+    local output_file="$2"
+
+    if [ ! -f "$template_file" ]; then
+        echo "Error: Template file not found: $template_file"
+        exit 1
+    fi
+
+    cp "$template_file" "$output_file"
+}
+
 # Create a temporary directory for testing
 TEST_DIR="/tmp/multi-tfm-verification-$$"
 mkdir -p "$TEST_DIR"
@@ -209,11 +223,11 @@ echo "✓ Created test directory: $TEST_DIR"
 process_template "$TEMPLATES_DIR/nuget.config.template" "nuget.config"
 echo "✓ Created nuget.config with local package source"
 
-# Create a simple console app that will use the packages
-dotnet new console -n TestMultiTfm
-cd TestMultiTfm
+# Create a Razor Class Library
+dotnet new razorclasslib -n TestRclMultiTfm
+cd TestRclMultiTfm
 
-echo "✓ Created test console application"
+echo "✓ Created Razor Class Library"
 
 # Determine the platform-specific runtime package name
 PLATFORM_FAMILY="$(detect_platform_family)"
@@ -269,21 +283,29 @@ dotnet add package "$RUNTIME_PACKAGE" --version "$RUNTIME_VERSION"
 
 echo "✓ Packages added successfully"
 
-# Create package.json from template
-process_template "$TEMPLATES_DIR/package.json.template" "package.json"
-echo "✓ Created package.json"
+# Create asset directories
+mkdir -p assets/scripts
+mkdir -p assets/styles
 
-# Create build.mjs from template
-process_template "$TEMPLATES_DIR/build.mjs.template" "build.mjs"
-echo "✓ Created build.mjs test script"
+# Copy asset templates
+copy_template "$TEMPLATES_DIR/hello.js.template" "assets/scripts/hello.js"
+copy_template "$TEMPLATES_DIR/utils.js.template" "assets/scripts/utils.js"
+copy_template "$TEMPLATES_DIR/style.scss.template" "assets/styles/style.scss"
+copy_template "$TEMPLATES_DIR/_variables.scss.template" "assets/styles/_variables.scss"
+echo "✓ Created source assets (JS + SCSS)"
 
-# Update project file from template (multi-TFM)
-process_template "$TEMPLATES_DIR/TestMultiTfm.csproj.template" "TestMultiTfm.csproj"
+# Create package.json and build.mjs from templates
+copy_template "$TEMPLATES_DIR/package.json.template" "package.json"
+copy_template "$TEMPLATES_DIR/build.mjs.template" "build.mjs"
+echo "✓ Created package.json and build.mjs"
+
+# Update project file from template (multi-TFM RCL)
+process_template "$TEMPLATES_DIR/TestRclMultiTfm.csproj.template" "TestRclMultiTfm.csproj"
 echo "✓ Updated project file with multi-target frameworks (net8.0, net9.0, net10.0)"
 
-# Build the test project (this should trigger BunRunTask for each TFM)
+# Build the project (triggers Bun install + asset build per TFM)
 echo ""
-echo "Building test project (multi-TFM)..."
+echo "Building Razor Class Library (multi-TFM)..."
 echo "=========================================="
 dotnet build --verbosity minimal
 echo ""
@@ -291,21 +313,26 @@ echo "=========================================="
 echo "Build completed"
 echo "=========================================="
 
-# Verify that the build succeeded for all target frameworks
+# Verification phase
 echo ""
 echo "=========================================="
-echo "Verifying multi-TFM build..."
+echo "Verifying multi-TFM RCL build..."
 echo "=========================================="
 
 FAILED=0
 
-# Check that Bun executed (output.txt written by build.mjs)
-if [ -f "output.txt" ]; then
-    echo "✓ Bun executed successfully via NuGet package!"
-    echo "Output content:"
-    cat output.txt
+# Check that Bun created the bundled assets
+if [ -f "wwwroot/js/bundle.min.js" ]; then
+    echo "✓ JavaScript bundle created (wwwroot/js/bundle.min.js)"
 else
-    echo "✗ Bun execution failed - output.txt not found"
+    echo "✗ JavaScript bundle not found"
+    FAILED=1
+fi
+
+if [ -f "wwwroot/css/style.min.css" ]; then
+    echo "✓ CSS bundle created (wwwroot/css/style.min.css)"
+else
+    echo "✗ CSS bundle not found"
     FAILED=1
 fi
 
@@ -318,6 +345,49 @@ for tfm in net8.0 net9.0 net10.0; do
         FAILED=1
     fi
 done
+
+# Pack the RCL and verify static web assets in nupkg
+echo ""
+echo "=========================================="
+echo "Packing NuGet package..."
+echo "=========================================="
+dotnet pack --configuration Debug --output ./nupkg --verbosity minimal
+
+echo ""
+echo "=========================================="
+echo "Verifying static web assets in NuGet package..."
+echo "=========================================="
+
+NUPKG_FILE=$(find ./nupkg -name "*.nupkg" -not -name "*.symbols.nupkg" | head -n 1)
+
+if [ -z "$NUPKG_FILE" ]; then
+    echo "✗ No .nupkg file found"
+    FAILED=1
+else
+    echo "Package: $NUPKG_FILE"
+
+    # List nupkg contents and check for static web assets
+    NUPKG_CONTENTS=$(unzip -l "$NUPKG_FILE" 2>/dev/null || true)
+
+    if echo "$NUPKG_CONTENTS" | grep -q "bundle\.min\.js"; then
+        echo "✓ JavaScript bundle found in NuGet package"
+    else
+        echo "✗ JavaScript bundle NOT found in NuGet package"
+        FAILED=1
+    fi
+
+    if echo "$NUPKG_CONTENTS" | grep -q "style\.min\.css"; then
+        echo "✓ CSS bundle found in NuGet package"
+    else
+        echo "✗ CSS bundle NOT found in NuGet package"
+        FAILED=1
+    fi
+
+    # Show the static web asset paths for inspection
+    echo ""
+    echo "Static web asset entries in package:"
+    echo "$NUPKG_CONTENTS" | grep -E "bundle\.min\.js|style\.min\.css" || echo "(none found)"
+fi
 
 echo ""
 echo "=========================================="
@@ -339,7 +409,7 @@ else
 fi
 
 if [ "$FAILED" -eq 0 ]; then
-    echo "✓ E2E multi-TFM test completed successfully"
+    echo "✓ E2E multi-TFM RCL test completed successfully"
     exit 0
 else
     exit 1

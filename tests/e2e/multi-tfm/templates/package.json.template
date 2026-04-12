@@ -1,5 +1,10 @@
 {
-  "name": "test-bun-package",
+  "name": "test-rcl-multi-tfm",
   "version": "1.0.0",
-  "dependencies": {}
+  "type": "module",
+  "dependencies": {
+    "terser": "^5.36.0",
+    "sass": "^1.83.4"
+  },
+  "trustedDependencies": ["terser", "sass"]
 }

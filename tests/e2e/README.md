@@ -68,7 +68,7 @@ If the RID cannot be determined, the script falls back to shell-based OS and arc
 
 ### multi-tfm/verify.sh
 
-**Purpose**: Validates that the Scarlet.Bun.MSBuild package works correctly when a consumer project targets multiple .NET frameworks (`net8.0;net9.0;net10.0`).
+**Purpose**: Validates that the Scarlet.Bun.MSBuild package works correctly in a Razor Class Library targeting multiple .NET frameworks (`net8.0;net9.0;net10.0`). This is the most realistic e2e test since the package primarily targets Blazor projects.
 
 **Usage**:
 ```bash
@@ -83,10 +83,12 @@ If the RID cannot be determined, the script falls back to shell-based OS and arc
 **What it does**:
 1. Creates a temporary test directory (`/tmp/multi-tfm-verification-<pid>`)
 2. Sets up a local NuGet source pointing to the workspace packages
-3. Creates a .NET console application with `<TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>`
-4. Adds the Scarlet.Bun.MSBuild package and appropriate runtime package
-5. Builds the project — MSBuild dispatches inner builds for each TFM, firing the Bun targets per TFM
-6. Verifies Bun executed (output.txt exists) and all three TFM output directories (`bin/Debug/net{8,9,10}.0/`) exist
+3. Creates a Razor Class Library (`Microsoft.NET.Sdk.Razor`) with `<TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>`
+4. Adds source assets (JS + SCSS), `build.mjs` (terser + sass), and `package.json`
+5. Builds the project — MSBuild dispatches inner builds per TFM, each running Bun to bundle JS and compile SCSS into `wwwroot/`
+6. Verifies `wwwroot/js/bundle.min.js` and `wwwroot/css/style.min.css` were created
+7. Verifies all three TFM output directories (`bin/Debug/net{8,9,10}.0/`) exist
+8. Packs the RCL as a NuGet package and inspects the `.nupkg` to verify static web assets (JS/CSS) are included
 
 Platform detection and runtime package selection follow the same logic as `package-installation/verify.sh`.
 
@@ -131,9 +133,10 @@ The E2E tests are integrated into the CI workflow (`.github/workflows/ci.yml`):
    - Builds project (triggers Bun execution)
    - Verifies Bun execution (warns if it fails)
 4. **E2E Test - Multi-TFM** - Runs `tests/e2e/multi-tfm/verify.sh` which:
-   - Creates a project targeting `net8.0;net9.0;net10.0`
-   - Builds all three TFMs (triggers Bun execution per TFM)
-   - Verifies output.txt and per-TFM build output directories
+   - Creates a Razor Class Library targeting `net8.0;net9.0;net10.0`
+   - Builds all three TFMs (triggers Bun JS bundling + SCSS compilation per TFM)
+   - Verifies wwwroot assets (bundle.min.js, style.min.css) and per-TFM build output
+   - Packs as NuGet and verifies static web assets are in the package
 5. **E2E Test - Monorepo download** - Runs `tests/e2e/monorepo-download/verify.sh` which:
    - Configures `BunRuntimeDownload=true`
    - Relies on task-side platform detection instead of selecting a runtime package in bash
