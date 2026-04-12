@@ -57,6 +57,12 @@ public class BunRunTask : Task
     public string? BunVersionDownload { get; set; }
 
     /// <summary>
+    /// Maximum seconds to wait for the download mutex when another process is already downloading.
+    /// Only used when BunRuntimeDownload is true. Defaults to 300 (5 minutes).
+    /// </summary>
+    public int DownloadMutexTimeoutSeconds { get; set; } = 300;
+
+    /// <summary>
     /// Runtime package path for win-x64 (set by Scarlet.Bun.Runtime.windows-x64-baseline package).
     /// </summary>
     public string? BunRuntime_win_x64 { get; set; }
@@ -155,7 +161,7 @@ public class BunRunTask : Task
                     // Download runtime asynchronously (RuntimeDirectory is already validated above)
                     using var httpClient = BunDownloader.CreateHttpClient();
                     var downloader = new BunDownloader(httpClient, fileSystem, ZipArchiveProvider.Instance, chmodProvider, platform);
-                    bunPath = downloader.DownloadRuntimeAsync(RuntimeDirectory!, BunVersionDownload).Result;
+                    bunPath = downloader.DownloadRuntime(RuntimeDirectory!, BunVersionDownload, DownloadMutexTimeoutSeconds);
                     
                     Log.LogMessage(MessageImportance.High, $"Bun runtime ready at: {bunPath}");
                 }
