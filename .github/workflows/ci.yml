@@ -15,10 +15,10 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup .NET
-        uses: actions/setup-dotnet@v4
+        uses: actions/setup-dotnet@v5
         with:
           dotnet-version: '10.0.x'
 
@@ -141,6 +141,12 @@ jobs:
         run: |
           chmod +x tests/e2e/monorepo-download/verify.sh
           tests/e2e/monorepo-download/verify.sh "${{ github.workspace }}" "${{ env.VERSION }}" "${{ env.BUN_VERSION }}"
+
+      - name: E2E Test - Multi-TFM
+        shell: bash
+        run: |
+          chmod +x tests/e2e/multi-tfm/verify.sh
+          tests/e2e/multi-tfm/verify.sh "${{ github.workspace }}" "${{ env.VERSION }}" "${{ env.BUN_VERSION }}"
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5

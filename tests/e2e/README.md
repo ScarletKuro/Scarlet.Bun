@@ -12,6 +12,9 @@ tests/e2e/
 ├── monorepo-download/
 │   ├── verify.sh                    # Shared runtime download E2E test script
 │   └── templates/                   # Template files for the monorepo download test
+├── multi-tfm/
+│   ├── verify.sh                    # Multi-target framework E2E test script
+│   └── templates/                   # Template files for the multi-TFM test
 └── README.md                        # This file
 ```
 
@@ -22,6 +25,7 @@ The E2E tests verify that:
 2. Packages can be installed from a local source
 3. The MSBuild task executes correctly when referenced as a package
 4. Bun runtime executes successfully through the MSBuild integration
+5. Multi-target framework projects (net8.0, net9.0, net10.0) build and execute correctly
 
 ## Test Scripts
 
@@ -61,6 +65,32 @@ The runtime package is selected from the `dotnet --info` RID first, which keeps 
 - macOS x64 uses `Scarlet.Bun.Runtime.darwin-x64-baseline`
 
 If the RID cannot be determined, the script falls back to shell-based OS and architecture detection. The script logs the detected `dotnet` RID, shell platform, shell architecture, and selected runtime package before installing packages. Unsupported combinations fail fast with a clear error.
+
+### multi-tfm/verify.sh
+
+**Purpose**: Validates that the Scarlet.Bun.MSBuild package works correctly in a Razor Class Library targeting multiple .NET frameworks (`net8.0;net9.0;net10.0`). This is the most realistic e2e test since the package primarily targets Blazor projects.
+
+**Usage**:
+```bash
+./tests/e2e/multi-tfm/verify.sh <workspace-path> <package-version> <runtime-version>
+```
+
+**Arguments**:
+- `workspace-path`: The root directory containing the `packages` folder with NuGet packages
+- `package-version`: The version of the packages to test (e.g., "0.0.1-ci.26")
+- `runtime-version`: The version of the runtime packages to test (e.g., "1.3.6")
+
+**What it does**:
+1. Creates a temporary test directory (`/tmp/multi-tfm-verification-<pid>`)
+2. Sets up a local NuGet source pointing to the workspace packages
+3. Creates a Razor Class Library (`Microsoft.NET.Sdk.Razor`) with `<TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>`
+4. Adds source assets (JS + SCSS), `build.mjs` (terser + sass), and `package.json`
+5. Builds the project — MSBuild dispatches inner builds per TFM, each running Bun to bundle JS and compile SCSS into `wwwroot/`
+6. Verifies `wwwroot/js/bundle.min.js` and `wwwroot/css/style.min.css` were created
+7. Verifies all three TFM output directories (`bin/Debug/net{8,9,10}.0/`) exist
+8. Packs the RCL as a NuGet package and inspects the `.nupkg` to verify static web assets (JS/CSS) are included
+
+Platform detection and runtime package selection follow the same logic as `package-installation/verify.sh`.
 
 ### monorepo-download/verify.sh
 
@@ -102,7 +132,12 @@ The E2E tests are integrated into the CI workflow (`.github/workflows/ci.yml`):
    - Detects the correct platform-specific runtime package from the `dotnet` RID, including Windows ARM64
    - Builds project (triggers Bun execution)
    - Verifies Bun execution (warns if it fails)
-4. **E2E Test - Monorepo download** - Runs `tests/e2e/monorepo-download/verify.sh` which:
+4. **E2E Test - Multi-TFM** - Runs `tests/e2e/multi-tfm/verify.sh` which:
+   - Creates a Razor Class Library targeting `net8.0;net9.0;net10.0`
+   - Builds all three TFMs (triggers Bun JS bundling + SCSS compilation per TFM)
+   - Verifies wwwroot assets (bundle.min.js, style.min.css) and per-TFM build output
+   - Packs as NuGet and verifies static web assets are in the package
+5. **E2E Test - Monorepo download** - Runs `tests/e2e/monorepo-download/verify.sh` which:
    - Configures `BunRuntimeDownload=true`
    - Relies on task-side platform detection instead of selecting a runtime package in bash
    - Logs the `dotnet` RID and downloaded runtime path(s) for inspection
@@ -166,7 +201,6 @@ The E2E test creates the following structure in `/tmp/nuget-verification`:
 
 Potential improvements to E2E tests:
 - Add more complex scenarios (TypeScript, SCSS, multiple files)
-- Test different .NET target frameworks
 - Add performance benchmarks
 - Test package updates and version conflicts
 - Add snapshot testing for output files

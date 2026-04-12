@@ -18,6 +18,7 @@ An MSBuild task package that integrates [Bun](https://bun.sh/) - a fast all-in-o
 - [Usage](#usage)
   - [Basic Example](#basic-example)
   - [Using Runtime Download](#using-runtime-download)
+  - [Multi-Target Framework Projects](#multi-target-framework-projects)
   - [Task Parameters](#task-parameters)
   - [Output Parameters](#output-parameters)
 - [Example: JavaScript/SCSS Build Script](#example-javascriptscss-build-script)
@@ -246,6 +247,40 @@ When using `BunRuntimeDownload=true`:
 - The `BunVersionDownload` property is optional (defaults to latest version if not specified)
 - Only the runtime for the current platform will be downloaded
 - The runtime is cached in the specified directory and reused on subsequent builds
+
+### Multi-Target Framework Projects
+
+When your project targets multiple frameworks (`<TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>`), MSBuild dispatches parallel inner builds for each TFM. Bun commands like `install` must run **once** before the inner builds start, otherwise concurrent writes to `node_modules` will fail on Windows.
+
+Use `BeforeTargets="DispatchToInnerBuilds;PreBuildEvent"` to hook into the outer build (multi-TFM) or normal build (single-TFM), and add a condition to skip inner builds:
+
+```xml
+<!-- Install dependencies — runs once before inner TFM builds dispatch -->
+<Target Name="BunInstall"
+        BeforeTargets="DispatchToInnerBuilds;PreBuildEvent"
+        Condition="'$(TargetFrameworks)' == '' OR '$(TargetFramework)' == ''">
+  <MSBuild Projects="$(MSBuildProjectFullPath)"
+           Targets="Bun"
+           Properties="BunCommand=install;BunArguments=--frozen-lockfile;BunWorkingDirectory=$(MSBuildProjectDirectory)" />
+</Target>
+
+<!-- Build assets — runs once after install -->
+<Target Name="BunBuild"
+        AfterTargets="BunInstall"
+        BeforeTargets="DispatchToInnerBuilds;PreBuildEvent"
+        Condition="'$(TargetFrameworks)' == '' OR '$(TargetFramework)' == ''">
+  <MSBuild Projects="$(MSBuildProjectFullPath)"
+           Targets="Bun"
+           Properties="BunCommand=run;BunArguments=build.mjs;BunWorkingDirectory=$(MSBuildProjectDirectory)" />
+</Target>
+```
+
+The condition works because:
+- **Outer build** (multi-TFM): `TargetFramework` is empty — target runs
+- **Inner builds** (per-TFM): both `TargetFrameworks` and `TargetFramework` are set — target skips
+- **Single-TFM build**: `TargetFrameworks` is empty — target runs
+
+> **Note:** This pattern also works for single-TFM projects, so you can use it as the default regardless of whether you multi-target.
 
 ### Task Parameters
 
