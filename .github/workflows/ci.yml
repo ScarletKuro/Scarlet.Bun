@@ -126,11 +126,17 @@ jobs:
         shell: bash
         run: ls -lh ./packages/
 
-      - name: E2E Test - Package installation and verification
+      - name: E2E Test - Package installation
         shell: bash
         run: |
-          chmod +x tests/e2e/verify-package-installation.sh
-          tests/e2e/verify-package-installation.sh "${{ github.workspace }}" "${{ env.VERSION }}" "${{ env.BUN_VERSION }}"
+          chmod +x tests/e2e/package-installation/verify.sh
+          tests/e2e/package-installation/verify.sh "${{ github.workspace }}" "${{ env.VERSION }}" "${{ env.BUN_VERSION }}"
+
+      - name: E2E Test - Monorepo download
+        shell: bash
+        run: |
+          chmod +x tests/e2e/monorepo-download/verify.sh
+          tests/e2e/monorepo-download/verify.sh "${{ github.workspace }}" "${{ env.VERSION }}" "${{ env.BUN_VERSION }}"
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5

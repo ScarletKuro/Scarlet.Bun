@@ -15,7 +15,7 @@ public class BunDownloaderTests
         var mockHttp = new MockHttpMessageHandler();
         var httpClient = mockHttp.ToHttpClient();
         var mockFileSystem = new MockFileSystem();
-        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeZipArchiveProvider(mockFileSystem), new NoOpChmodProvider(), BunRuntimeResolver.GetCurrentPlatform());
+        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeZipArchiveProvider(mockFileSystem), new NoOpChmodProvider(), BunRuntimeResolver.GetCurrentPlatform(), new NoOpBunLogger());
 
         // Act & Assert
         await Assert.ThrowsAsync<ArgumentException>(() =>
@@ -29,7 +29,7 @@ public class BunDownloaderTests
         var mockHttp = new MockHttpMessageHandler();
         var httpClient = mockHttp.ToHttpClient();
         var mockFileSystem = new MockFileSystem();
-        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeZipArchiveProvider(mockFileSystem), new NoOpChmodProvider(), BunRuntimeResolver.GetCurrentPlatform());
+        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeZipArchiveProvider(mockFileSystem), new NoOpChmodProvider(), BunRuntimeResolver.GetCurrentPlatform(), new NoOpBunLogger());
 
         // Act & Assert
         await Assert.ThrowsAsync<ArgumentException>(() =>
@@ -43,7 +43,7 @@ public class BunDownloaderTests
         var mockHttp = new MockHttpMessageHandler();
         var httpClient = mockHttp.ToHttpClient();
         var mockFileSystem = new MockFileSystem();
-        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeZipArchiveProvider(mockFileSystem), new NoOpChmodProvider(), BunRuntimeResolver.GetCurrentPlatform());
+        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeZipArchiveProvider(mockFileSystem), new NoOpChmodProvider(), BunRuntimeResolver.GetCurrentPlatform(), new NoOpBunLogger());
 
         // Act & Assert
         await Assert.ThrowsAsync<ArgumentException>(() =>
@@ -69,7 +69,7 @@ public class BunDownloaderTests
                 .Respond("application/zip", zipContent);
 
         var httpClient = mockHttp.ToHttpClient();
-        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeZipArchiveProvider(mockFileSystem), new NoOpChmodProvider(), platform);
+        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeZipArchiveProvider(mockFileSystem), new NoOpChmodProvider(), platform, new NoOpBunLogger());
 
         // Act
         var result = await downloader.DownloadRuntimeAsync(tempDir);
@@ -99,7 +99,7 @@ public class BunDownloaderTests
                 .Respond("application/zip", zipContent);
 
         var httpClient = mockHttp.ToHttpClient();
-        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeZipArchiveProvider(mockFileSystem), new NoOpChmodProvider(), platform);
+        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeZipArchiveProvider(mockFileSystem), new NoOpChmodProvider(), platform, new NoOpBunLogger());
 
         // Act
         var result = await downloader.DownloadRuntimeAsync(tempDir, version);
@@ -141,7 +141,7 @@ public class BunDownloaderTests
                 });
 
         var httpClient = mockHttp.ToHttpClient();
-        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeZipArchiveProvider(mockFileSystem), new NoOpChmodProvider(), platform);
+        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeZipArchiveProvider(mockFileSystem), new NoOpChmodProvider(), platform, new NoOpBunLogger());
 
         // Act - first download
         var result1 = await downloader.DownloadRuntimeAsync(tempDir, version);
@@ -175,7 +175,7 @@ public class BunDownloaderTests
                 .Respond(System.Net.HttpStatusCode.NotFound);
 
         var httpClient = mockHttp.ToHttpClient();
-        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeZipArchiveProvider(mockFileSystem), new NoOpChmodProvider(), platform);
+        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeZipArchiveProvider(mockFileSystem), new NoOpChmodProvider(), platform, new NoOpBunLogger());
 
         // Act & Assert
         await Assert.ThrowsAsync<HttpRequestException>(() =>
@@ -198,7 +198,7 @@ public class BunDownloaderTests
                 .Respond("application/zip", zipContent);
 
         var httpClient = mockHttp.ToHttpClient();
-        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeMissingExecutableZipArchiveProvider(), new NoOpChmodProvider(), platform);
+        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeMissingExecutableZipArchiveProvider(), new NoOpChmodProvider(), platform, new NoOpBunLogger());
 
         // Act & Assert
         var ex = await Assert.ThrowsAsync<InvalidDataException>(() =>
@@ -226,7 +226,7 @@ public class BunDownloaderTests
                 .Respond("application/zip", zipContent);
 
         var httpClient = mockHttp.ToHttpClient();
-        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeNoWriteZipArchiveProvider(), new NoOpChmodProvider(), platform);
+        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeNoWriteZipArchiveProvider(), new NoOpChmodProvider(), platform, new NoOpBunLogger());
 
         // Act & Assert
         var ex = await Assert.ThrowsAsync<FileNotFoundException>(() =>
@@ -260,7 +260,7 @@ public class BunDownloaderTests
                 .Respond("application/zip", zipContent);
 
         var httpClient = mockHttp.ToHttpClient();
-        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeZipArchiveProvider(mockFileSystem), new NoOpChmodProvider(), platform);
+        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeZipArchiveProvider(mockFileSystem), new NoOpChmodProvider(), platform, new NoOpBunLogger());
 
         // Act
         var result = await downloader.DownloadRuntimeAsync(tempDir);
@@ -270,6 +270,215 @@ public class BunDownloaderTests
         Assert.True(mockFileSystem.File.Exists(result));
         Assert.EndsWith(expectedExecutable, result);
     }
+
+    #region DownloadRuntime (synchronous, mutex-protected)
+
+    [Fact]
+    public void DownloadRuntime_WithNullRuntimeDirectory_ShouldThrowArgumentException()
+    {
+        var mockHttp = new MockHttpMessageHandler();
+        var httpClient = mockHttp.ToHttpClient();
+        var mockFileSystem = new MockFileSystem();
+        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeZipArchiveProvider(mockFileSystem), new NoOpChmodProvider(), BunRuntimeResolver.GetCurrentPlatform(), new NoOpBunLogger());
+
+        Assert.Throws<ArgumentException>(() =>
+            downloader.DownloadRuntime(null!));
+    }
+
+    [Fact]
+    public void DownloadRuntime_WithEmptyRuntimeDirectory_ShouldThrowArgumentException()
+    {
+        var mockHttp = new MockHttpMessageHandler();
+        var httpClient = mockHttp.ToHttpClient();
+        var mockFileSystem = new MockFileSystem();
+        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeZipArchiveProvider(mockFileSystem), new NoOpChmodProvider(), BunRuntimeResolver.GetCurrentPlatform(), new NoOpBunLogger());
+
+        Assert.Throws<ArgumentException>(() =>
+            downloader.DownloadRuntime(string.Empty));
+    }
+
+    [Fact]
+    public void DownloadRuntime_WithWhitespaceRuntimeDirectory_ShouldThrowArgumentException()
+    {
+        var mockHttp = new MockHttpMessageHandler();
+        var httpClient = mockHttp.ToHttpClient();
+        var mockFileSystem = new MockFileSystem();
+        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeZipArchiveProvider(mockFileSystem), new NoOpChmodProvider(), BunRuntimeResolver.GetCurrentPlatform(), new NoOpBunLogger());
+
+        Assert.Throws<ArgumentException>(() =>
+            downloader.DownloadRuntime("   "));
+    }
+
+    [Fact]
+    public void DownloadRuntime_WithValidDirectory_ShouldReturnExecutablePath()
+    {
+        var tempDir = "/test-runtime";
+        var platform = Platform.LinuxX64;
+        var runtimeId = BunRuntimeResolver.GetRuntimeIdentifier(platform);
+        var executableName = BunRuntimeResolver.GetExecutableName(platform);
+        var expectedPath = Path.Combine(tempDir, runtimeId, "native", executableName);
+
+        var mockFileSystem = new MockFileSystem();
+        var mockHttp = new MockHttpMessageHandler();
+
+        var zipContent = CreateMockBunZip(executableName);
+        mockHttp.When("https://github.com/oven-sh/bun/releases/latest/download/bun-linux-x64-baseline.zip")
+                .Respond("application/zip", zipContent);
+
+        var httpClient = mockHttp.ToHttpClient();
+        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeZipArchiveProvider(mockFileSystem), new NoOpChmodProvider(), platform, new NoOpBunLogger());
+
+        var result = downloader.DownloadRuntime(tempDir);
+
+        Assert.Equal(expectedPath, result);
+        Assert.True(mockFileSystem.File.Exists(result), $"Expected executable to exist at {result}");
+    }
+
+    [Fact]
+    public void DownloadRuntime_WithSpecificVersion_ShouldDownloadThatVersion()
+    {
+        var tempDir = "/test-runtime";
+        var version = "1.3.6";
+        var platform = Platform.LinuxX64;
+        var runtimeId = BunRuntimeResolver.GetRuntimeIdentifier(platform);
+        var executableName = BunRuntimeResolver.GetExecutableName(platform);
+        var expectedPath = Path.Combine(tempDir, runtimeId, "native", executableName);
+
+        var mockFileSystem = new MockFileSystem();
+        var mockHttp = new MockHttpMessageHandler();
+
+        var zipContent = CreateMockBunZip(executableName);
+        mockHttp.When($"https://github.com/oven-sh/bun/releases/download/bun-v{version}/bun-linux-x64-baseline.zip")
+                .Respond("application/zip", zipContent);
+
+        var httpClient = mockHttp.ToHttpClient();
+        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeZipArchiveProvider(mockFileSystem), new NoOpChmodProvider(), platform, new NoOpBunLogger());
+
+        var result = downloader.DownloadRuntime(tempDir, version);
+
+        Assert.Equal(expectedPath, result);
+        Assert.True(mockFileSystem.File.Exists(result), $"Expected executable to exist at {result}");
+    }
+
+    [Fact]
+    public void DownloadRuntime_CalledTwice_ShouldReuseExistingRuntime()
+    {
+        var tempDir = "/test-runtime";
+        var version = "1.3.6";
+        var platform = Platform.LinuxX64;
+        var runtimeId = BunRuntimeResolver.GetRuntimeIdentifier(platform);
+        var executableName = BunRuntimeResolver.GetExecutableName(platform);
+
+        var mockFileSystem = new MockFileSystem();
+        var mockHttp = new MockHttpMessageHandler();
+
+        var requestCount = 0;
+
+        var zipContent = CreateMockBunZip(executableName);
+        mockHttp.When($"https://github.com/oven-sh/bun/releases/download/bun-v{version}/bun-linux-x64-baseline.zip")
+                .Respond(() =>
+                {
+                    requestCount++;
+                    var response = new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                    {
+                        Content = new StreamContent(zipContent)
+                    };
+                    response.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/zip");
+                    return Task.FromResult(response);
+                });
+
+        var httpClient = mockHttp.ToHttpClient();
+        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeZipArchiveProvider(mockFileSystem), new NoOpChmodProvider(), platform, new NoOpBunLogger());
+
+        var result1 = downloader.DownloadRuntime(tempDir, version);
+        Assert.True(mockFileSystem.File.Exists(result1));
+
+        var result2 = downloader.DownloadRuntime(tempDir, version);
+
+        Assert.Equal(result1, result2);
+        Assert.Equal(1, requestCount);
+    }
+
+    [Fact]
+    public void DownloadRuntime_WhenArchiveDoesNotContainExecutable_ShouldThrowInvalidDataException()
+    {
+        var tempDir = "/test-runtime";
+        var platform = Platform.LinuxX64;
+
+        var mockFileSystem = new MockFileSystem();
+        var mockHttp = new MockHttpMessageHandler();
+
+        var zipContent = CreateMockBunZip("bun");
+        mockHttp.When("https://github.com/oven-sh/bun/releases/latest/download/bun-linux-x64-baseline.zip")
+                .Respond("application/zip", zipContent);
+
+        var httpClient = mockHttp.ToHttpClient();
+        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeMissingExecutableZipArchiveProvider(), new NoOpChmodProvider(), platform, new NoOpBunLogger());
+
+        var ex = Assert.Throws<InvalidDataException>(() =>
+            downloader.DownloadRuntime(tempDir));
+
+        Assert.Contains("did not contain expected executable", ex.Message);
+    }
+
+    [Fact]
+    public void DownloadRuntime_WhenExtractionDoesNotCreateFile_ShouldThrowFileNotFoundException()
+    {
+        var tempDir = "/test-runtime";
+        var platform = Platform.LinuxX64;
+        var runtimeId = BunRuntimeResolver.GetRuntimeIdentifier(platform);
+        var executableName = BunRuntimeResolver.GetExecutableName(platform);
+        var expectedPath = Path.Combine(tempDir, runtimeId, "native", executableName);
+
+        var mockFileSystem = new MockFileSystem();
+        var mockHttp = new MockHttpMessageHandler();
+
+        var zipContent = CreateMockBunZip(executableName);
+        mockHttp.When("https://github.com/oven-sh/bun/releases/latest/download/bun-linux-x64-baseline.zip")
+                .Respond("application/zip", zipContent);
+
+        var httpClient = mockHttp.ToHttpClient();
+        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeNoWriteZipArchiveProvider(), new NoOpChmodProvider(), platform, new NoOpBunLogger());
+
+        var ex = Assert.Throws<FileNotFoundException>(() =>
+            downloader.DownloadRuntime(tempDir));
+
+        Assert.Contains("not found after extraction", ex.Message);
+        Assert.Contains(expectedPath, ex.Message);
+    }
+
+    [Theory]
+    [InlineData(Platform.WindowsX64, "bun.exe")]
+    [InlineData(Platform.LinuxX64, "bun")]
+    [InlineData(Platform.LinuxArm64, "bun")]
+    [InlineData(Platform.MacOsX64, "bun")]
+    [InlineData(Platform.MacOsArm64, "bun")]
+    public void DownloadRuntime_ForAllPlatforms_ShouldDownloadCorrectExecutable(Platform platform, string expectedExecutable)
+    {
+        var tempDir = "/test-runtime";
+        var runtimeId = BunRuntimeResolver.GetRuntimeIdentifier(platform);
+        var executableName = BunRuntimeResolver.GetExecutableName(platform);
+        var downloadName = BunRuntimeResolver.GetDownloadName(platform);
+        var expectedPath = Path.Combine(tempDir, runtimeId, "native", executableName);
+
+        var mockFileSystem = new MockFileSystem();
+        var mockHttp = new MockHttpMessageHandler();
+
+        var zipContent = CreateMockBunZip(executableName);
+        mockHttp.When($"https://github.com/oven-sh/bun/releases/latest/download/{downloadName}.zip")
+                .Respond("application/zip", zipContent);
+
+        var httpClient = mockHttp.ToHttpClient();
+        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeZipArchiveProvider(mockFileSystem), new NoOpChmodProvider(), platform, new NoOpBunLogger());
+
+        var result = downloader.DownloadRuntime(tempDir);
+
+        Assert.Equal(expectedPath, result);
+        Assert.True(mockFileSystem.File.Exists(result));
+        Assert.EndsWith(expectedExecutable, result);
+    }
+
+    #endregion
 
     private static MemoryStream CreateMockBunZip(string executableName)
     {

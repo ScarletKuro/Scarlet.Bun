@@ -2,6 +2,9 @@ using System;
 using System.IO;
 using System.IO.Abstractions;
 using System.Net.Http;
+using System.Security.Cryptography;
+using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using Scarlet.Bun.MSBuild.Providers;
 
@@ -13,20 +16,126 @@ namespace Scarlet.Bun.MSBuild;
 public sealed class BunDownloader
 {
     private const string GithubReleasesUrl = "https://github.com/oven-sh/bun/releases";
-
     private readonly Platform _platform;
     private readonly HttpClient _httpClient;
     private readonly IFileSystem _fileSystem;
     private readonly IChmodProvider _chmodProvider;
     private readonly IZipArchiveProvider _zipProvider;
+    private readonly IBunLogger _log;
 
-    public BunDownloader(HttpClient httpClient, IFileSystem fileSystem, IZipArchiveProvider zipProvider, IChmodProvider chmodProvider, Platform platform)
+    public BunDownloader(HttpClient httpClient, IFileSystem fileSystem, IZipArchiveProvider zipProvider, IChmodProvider chmodProvider, Platform platform, IBunLogger log)
     {
         _platform = platform;
         _httpClient = httpClient;
         _fileSystem = fileSystem;
         _zipProvider = zipProvider;
         _chmodProvider = chmodProvider;
+        _log = log;
+    }
+
+    /// <summary>
+    /// Downloads the Bun runtime with cross-process synchronization.
+    /// Uses a named mutex to prevent concurrent downloads when multiple MSBuild projects
+    /// target the same runtime directory (e.g., in monorepo scenarios).
+    /// </summary>
+    /// <param name="runtimeDirectory">Directory where the runtime should be downloaded.</param>
+    /// <param name="version">Specific version to download (e.g., "1.3.6"). If null or empty, downloads latest.</param>
+    /// <param name="mutexTimeoutSeconds">Maximum seconds to wait for the download mutex. Defaults to 300 (5 minutes).</param>
+    /// <returns>Path to the downloaded Bun executable.</returns>
+    public string DownloadRuntime(
+        string runtimeDirectory,
+        string? version = null,
+        int mutexTimeoutSeconds = 300)
+    {
+        if (string.IsNullOrWhiteSpace(runtimeDirectory))
+        {
+            throw new ArgumentException("Runtime directory must be specified when using BunRuntimeDownload", nameof(runtimeDirectory));
+        }
+
+        var targetPlatform = _platform;
+        var runtimeId = BunRuntimeResolver.GetRuntimeIdentifier(targetPlatform);
+        var platformName = BunRuntimeResolver.GetDownloadName(targetPlatform);
+        var executableName = BunRuntimeResolver.GetExecutableName(targetPlatform);
+
+        var fullRuntimePath = Path.Combine(runtimeDirectory, runtimeId, "native");
+        var bunExecutablePath = Path.Combine(fullRuntimePath, executableName);
+
+        // Fast path: runtime already exists, no synchronization needed
+        if (_fileSystem.File.Exists(bunExecutablePath))
+        {
+            _chmodProvider.EnsureExecutablePermissions(bunExecutablePath);
+            return bunExecutablePath;
+        }
+
+        _fileSystem.Directory.CreateDirectory(fullRuntimePath);
+
+        var mutexName = CreateMutexName(bunExecutablePath);
+        using var mutex = new Mutex(false, mutexName, out var createdNew);
+
+        if (!createdNew)
+        {
+            _log.LogMessage("Another process is downloading the Bun runtime. Waiting...");
+        }
+
+        bool acquired;
+        try
+        {
+            acquired = mutex.WaitOne(TimeSpan.FromSeconds(mutexTimeoutSeconds));
+        }
+        catch (AbandonedMutexException)
+        {
+            // Previous owner crashed — we now own the mutex, proceed normally
+            acquired = true;
+        }
+
+        if (!acquired)
+        {
+            throw new TimeoutException(
+                "Timed out waiting for another process to finish downloading the Bun runtime.");
+        }
+
+        if (!createdNew)
+        {
+            _log.LogMessage("Finished waiting. Resuming Bun runtime setup.");
+        }
+
+        try
+        {
+            // Double-check: another process may have completed the download while we waited
+            if (_fileSystem.File.Exists(bunExecutablePath))
+            {
+                _chmodProvider.EnsureExecutablePermissions(bunExecutablePath);
+                return bunExecutablePath;
+            }
+
+            // Construct download URL
+            string downloadUrl;
+            if (string.IsNullOrWhiteSpace(version))
+            {
+                downloadUrl = $"{GithubReleasesUrl}/latest/download/{platformName}.zip";
+            }
+            else
+            {
+                downloadUrl = $"{GithubReleasesUrl}/download/bun-v{version}/{platformName}.zip";
+            }
+
+            DownloadAndExtractAsync(downloadUrl, fullRuntimePath, platformName, executableName)
+                .GetAwaiter().GetResult();
+
+            if (!_fileSystem.File.Exists(bunExecutablePath))
+            {
+                throw new FileNotFoundException(
+                    $"Bun executable was not found after extraction at expected path: {bunExecutablePath}");
+            }
+
+            _chmodProvider.EnsureExecutablePermissions(bunExecutablePath);
+
+            return bunExecutablePath;
+        }
+        finally
+        {
+            mutex.ReleaseMutex();
+        }
     }
 
     /// <summary>
@@ -97,10 +206,21 @@ public sealed class BunDownloader
             AllowAutoRedirect = true,
             MaxAutomaticRedirections = 10
         };
-        var client = new HttpClient(handler);
-        client.Timeout = TimeSpan.FromMinutes(5);
+        var client = new HttpClient(handler)
+        {
+            Timeout = TimeSpan.FromMinutes(5)
+        };
         client.DefaultRequestHeaders.Add("User-Agent", "Scarlet.Bun.MSBuild");
         return client;
+    }
+
+    private static string CreateMutexName(string executablePath)
+    {
+        var normalizedPath = Path.GetFullPath(executablePath).ToUpperInvariant();
+        using var sha = SHA256.Create();
+        var hash = sha.ComputeHash(Encoding.UTF8.GetBytes(normalizedPath));
+        var hashString = BitConverter.ToString(hash).Replace("-", "");
+        return $"Global\\ScarletBun_{hashString}";
     }
 
     /// <summary>
