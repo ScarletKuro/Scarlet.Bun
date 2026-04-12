@@ -304,7 +304,8 @@ echo "✓ Created package.json, bun.lock, and build.mjs"
 process_template "$TEMPLATES_DIR/TestRclMultiTfm.csproj.template" "TestRclMultiTfm.csproj"
 echo "✓ Updated project file with multi-target frameworks (net8.0, net9.0, net10.0)"
 
-# Build the project (triggers Bun install + asset build per TFM)
+# Build the project. Bun install + asset build run once in the outer build
+# (before DispatchToInnerBuilds), then inner TFM builds compile without re-running Bun.
 echo ""
 echo "Building Razor Class Library (multi-TFM)..."
 echo "=========================================="

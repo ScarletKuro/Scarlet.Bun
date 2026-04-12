@@ -26,20 +26,30 @@
     <None Include="build.mjs" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
-  <!-- Bun targets — only run during inner builds (TargetFramework set) -->
-  <Target Name="BunInstall" BeforeTargets="PreBuildEvent" Condition="'$(TargetFramework)' != ''">
+  <!--
+    Bun targets — run once in the outer build (multi-TFM) or normal build (single-TFM).
+    Skipped during inner TFM builds to avoid concurrent bun install races (EBUSY on Windows).
+
+    Condition: fires when TargetFrameworks is empty (single-TFM) OR TargetFramework is empty (outer build).
+    Inner builds have both set, so they skip.
+  -->
+  <Target Name="BunInstall" BeforeTargets="DispatchToInnerBuilds;PreBuildEvent"
+          Condition="'$(TargetFrameworks)' == '' OR '$(TargetFramework)' == ''">
     <MSBuild Projects="$(MSBuildProjectFullPath)"
              Targets="Bun"
              Properties="BunCommand=install;BunArguments=--frozen-lockfile;BunWorkingDirectory=$(MSBuildProjectDirectory)" />
   </Target>
 
-  <Target Name="BunBuildAssets" AfterTargets="BunInstall" BeforeTargets="Build" Condition="'$(TargetFramework)' != ''">
+  <Target Name="BunBuildAssets" AfterTargets="BunInstall"
+          BeforeTargets="DispatchToInnerBuilds;PreBuildEvent"
+          Condition="'$(TargetFrameworks)' == '' OR '$(TargetFramework)' == ''">
     <MSBuild Projects="$(MSBuildProjectFullPath)"
              Targets="Bun"
              Properties="BunCommand=run;BunArguments=build.mjs;BunWorkingDirectory=$(MSBuildProjectDirectory)" />
   </Target>
 
-  <Target Name="VerifyBunOutput" AfterTargets="BunBuildAssets" Condition="'$(TargetFramework)' != ''">
+  <Target Name="VerifyBunOutput" AfterTargets="BunBuildAssets"
+          Condition="'$(TargetFrameworks)' == '' OR '$(TargetFramework)' == ''">
     <Error Text="JavaScript bundle was not created!" Condition="!Exists('$(MSBuildProjectDirectory)/wwwroot/js/bundle.min.js')" />
     <Error Text="CSS bundle was not created!" Condition="!Exists('$(MSBuildProjectDirectory)/wwwroot/css/style.min.css')" />
   </Target>

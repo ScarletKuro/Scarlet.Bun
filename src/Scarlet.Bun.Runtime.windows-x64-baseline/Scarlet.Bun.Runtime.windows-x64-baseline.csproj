@@ -37,6 +37,10 @@
       <Pack>true</Pack>
       <PackagePath>build\</PackagePath>
     </None>
+    <None Include="buildMultiTargeting\**\*">
+      <Pack>true</Pack>
+      <PackagePath>buildMultiTargeting\</PackagePath>
+    </None>
   </ItemGroup>
 
   <!-- Downloads "bun.exe" next to the .csproj if missing -->

@@ -41,6 +41,10 @@
       <Pack>true</Pack>
       <PackagePath>build\</PackagePath>
     </None>
+    <None Include="buildMultiTargeting\**\*">
+      <Pack>true</Pack>
+      <PackagePath>buildMultiTargeting\</PackagePath>
+    </None>
     
     <!-- pack the README -->
     <None Include="..\..\README.md">
