@@ -22,6 +22,13 @@ public static class BunRuntimeResolver
                 packageName: "Scarlet.Bun.Runtime.windows-x64-baseline",
                 executableName: "bun.exe"
             ),
+            [Platform.WindowsArm64] = new(
+                rid: "win-arm64",
+                directoryName: "bun-windows-aarch64",
+                downloadName: "bun-windows-aarch64",
+                packageName: "Scarlet.Bun.Runtime.windows-aarch64",
+                executableName: "bun.exe"
+            ),
             [Platform.LinuxX64] = new(
                 rid: "linux-x64",
                 directoryName: "bun-linux-x64-baseline",
@@ -60,7 +67,9 @@ public static class BunRuntimeResolver
     {
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
         {
-            return Platform.WindowsX64;
+            return RuntimeInformation.ProcessArchitecture == Architecture.Arm64
+                ? Platform.WindowsArm64
+                : Platform.WindowsX64;
         }
 
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))

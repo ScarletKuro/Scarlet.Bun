@@ -1,0 +1,61 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <Version>$(BunVersion)</Version>
+    <PackageId>Scarlet.Bun.Runtime.windows-aarch64</PackageId>
+    <Description>Bun binary for Windows ARM64</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <DevelopmentDependency>True</DevelopmentDependency>
+
+    <!-- RID-specific settings -->
+    <RuntimeRid>win-arm64</RuntimeRid>
+    <BunFileName>bun.exe</BunFileName>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <Authors>ScarletKuro</Authors>
+    <RepositoryUrl>https://github.com/ScarletKuro/Scarlet.Bun</RepositoryUrl>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageIcon>icon.png</PackageIcon>
+    <PackageTags>bun;runtime;windows;arm64</PackageTags>
+  </PropertyGroup>
+
+  <!-- Pack README.md, icon, build, and buildTransitive props into package -->
+  <ItemGroup>
+    <None Update="README.md">
+      <Pack>true</Pack>
+      <PackagePath>\</PackagePath>
+    </None>
+    <None Include="..\..\icon.png">
+      <Pack>true</Pack>
+      <PackagePath>\</PackagePath>
+    </None>
+    <None Include="build\**\*">
+      <Pack>true</Pack>
+      <PackagePath>build\</PackagePath>
+    </None>
+  </ItemGroup>
+
+  <!-- Downloads "bun.exe" next to the .csproj if missing -->
+  <Target Name="DownloadBunIfMissing" BeforeTargets="Build">
+    <PropertyGroup>
+      <!-- Paths to helper scripts -->
+      <BunDownloadScriptPathPwsh>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\..\..\tools\download-bun.ps1'))</BunDownloadScriptPathPwsh>
+      <BunDownloadScriptPathBash>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)/../../tools/download-bun.sh'))</BunDownloadScriptPathBash>
+      <BunExecutable>$(MSBuildThisFileDirectory)$(BunFileName)</BunExecutable>
+      <BunDownloadFilename>bun-windows-aarch64.zip</BunDownloadFilename>
+    </PropertyGroup>
+
+    <Message Text="DownloadFilename resolved to: $(BunDownloadFilename)" Importance="High" />
+
+    <Exec Condition="'$(OS)' == 'Windows_NT'"
+          Command='pwsh -NoProfile -ExecutionPolicy Bypass -File "$(BunDownloadScriptPathPwsh)" -ExecutablePath "$(BunExecutable)" -DownloadFilename "$(BunDownloadFilename)" -BunVersion "$(BunVersion)"'
+          ContinueOnError="true" IgnoreExitCode="true" />
+    <Exec Condition="'$(OS)' != 'Windows_NT'"
+          Command='bash "$(BunDownloadScriptPathBash)" "$(BunExecutable)" "$(BunDownloadFilename)" "$(BunVersion)"'
+          ContinueOnError="true" IgnoreExitCode="true" />
+  </Target>
+
+  <!-- Common copy/pack logic -->
+  <Import Project="$(MSBuildThisFileDirectory)..\..\build\BunRuntime.targets" />
+</Project>

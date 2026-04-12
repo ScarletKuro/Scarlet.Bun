@@ -253,6 +253,7 @@ The `BunRunTask` supports the following parameters:
 | `ContinueOnError` | No | Whether to continue build if command fails | false |
 | `BunRuntimeDownload` | No | When true, downloads the Bun runtime from GitHub releases instead of using embedded runtimes | false |
 | `BunVersionDownload` | No | Specific Bun version to download (e.g., "1.3.6"). If not specified, downloads latest version. Only used when `BunRuntimeDownload=true`. | latest |
+| `DownloadMutexTimeoutSeconds` | No | Maximum seconds to wait for the download mutex when another process is already downloading. Only used when `BunRuntimeDownload=true`. | 300 |
 
 ### Output Parameters
 

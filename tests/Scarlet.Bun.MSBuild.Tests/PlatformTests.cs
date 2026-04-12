@@ -14,6 +14,7 @@ public class PlatformTests
 
     [Theory]
     [InlineData(Platform.WindowsX64, "win-x64")]
+    [InlineData(Platform.WindowsArm64, "win-arm64")]
     [InlineData(Platform.LinuxX64, "linux-x64")]
     [InlineData(Platform.LinuxArm64, "linux-arm64")]
     [InlineData(Platform.MacOsX64, "osx-x64")]
@@ -42,6 +43,7 @@ public class PlatformTests
 
     [Theory]
     [InlineData(Platform.WindowsX64, "bun-windows-x64-baseline")]
+    [InlineData(Platform.WindowsArm64, "bun-windows-aarch64")]
     [InlineData(Platform.LinuxX64, "bun-linux-x64-baseline")]
     [InlineData(Platform.LinuxArm64, "bun-linux-aarch64")]
     [InlineData(Platform.MacOsX64, "bun-darwin-x64-baseline")]
@@ -70,6 +72,7 @@ public class PlatformTests
 
     [Theory]
     [InlineData(Platform.WindowsX64, "Scarlet.Bun.Runtime.windows-x64-baseline")]
+    [InlineData(Platform.WindowsArm64, "Scarlet.Bun.Runtime.windows-aarch64")]
     [InlineData(Platform.LinuxX64, "Scarlet.Bun.Runtime.linux-x64-baseline")]
     [InlineData(Platform.LinuxArm64, "Scarlet.Bun.Runtime.linux-aarch64")]
     [InlineData(Platform.MacOsX64, "Scarlet.Bun.Runtime.darwin-x64-baseline")]
@@ -98,6 +101,7 @@ public class PlatformTests
 
     [Theory]
     [InlineData(Platform.WindowsX64, "bun.exe")]
+    [InlineData(Platform.WindowsArm64, "bun.exe")]
     [InlineData(Platform.LinuxX64, "bun")]
     [InlineData(Platform.LinuxArm64, "bun")]
     [InlineData(Platform.MacOsX64, "bun")]

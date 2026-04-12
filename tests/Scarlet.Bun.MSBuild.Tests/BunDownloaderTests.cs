@@ -238,6 +238,7 @@ public class BunDownloaderTests
 
     [Theory]
     [InlineData(Platform.WindowsX64, "bun.exe")]
+    [InlineData(Platform.WindowsArm64, "bun.exe")]
     [InlineData(Platform.LinuxX64, "bun")]
     [InlineData(Platform.LinuxArm64, "bun")]
     [InlineData(Platform.MacOsX64, "bun")]
@@ -449,6 +450,7 @@ public class BunDownloaderTests
 
     [Theory]
     [InlineData(Platform.WindowsX64, "bun.exe")]
+    [InlineData(Platform.WindowsArm64, "bun.exe")]
     [InlineData(Platform.LinuxX64, "bun")]
     [InlineData(Platform.LinuxArm64, "bun")]
     [InlineData(Platform.MacOsX64, "bun")]

@@ -14,5 +14,7 @@ public enum Platform
     /// <summary>macOS x64</summary>
     MacOsX64,
     /// <summary>macOS ARM64</summary>
-    MacOsArm64
+    MacOsArm64,
+    /// <summary>Windows ARM64</summary>
+    WindowsArm64
 }
