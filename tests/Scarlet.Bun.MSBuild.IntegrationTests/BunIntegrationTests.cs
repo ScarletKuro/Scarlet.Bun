@@ -277,6 +277,9 @@ public class BunIntegrationTests
             case "win-x64":
                 task.BunRuntime_win_x64 = runtimePackagePath;
                 break;
+            case "win-arm64":
+                task.BunRuntime_win_arm64 = runtimePackagePath;
+                break;
             case "linux-x64":
                 task.BunRuntime_linux_x64 = runtimePackagePath;
                 break;
