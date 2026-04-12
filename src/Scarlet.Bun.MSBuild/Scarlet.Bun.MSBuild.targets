@@ -36,6 +36,7 @@
                 BunRuntimeDownload="$(BunRuntimeDownload)"
                 BunVersionDownload="$(BunVersionDownload)"
                 BunRuntime_win_x64="$(BunRuntime_win_x64)"
+                BunRuntime_win_arm64="$(BunRuntime_win_arm64)"
                 BunRuntime_linux_x64="$(BunRuntime_linux_x64)"
                 BunRuntime_linux_arm64="$(BunRuntime_linux_arm64)"
                 BunRuntime_osx_x64="$(BunRuntime_osx_x64)"

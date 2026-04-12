@@ -10,7 +10,7 @@ jobs:
       contents: read
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-latest, ubuntu-24.04-arm, windows-latest, macos-latest, windows-11-arm]
       fail-fast: false
 
     steps:
@@ -112,6 +112,10 @@ jobs:
             --output ./packages
 
           dotnet pack src/Scarlet.Bun.Runtime.darwin-x64-baseline/Scarlet.Bun.Runtime.darwin-x64-baseline.csproj \
+            --configuration Release \
+            --output ./packages
+
+          dotnet pack src/Scarlet.Bun.Runtime.windows-aarch64/Scarlet.Bun.Runtime.windows-aarch64.csproj \
             --configuration Release \
             --output ./packages
 

@@ -3,7 +3,7 @@ set -e
 
 # End-to-End test script for Scarlet.Bun.MSBuild package installation
 #
-# Usage: ./verify-package-installation.sh <workspace-path> <package-version> <runtime-version>
+# Usage: ./verify.sh <workspace-path> <package-version> <runtime-version>
 #
 # Arguments:
 #   workspace-path:  Path to the repository root (contains packages folder)
@@ -35,6 +35,141 @@ echo "=========================================="
 # Get the directory where this script is located
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TEMPLATES_DIR="$SCRIPT_DIR/templates"
+
+normalize_architecture() {
+    local arch="$1"
+    arch="$(printf '%s' "$arch" | tr '[:upper:]' '[:lower:]')"
+
+    case "$arch" in
+        arm64|aarch64)
+            echo "arm64"
+            ;;
+        x86_64|amd64|x64)
+            echo "x64"
+            ;;
+        *)
+            echo "$arch"
+            ;;
+    esac
+}
+
+detect_platform_family() {
+    case "$OSTYPE" in
+        linux-gnu*)
+            echo "linux"
+            ;;
+        darwin*)
+            echo "darwin"
+            ;;
+        msys*|cygwin*|win32*)
+            echo "windows"
+            ;;
+        *)
+            echo "unknown"
+            ;;
+    esac
+}
+
+detect_dotnet_rid() {
+    local dotnet_info
+    local rid
+
+    dotnet_info="$(dotnet --info 2>/dev/null || true)"
+    rid="$(printf '%s\n' "$dotnet_info" | sed -n 's/^[[:space:]]*RID:[[:space:]]*//p' | head -n 1)"
+    printf '%s' "$rid"
+}
+
+detect_host_architecture() {
+    local uname_arch
+    local processor_arch
+    local wow64_arch
+
+    uname_arch="$(uname -m 2>/dev/null || true)"
+    uname_arch="$(normalize_architecture "$uname_arch")"
+    processor_arch="$(normalize_architecture "${PROCESSOR_ARCHITECTURE:-}")"
+    wow64_arch="$(normalize_architecture "${PROCESSOR_ARCHITEW6432:-}")"
+
+    # On Windows, an emulated shell may report x64 even on an ARM64 host.
+    # Prefer ARM64 if either native Windows architecture variable reports it.
+    if [ "$processor_arch" = "arm64" ] || [ "$wow64_arch" = "arm64" ]; then
+        echo "arm64"
+        return
+    fi
+
+    if [ -n "$uname_arch" ] && [ "$uname_arch" != "unknown" ]; then
+        echo "$uname_arch"
+        return
+    fi
+
+    if [ -n "$wow64_arch" ]; then
+        echo "$wow64_arch"
+        return
+    fi
+
+    if [ -n "$processor_arch" ]; then
+        echo "$processor_arch"
+        return
+    fi
+
+    echo "unknown"
+}
+
+select_runtime_package_from_rid() {
+    local rid="$1"
+
+    case "$rid" in
+        win-arm64)
+            echo "Scarlet.Bun.Runtime.windows-aarch64"
+            ;;
+        win-x64)
+            echo "Scarlet.Bun.Runtime.windows-x64-baseline"
+            ;;
+        linux-arm64)
+            echo "Scarlet.Bun.Runtime.linux-aarch64"
+            ;;
+        linux-x64)
+            echo "Scarlet.Bun.Runtime.linux-x64-baseline"
+            ;;
+        osx-arm64)
+            echo "Scarlet.Bun.Runtime.darwin-aarch64"
+            ;;
+        osx-x64)
+            echo "Scarlet.Bun.Runtime.darwin-x64-baseline"
+            ;;
+        *)
+            echo ""
+            ;;
+    esac
+}
+
+select_runtime_package_from_shell() {
+    local platform="$1"
+    local arch="$2"
+
+    case "$platform:$arch" in
+        windows:arm64)
+            echo "Scarlet.Bun.Runtime.windows-aarch64"
+            ;;
+        windows:x64)
+            echo "Scarlet.Bun.Runtime.windows-x64-baseline"
+            ;;
+        linux:arm64)
+            echo "Scarlet.Bun.Runtime.linux-aarch64"
+            ;;
+        linux:x64)
+            echo "Scarlet.Bun.Runtime.linux-x64-baseline"
+            ;;
+        darwin:arm64)
+            echo "Scarlet.Bun.Runtime.darwin-aarch64"
+            ;;
+        darwin:x64)
+            echo "Scarlet.Bun.Runtime.darwin-x64-baseline"
+            ;;
+        *)
+            echo ""
+            ;;
+    esac
+}
 
 # Helper function to process templates by replacing {{VARIABLE}} placeholders
 process_template() {
@@ -79,19 +214,49 @@ cd TestBunPackage
 echo "✓ Created test console application"
 
 # Determine the platform-specific runtime package name
-if [[ "$OSTYPE" == "linux-gnu"* ]]; then
-  RUNTIME_PACKAGE="Scarlet.Bun.Runtime.linux-x64-baseline"
-elif [[ "$OSTYPE" == "darwin"* ]]; then
-  if [[ $(uname -m) == "arm64" ]]; then
-    RUNTIME_PACKAGE="Scarlet.Bun.Runtime.darwin-aarch64"
-  else
-    RUNTIME_PACKAGE="Scarlet.Bun.Runtime.darwin-x64-baseline"
-  fi
-else
-  RUNTIME_PACKAGE="Scarlet.Bun.Runtime.windows-x64-baseline"
+PLATFORM_FAMILY="$(detect_platform_family)"
+HOST_ARCHITECTURE="$(detect_host_architecture)"
+DOTNET_RID="$(detect_dotnet_rid)"
+RUNTIME_PACKAGE=""
+FALLBACK_RUNTIME_PACKAGE=""
+
+if [ -n "$DOTNET_RID" ]; then
+    RUNTIME_PACKAGE="$(select_runtime_package_from_rid "$DOTNET_RID")"
 fi
 
-echo "✓ Detected platform runtime package: $RUNTIME_PACKAGE"
+if [ -z "$RUNTIME_PACKAGE" ]; then
+    FALLBACK_RUNTIME_PACKAGE="$(select_runtime_package_from_shell "$PLATFORM_FAMILY" "$HOST_ARCHITECTURE")"
+    RUNTIME_PACKAGE="$FALLBACK_RUNTIME_PACKAGE"
+fi
+
+if [ -z "$RUNTIME_PACKAGE" ] || { [ -n "$DOTNET_RID" ] && [ -z "$(select_runtime_package_from_rid "$DOTNET_RID")" ]; }; then
+    echo "Error: Unsupported platform/runtime combination detected."
+    echo "dotnet RID: ${DOTNET_RID:-<not detected>}"
+    echo "OSTYPE: $OSTYPE"
+    echo "Platform family: $PLATFORM_FAMILY"
+    echo "Architecture: $HOST_ARCHITECTURE"
+    exit 1
+fi
+
+if [ -n "$DOTNET_RID" ]; then
+    FALLBACK_RUNTIME_PACKAGE="$(select_runtime_package_from_shell "$PLATFORM_FAMILY" "$HOST_ARCHITECTURE")"
+
+    if [ -n "$FALLBACK_RUNTIME_PACKAGE" ] && [ "$FALLBACK_RUNTIME_PACKAGE" != "$RUNTIME_PACKAGE" ]; then
+        if [ "$PLATFORM_FAMILY" = "windows" ] && [ "$DOTNET_RID" = "win-arm64" ] && [ "$HOST_ARCHITECTURE" = "x64" ]; then
+            echo "Info: shell reports x64, but dotnet RID is win-arm64; using dotnet RID as the source of truth."
+        else
+            echo "Error: dotnet RID and shell fallback detection disagree."
+            echo "dotnet RID: $DOTNET_RID"
+            echo "RID package: $RUNTIME_PACKAGE"
+            echo "Shell platform: $PLATFORM_FAMILY"
+            echo "Shell architecture: $HOST_ARCHITECTURE"
+            echo "Shell fallback package: $FALLBACK_RUNTIME_PACKAGE"
+            exit 1
+        fi
+    fi
+fi
+
+echo "✓ Runtime detection: dotnet_rid=${DOTNET_RID:-<not detected>} shell_platform=$PLATFORM_FAMILY shell_architecture=$HOST_ARCHITECTURE package=$RUNTIME_PACKAGE"
 
 # Add the packages
 echo "Adding Scarlet.Bun.MSBuild package..."

@@ -3,7 +3,8 @@ set -e
 
 # End-to-End test for monorepo parallel download scenario.
 # Two projects share the same BunRuntimeDirectory and build in parallel.
-# The named mutex in BunDownloader.DownloadRuntime prevents "process is busy" errors.
+# BunDownloader uses a named mutex to deduplicate downloads and publishes the final
+# executable atomically so parallel builds never see a partially written Bun binary.
 #
 # Usage: ./verify.sh <workspace-path> <package-version> <bun-version>
 #
@@ -37,6 +38,15 @@ echo "=========================================="
 # Get the directory where this script is located
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TEMPLATES_DIR="$SCRIPT_DIR/templates"
+
+detect_dotnet_rid() {
+    local dotnet_info
+    local rid
+
+    dotnet_info="$(dotnet --info 2>/dev/null || true)"
+    rid="$(printf '%s\n' "$dotnet_info" | sed -n 's/^[[:space:]]*RID:[[:space:]]*//p' | head -n 1)"
+    printf '%s' "$rid"
+}
 
 # Helper function to process templates by replacing {{VARIABLE}} placeholders
 process_template() {
@@ -78,6 +88,7 @@ mkdir -p "$SHARED_RUNTIME_DIR"
 
 echo "✓ Created test directory: $TEST_DIR"
 echo "✓ Shared runtime directory: $SHARED_RUNTIME_DIR"
+echo "✓ dotnet RID: $(detect_dotnet_rid)"
 
 # Create nuget.config at solution root
 process_template "$TEMPLATES_DIR/nuget.config.template" "nuget.config"
@@ -110,8 +121,7 @@ dotnet sln add App2/App2.csproj
 echo "✓ Created solution with App1 and App2"
 
 # Build the solution — MSBuild will build both projects in parallel.
-# Without the mutex, this would fail with "process is busy" errors
-# when both try to download the same Bun runtime simultaneously.
+# The shared runtime path exercises the download mutex and atomic publish flow.
 echo ""
 echo "Building solution (parallel)..."
 echo "=========================================="
@@ -156,6 +166,10 @@ else
     echo "✗ No runtime found in shared directory"
     FAILED=1
 fi
+
+echo ""
+echo "Downloaded runtime paths:"
+find "$SHARED_RUNTIME_DIR" -type f \( -name "bun" -o -name "bun.exe" \) -print || true
 
 echo ""
 echo "=========================================="

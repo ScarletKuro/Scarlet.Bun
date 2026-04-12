@@ -77,6 +77,7 @@
     <!-- Reference all runtime packages as ProjectReferences during build, but they will be separate NuGet packages -->
     <!-- ReferenceOutputAssembly="false" because we only need the runtime binaries they produce, not their DLLs -->
     <ProjectReference Include="..\Scarlet.Bun.Runtime.windows-x64-baseline\Scarlet.Bun.Runtime.windows-x64-baseline.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\Scarlet.Bun.Runtime.windows-aarch64\Scarlet.Bun.Runtime.windows-aarch64.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\Scarlet.Bun.Runtime.linux-x64-baseline\Scarlet.Bun.Runtime.linux-x64-baseline.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\Scarlet.Bun.Runtime.linux-aarch64\Scarlet.Bun.Runtime.linux-aarch64.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\Scarlet.Bun.Runtime.darwin-x64-baseline\Scarlet.Bun.Runtime.darwin-x64-baseline.csproj" ReferenceOutputAssembly="false" />
@@ -87,6 +88,7 @@
   <Target Name="CopyRuntimeBinaries" AfterTargets="Build">
     <ItemGroup>
       <RuntimeFiles Include="..\Scarlet.Bun.Runtime.windows-x64-baseline\bin\$(Configuration)\netstandard2.0\runtimes\**\*.*" />
+      <RuntimeFiles Include="..\Scarlet.Bun.Runtime.windows-aarch64\bin\$(Configuration)\netstandard2.0\runtimes\**\*.*" />
       <RuntimeFiles Include="..\Scarlet.Bun.Runtime.linux-x64-baseline\bin\$(Configuration)\netstandard2.0\runtimes\**\*.*" />
       <RuntimeFiles Include="..\Scarlet.Bun.Runtime.linux-aarch64\bin\$(Configuration)\netstandard2.0\runtimes\**\*.*" />
       <RuntimeFiles Include="..\Scarlet.Bun.Runtime.darwin-x64-baseline\bin\$(Configuration)\netstandard2.0\runtimes\**\*.*" />

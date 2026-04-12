@@ -24,7 +24,7 @@
     <Message Text="Installing dependencies with Bun..." Importance="high" />
     <MSBuild Projects="$(MSBuildProjectFullPath)"
              Targets="Bun"
-             Properties="BunCommand=install;BunWorkingDirectory=$(MSBuildProjectDirectory);BunTimeoutMilliseconds=60000" />
+             Properties="BunCommand=install;BunArguments=--frozen-lockfile;BunWorkingDirectory=$(MSBuildProjectDirectory);BunTimeoutMilliseconds=60000" />
   </Target>
 
   <!-- Build assets using Bun -->

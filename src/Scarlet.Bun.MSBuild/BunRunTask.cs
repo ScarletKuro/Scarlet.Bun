@@ -68,6 +68,11 @@ public class BunRunTask : Task
     public string? BunRuntime_win_x64 { get; set; }
 
     /// <summary>
+    /// Runtime package path for win-arm64 (set by Scarlet.Bun.Runtime.windows-aarch64 package).
+    /// </summary>
+    public string? BunRuntime_win_arm64 { get; set; }
+
+    /// <summary>
     /// Runtime package path for linux-x64 (set by Scarlet.Bun.Runtime.linux-x64-baseline package).
     /// </summary>
     public string? BunRuntime_linux_x64 { get; set; }
@@ -309,6 +314,7 @@ public class BunRunTask : Task
         var runtimePackagePath = runtimeId switch
         {
             "win-x64" => BunRuntime_win_x64,
+            "win-arm64" => BunRuntime_win_arm64,
             "linux-x64" => BunRuntime_linux_x64,
             "linux-arm64" => BunRuntime_linux_arm64,
             "osx-x64" => BunRuntime_osx_x64,

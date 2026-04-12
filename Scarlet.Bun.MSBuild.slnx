@@ -14,6 +14,7 @@
     <Project Path="src/Scarlet.Bun.Runtime.darwin-x64-baseline/Scarlet.Bun.Runtime.darwin-x64-baseline.csproj" />
     <Project Path="src/Scarlet.Bun.Runtime.linux-aarch64/Scarlet.Bun.Runtime.linux-aarch64.csproj" />
     <Project Path="src/Scarlet.Bun.Runtime.linux-x64-baseline/Scarlet.Bun.Runtime.linux-x64-baseline.csproj" />
+    <Project Path="src/Scarlet.Bun.Runtime.windows-aarch64/Scarlet.Bun.Runtime.windows-aarch64.csproj" />
     <Project Path="src/Scarlet.Bun.Runtime.windows-x64-baseline/Scarlet.Bun.Runtime.windows-x64-baseline.csproj" />
   </Folder>
   <Folder Name="/tests/">

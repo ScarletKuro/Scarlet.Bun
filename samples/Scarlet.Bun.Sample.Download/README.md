@@ -29,7 +29,7 @@ The runtime download mode is configured in the `.csproj` file:
 2. **Subsequent Builds**: The cached runtime in `runtimes/` will be reused, so no download is needed.
 
 3. **Asset Processing**: The downloaded runtime is used to:
-   - Install npm dependencies with `bun install`
+   - Install npm dependencies with `bun install --frozen-lockfile`
    - Bundle and minify JavaScript files
    - Compile and minify SCSS files
 

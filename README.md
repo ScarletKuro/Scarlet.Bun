@@ -84,6 +84,9 @@ Install only the runtime package(s) you need for your target platform(s):
 # For Windows x64
 dotnet add package Scarlet.Bun.Runtime.windows-x64-baseline
 
+# For Windows ARM64
+dotnet add package Scarlet.Bun.Runtime.windows-aarch64
+
 # For Linux x64
 dotnet add package Scarlet.Bun.Runtime.linux-x64-baseline
 
@@ -112,6 +115,7 @@ dotnet add package Scarlet.Bun.Runtime.darwin-aarch64
 | Platform     | Runtime                    | Package Name                                      | Package Version |
 |--------------|----------------------------|--------------------------------------------------|---------|
 | Windows x64  | bun-windows-x64-baseline   | Scarlet.Bun.Runtime.windows-x64-baseline         | [![NuGet](https://img.shields.io/nuget/v/Scarlet.Bun.Runtime.windows-x64-baseline?color=ff4081&logo=nuget&style=flat-square)](https://www.nuget.org/packages/Scarlet.Bun.Runtime.windows-x64-baseline/) |
+| Windows ARM64 | bun-windows-aarch64       | Scarlet.Bun.Runtime.windows-aarch64              | [![NuGet](https://img.shields.io/nuget/v/Scarlet.Bun.Runtime.windows-aarch64?color=ff4081&logo=nuget&style=flat-square)](https://www.nuget.org/packages/Scarlet.Bun.Runtime.windows-aarch64/) |
 | Linux x64    | bun-linux-x64-baseline     | Scarlet.Bun.Runtime.linux-x64-baseline           | [![NuGet](https://img.shields.io/nuget/v/Scarlet.Bun.Runtime.linux-x64-baseline?color=ff4081&logo=nuget&style=flat-square)](https://www.nuget.org/packages/Scarlet.Bun.Runtime.linux-x64-baseline/) |
 | Linux ARM64  | bun-linux-aarch64          | Scarlet.Bun.Runtime.linux-aarch64                | [![NuGet](https://img.shields.io/nuget/v/Scarlet.Bun.Runtime.linux-aarch64?color=ff4081&logo=nuget&style=flat-square)](https://www.nuget.org/packages/Scarlet.Bun.Runtime.linux-aarch64/) |
 | macOS x64    | bun-darwin-x64-baseline    | Scarlet.Bun.Runtime.darwin-x64-baseline          | [![NuGet](https://img.shields.io/nuget/v/Scarlet.Bun.Runtime.darwin-x64-baseline?color=ff4081&logo=nuget&style=flat-square)](https://www.nuget.org/packages/Scarlet.Bun.Runtime.darwin-x64-baseline/) |
@@ -149,6 +153,10 @@ Use MSBuild conditions to reference only the runtime package matching the curren
   <!-- Conditionally reference runtime packages based on platform -->
   <ItemGroup Condition="'$(IsWindows)' == 'true' AND '$(IsX64)' == 'true'">
     <PackageReference Include="Scarlet.Bun.Runtime.windows-x64-baseline" Version="*" PrivateAssets="all" IncludeAssets="runtime; build; native; contentfiles; analyzers; buildtransitive" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(IsWindows)' == 'true' AND '$(IsARM64)' == 'true'">
+    <PackageReference Include="Scarlet.Bun.Runtime.windows-aarch64" Version="*" PrivateAssets="all" IncludeAssets="runtime; build; native; contentfiles; analyzers; buildtransitive" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(IsLinux)' == 'true' AND '$(IsX64)' == 'true'">
@@ -253,6 +261,7 @@ The `BunRunTask` supports the following parameters:
 | `ContinueOnError` | No | Whether to continue build if command fails | false |
 | `BunRuntimeDownload` | No | When true, downloads the Bun runtime from GitHub releases instead of using embedded runtimes | false |
 | `BunVersionDownload` | No | Specific Bun version to download (e.g., "1.3.6"). If not specified, downloads latest version. Only used when `BunRuntimeDownload=true`. | latest |
+| `DownloadMutexTimeoutSeconds` | No | Maximum seconds to wait for the download mutex when another process is already downloading. Only used when `BunRuntimeDownload=true`. | 300 |
 
 ### Output Parameters
 
