@@ -84,7 +84,7 @@ public class BunDownloaderTests
     {
         // Arrange
         var tempDir = "/test-runtime";
-        var version = "1.3.6";
+        var version = "1.3.12";
         var platform = Platform.LinuxX64;
         var runtimeId = BunRuntimeResolver.GetRuntimeIdentifier(platform);
         var executableName = BunRuntimeResolver.GetExecutableName(platform);
@@ -114,7 +114,7 @@ public class BunDownloaderTests
     {
         // Arrange
         var tempDir = "/test-runtime";
-        var version = "1.3.6";
+        var version = "1.3.12";
         var platform = Platform.LinuxX64;
         var runtimeId = BunRuntimeResolver.GetRuntimeIdentifier(platform);
         var executableName = BunRuntimeResolver.GetExecutableName(platform);
@@ -339,7 +339,7 @@ public class BunDownloaderTests
     public void DownloadRuntime_WithSpecificVersion_ShouldDownloadThatVersion()
     {
         var tempDir = "/test-runtime";
-        var version = "1.3.6";
+        var version = "1.3.12";
         var platform = Platform.LinuxX64;
         var runtimeId = BunRuntimeResolver.GetRuntimeIdentifier(platform);
         var executableName = BunRuntimeResolver.GetExecutableName(platform);
@@ -365,7 +365,7 @@ public class BunDownloaderTests
     public void DownloadRuntime_CalledTwice_ShouldReuseExistingRuntime()
     {
         var tempDir = "/test-runtime";
-        var version = "1.3.6";
+        var version = "1.3.12";
         var platform = Platform.LinuxX64;
         var runtimeId = BunRuntimeResolver.GetRuntimeIdentifier(platform);
         var executableName = BunRuntimeResolver.GetExecutableName(platform);

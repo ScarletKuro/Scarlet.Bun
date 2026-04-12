@@ -30,7 +30,7 @@ public class BunDownloadIntegrationTests
                 WorkingDirectory = testAssetsDir,
                 RuntimeDirectory = tempDir,
                 BunRuntimeDownload = true,
-                BunVersionDownload = "1.3.6", // Use a known stable version
+                BunVersionDownload = "1.3.12", // Use a known stable version
                 BuildEngine = new MockBuildEngine(_output)
             };
 
@@ -153,7 +153,7 @@ public class BunDownloadIntegrationTests
                 WorkingDirectory = testAssetsDir,
                 RuntimeDirectory = tempDir,
                 BunRuntimeDownload = true,
-                BunVersionDownload = "1.3.6",
+                BunVersionDownload = "1.3.12",
                 BuildEngine = new MockBuildEngine(_output)
             };
 
@@ -170,7 +170,7 @@ public class BunDownloadIntegrationTests
                 WorkingDirectory = testAssetsDir,
                 RuntimeDirectory = tempDir,
                 BunRuntimeDownload = true,
-                BunVersionDownload = "1.3.6",
+                BunVersionDownload = "1.3.12",
                 BuildEngine = new MockBuildEngine(_output)
             };
 
@@ -261,7 +261,7 @@ public class BunDownloadIntegrationTests
                 WorkingDirectory = testAssetsDir,
                 RuntimeDirectory = tempDir,
                 BunRuntimeDownload = true,
-                BunVersionDownload = "1.3.6",
+                BunVersionDownload = "1.3.12",
                 BuildEngine = new MockBuildEngine(_output)
             };
 
@@ -288,7 +288,7 @@ public class BunDownloadIntegrationTests
                 WorkingDirectory = testAssetsDir,
                 RuntimeDirectory = tempDir,
                 BunRuntimeDownload = true,
-                BunVersionDownload = "1.3.6",
+                BunVersionDownload = "1.3.12",
                 BuildEngine = new MockBuildEngine(_output)
             };
 
