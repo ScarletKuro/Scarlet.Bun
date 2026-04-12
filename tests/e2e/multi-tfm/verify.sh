@@ -294,10 +294,11 @@ copy_template "$TEMPLATES_DIR/style.scss.template" "assets/styles/style.scss"
 copy_template "$TEMPLATES_DIR/_variables.scss.template" "assets/styles/_variables.scss"
 echo "✓ Created source assets (JS + SCSS)"
 
-# Create package.json and build.mjs from templates
+# Create package.json, bun.lock, and build.mjs from templates
 copy_template "$TEMPLATES_DIR/package.json.template" "package.json"
+copy_template "$TEMPLATES_DIR/bun.lock.template" "bun.lock"
 copy_template "$TEMPLATES_DIR/build.mjs.template" "build.mjs"
-echo "✓ Created package.json and build.mjs"
+echo "✓ Created package.json, bun.lock, and build.mjs"
 
 # Update project file from template (multi-TFM RCL)
 process_template "$TEMPLATES_DIR/TestRclMultiTfm.csproj.template" "TestRclMultiTfm.csproj"
