@@ -167,9 +167,11 @@ public class BunDownloaderTests
         var platform = Platform.LinuxX64;
         var runtimeId = BunRuntimeResolver.GetRuntimeIdentifier(platform);
         var executableName = BunRuntimeResolver.GetExecutableName(platform);
+        var nativeDirectory = Path.Combine(tempDir, runtimeId, "native");
         var expectedPath = Path.Combine(tempDir, runtimeId, "native", executableName);
 
         var mockFileSystem = new MockFileSystem();
+        var normalizedExpectedPath = mockFileSystem.Path.GetFullPath(expectedPath);
         var mockHttp = new MockHttpMessageHandler();
         var zipContent = CreateMockBunZip(executableName);
         mockHttp.When("https://github.com/oven-sh/bun/releases/latest/download/bun-linux-x64-baseline.zip")
@@ -181,19 +183,39 @@ public class BunDownloaderTests
 
         var downloadTask = downloader.DownloadRuntimeAsync(tempDir);
 
-        Assert.True(chmodProvider.WaitForFirstCall(TimeSpan.FromSeconds(5)));
-        Assert.NotNull(chmodProvider.LastPath);
-        Assert.NotEqual(expectedPath, chmodProvider.LastPath);
-        Assert.True(mockFileSystem.File.Exists(chmodProvider.LastPath!), "Expected staged executable to exist while publication is blocked");
-        Assert.False(mockFileSystem.File.Exists(expectedPath), "Final executable should not be visible before publication");
+        try
+        {
+            Assert.True(chmodProvider.WaitForFirstCall(TimeSpan.FromSeconds(5)));
+            Assert.NotNull(chmodProvider.LastPath);
+            Assert.NotEqual(expectedPath, chmodProvider.LastPath);
 
-        chmodProvider.Release();
+            var filesWhileBlocked = mockFileSystem.Directory
+                .GetFiles(nativeDirectory)
+                .Select(mockFileSystem.Path.GetFullPath)
+                .ToArray();
+
+            Assert.DoesNotContain(normalizedExpectedPath, filesWhileBlocked);
+            Assert.Single(filesWhileBlocked);
+
+            var stagedPath = filesWhileBlocked[0];
+            Assert.NotEqual(normalizedExpectedPath, stagedPath);
+            Assert.Equal(mockFileSystem.Path.GetFullPath(chmodProvider.LastPath), stagedPath);
+            Assert.StartsWith(
+                mockFileSystem.Path.GetFullPath(Path.Combine(nativeDirectory, $".{executableName}.")),
+                stagedPath,
+                StringComparison.Ordinal);
+            Assert.EndsWith(".tmp", stagedPath, StringComparison.Ordinal);
+        }
+        finally
+        {
+            chmodProvider.Release();
+        }
 
         var result = await downloadTask;
 
         Assert.Equal(expectedPath, result);
         Assert.True(mockFileSystem.File.Exists(expectedPath));
-        Assert.False(mockFileSystem.File.Exists(chmodProvider.LastPath!));
+        Assert.False(mockFileSystem.File.Exists(chmodProvider.LastPath));
     }
 
     [Fact]
