@@ -119,9 +119,7 @@ public class BunDownloaderTests
         var tempDir = "/test-runtime";
         var version = "1.3.12";
         var platform = Platform.LinuxX64;
-        var runtimeId = BunRuntimeResolver.GetRuntimeIdentifier(platform);
         var executableName = BunRuntimeResolver.GetExecutableName(platform);
-        var expectedPath = Path.Combine(tempDir, runtimeId, "native", executableName);
 
         var mockFileSystem = new MockFileSystem();
         var mockHttp = new MockHttpMessageHandler();
@@ -435,7 +433,6 @@ public class BunDownloaderTests
         var tempDir = "/test-runtime";
         var version = "1.3.12";
         var platform = Platform.LinuxX64;
-        var runtimeId = BunRuntimeResolver.GetRuntimeIdentifier(platform);
         var executableName = BunRuntimeResolver.GetExecutableName(platform);
 
         var mockFileSystem = new MockFileSystem();

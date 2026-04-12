@@ -14,9 +14,9 @@ public class BunDownloadIntegrationTests
     [Fact]
     public void BunRunTask_WithRuntimeDownload_ShouldDownloadAndExecuteCommand()
     {
-        // Arrange
+        using var workspace = TestAssetWorkspace.Create(_output);
         var tempDir = Path.Combine(Path.GetTempPath(), $"bun-integration-test-{Guid.NewGuid()}");
-        var testAssetsDir = Path.Combine(Directory.GetCurrentDirectory(), "TestAssets");
+        var testAssetsDir = workspace.RootDirectory;
         
         try
         {
@@ -26,7 +26,7 @@ public class BunDownloadIntegrationTests
 
             var task = new BunRunTask
             {
-                Command = "install",
+                Command = "ci",
                 WorkingDirectory = testAssetsDir,
                 RuntimeDirectory = tempDir,
                 BunRuntimeDownload = true,
@@ -70,9 +70,9 @@ public class BunDownloadIntegrationTests
     [Fact]
     public void BunRunTask_WithRuntimeDownloadLatestVersion_ShouldDownloadAndExecute()
     {
-        // Arrange
+        using var workspace = TestAssetWorkspace.Create(_output);
         var tempDir = Path.Combine(Path.GetTempPath(), $"bun-integration-test-{Guid.NewGuid()}");
-        var testAssetsDir = Path.Combine(Directory.GetCurrentDirectory(), "TestAssets");
+        var testAssetsDir = workspace.RootDirectory;
         
         try
         {
@@ -81,7 +81,7 @@ public class BunDownloadIntegrationTests
 
             var task = new BunRunTask
             {
-                Command = "install",
+                Command = "ci",
                 WorkingDirectory = testAssetsDir,
                 RuntimeDirectory = tempDir,
                 BunRuntimeDownload = true,
@@ -125,11 +125,11 @@ public class BunDownloadIntegrationTests
     [Fact]
     public void BunRunTask_WithRuntimeDownloadAndBuildScript_ShouldExecuteSuccessfully()
     {
-        // Arrange
+        using var workspace = TestAssetWorkspace.Create(_output);
         var tempDir = Path.Combine(Path.GetTempPath(), $"bun-integration-test-{Guid.NewGuid()}");
-        var testAssetsDir = Path.Combine(Directory.GetCurrentDirectory(), "TestAssets");
-        var buildScriptPath = Path.Combine(testAssetsDir, "build.mjs");
-        var outputDir = Path.Combine(testAssetsDir, "output");
+        var testAssetsDir = workspace.RootDirectory;
+        var buildScriptPath = workspace.BuildScriptPath;
+        var outputDir = workspace.OutputDirectory;
         
         try
         {
@@ -149,7 +149,7 @@ public class BunDownloadIntegrationTests
             _output.WriteLine("Installing dependencies...");
             var installTask = new BunRunTask
             {
-                Command = "install",
+                Command = "ci",
                 WorkingDirectory = testAssetsDir,
                 RuntimeDirectory = tempDir,
                 BunRuntimeDownload = true,
@@ -158,7 +158,7 @@ public class BunDownloadIntegrationTests
             };
 
             var installResult = installTask.Execute();
-            Assert.True(installResult, "Install should succeed");
+            Assert.True(installResult, "Bun ci should succeed");
             Assert.Equal(0, installTask.ExitCode);
 
             // Then, run the build script
@@ -224,11 +224,12 @@ public class BunDownloadIntegrationTests
     public void BunRunTask_WithRuntimeDownloadWithoutRuntimeDirectory_ShouldFail()
     {
         // Arrange
-        var testAssetsDir = Path.Combine(Directory.GetCurrentDirectory(), "TestAssets");
+        using var workspace = TestAssetWorkspace.Create(_output);
+        var testAssetsDir = workspace.RootDirectory;
         
         var task = new BunRunTask
         {
-            Command = "install",
+            Command = "ci",
             WorkingDirectory = testAssetsDir,
             BunRuntimeDownload = true,
             // RuntimeDirectory not specified - should fail
@@ -245,9 +246,9 @@ public class BunDownloadIntegrationTests
     [Fact(Skip = "Downloads from GitHub - may fail in CI due to network restrictions. Verify manually.")]
     public void BunRunTask_WithRuntimeDownloadSecondCall_ShouldReuseDownloadedRuntime()
     {
-        // Arrange
+        using var workspace = TestAssetWorkspace.Create(_output);
         var tempDir = Path.Combine(Path.GetTempPath(), $"bun-integration-test-{Guid.NewGuid()}");
-        var testAssetsDir = Path.Combine(Directory.GetCurrentDirectory(), "TestAssets");
+        var testAssetsDir = workspace.RootDirectory;
         
         try
         {
@@ -257,7 +258,7 @@ public class BunDownloadIntegrationTests
             // First call - downloads runtime
             var task1 = new BunRunTask
             {
-                Command = "install",
+                Command = "ci",
                 WorkingDirectory = testAssetsDir,
                 RuntimeDirectory = tempDir,
                 BunRuntimeDownload = true,
@@ -284,7 +285,7 @@ public class BunDownloadIntegrationTests
             // Second call - should reuse runtime
             var task2 = new BunRunTask
             {
-                Command = "install",
+                Command = "ci",
                 WorkingDirectory = testAssetsDir,
                 RuntimeDirectory = tempDir,
                 BunRuntimeDownload = true,

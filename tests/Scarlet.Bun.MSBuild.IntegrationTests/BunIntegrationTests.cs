@@ -14,10 +14,10 @@ public class BunIntegrationTests
     [Fact]
     public void BunRunTask_ShouldExecuteBuildScript()
     {
-        // Arrange
-        var testAssetsDir = Path.Combine(Directory.GetCurrentDirectory(), "TestAssets");
-        var buildScriptPath = Path.Combine(testAssetsDir, "build.mjs");
-        var outputDir = Path.Combine(testAssetsDir, "output");
+        using var workspace = TestAssetWorkspace.Create(_output);
+        var testAssetsDir = workspace.RootDirectory;
+        var buildScriptPath = workspace.BuildScriptPath;
+        var outputDir = workspace.OutputDirectory;
         var jsOutputFile = Path.Combine(outputDir, "bundle.min.js");
         var cssOutputFile = Path.Combine(outputDir, "style.min.css");
 
@@ -40,7 +40,7 @@ public class BunIntegrationTests
         
         var installTask = new BunRunTask
         {
-            Command = "install",
+            Command = "ci",
             WorkingDirectory = testAssetsDir,
             RuntimeDirectory = runtimesDirectory,
             BuildEngine = new MockBuildEngine(_output)
@@ -58,7 +58,7 @@ public class BunIntegrationTests
             _output.WriteLine($"Install error: {installTask.StandardError}");
         }
 
-        Assert.True(installResult, "Bun install failed");
+        Assert.True(installResult, "Bun ci failed");
         Assert.Equal(0, installTask.ExitCode);
 
         // Act - Execute the build script
@@ -115,7 +115,8 @@ public class BunIntegrationTests
         // 2. It can resolve the Bun runtime path
         // 3. It attempts to execute Bun (even if Bun crashes, our task works)
         
-        var testAssetsDir = Path.Combine(Directory.GetCurrentDirectory(), "TestAssets");
+        using var workspace = TestAssetWorkspace.Create(_output);
+        var testAssetsDir = workspace.RootDirectory;
         var runtimesDirectory = Path.Combine(Directory.GetCurrentDirectory(), "runtimes");
         
         _output.WriteLine($"Test assets directory: {testAssetsDir}");

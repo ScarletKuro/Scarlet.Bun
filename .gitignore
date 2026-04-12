@@ -44,6 +44,7 @@ bun.lockb
 bun.lock
 package-lock.json
 .env
+!tests/Scarlet.Bun.MSBuild.IntegrationTests/TestAssets/bun.lock
 
 # Downloaded Bun runtime binaries (generated during build)
 src/**/bun
