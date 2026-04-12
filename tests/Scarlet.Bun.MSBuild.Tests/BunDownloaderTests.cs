@@ -1,5 +1,6 @@
 using System.IO.Abstractions.TestingHelpers;
 using System.IO.Compression;
+using System.IO.Abstractions;
 using RichardSzalay.MockHttp;
 using Scarlet.Bun.MSBuild.Providers;
 using Scarlet.Bun.MSBuild.Tests.Mock;
@@ -177,28 +178,26 @@ public class BunDownloaderTests
         mockHttp.When("https://github.com/oven-sh/bun/releases/latest/download/bun-linux-x64-baseline.zip")
                 .Respond("application/zip", zipContent);
 
-        var chmodProvider = new BlockingChmodProvider();
+        var zipProvider = new ObservingZipArchiveProvider(
+            mockFileSystem,
+            expectedPath,
+            stagedExecutablePath =>
+            {
+                Assert.True(mockFileSystem.File.Exists(stagedExecutablePath), "Staged executable should exist immediately after extraction");
+                Assert.False(mockFileSystem.File.Exists(expectedPath), "Final executable should not be visible before publication");
+            });
+        var chmodProvider = new RecordingChmodProvider();
         var httpClient = mockHttp.ToHttpClient();
-        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeZipArchiveProvider(mockFileSystem), chmodProvider, platform, new NoOpBunLogger());
+        var downloader = new BunDownloader(httpClient, mockFileSystem, zipProvider, chmodProvider, platform, new NoOpBunLogger());
 
-        var downloadTask = downloader.DownloadRuntimeAsync(tempDir);
-
-        try
-        {
-            Assert.True(chmodProvider.WaitForFirstCall(TimeSpan.FromSeconds(5)));
-            Assert.NotNull(chmodProvider.LastPath);
-            Assert.NotEqual(expectedPath, chmodProvider.LastPath);
-            Assert.False(mockFileSystem.File.Exists(expectedPath), "Final executable should not be visible before publication");
-        }
-        finally
-        {
-            chmodProvider.Release();
-        }
-
-        var result = await downloadTask;
+        var result = await downloader.DownloadRuntimeAsync(tempDir);
 
         Assert.Equal(expectedPath, result);
         Assert.True(mockFileSystem.File.Exists(expectedPath));
+        Assert.True(zipProvider.ObservedExtraction, "Expected extraction observation to run before publication");
+        Assert.NotNull(zipProvider.StagedPath);
+        Assert.Equal(zipProvider.StagedPath, chmodProvider.LastPath);
+        Assert.NotEqual(expectedPath, chmodProvider.LastPath);
         Assert.Equal(
             new[] { normalizedExpectedPath },
             mockFileSystem.Directory.GetFiles(nativeDirectory).Select(mockFileSystem.Path.GetFullPath));
@@ -570,26 +569,50 @@ public class BunDownloaderTests
         return memoryStream;
     }
 
-    private sealed class BlockingChmodProvider : IChmodProvider
+    private sealed class ObservingZipArchiveProvider : IZipArchiveProvider
     {
-        private readonly ManualResetEventSlim _entered = new(initialState: false);
-        private readonly ManualResetEventSlim _release = new(initialState: false);
+        private readonly FakeZipArchiveProvider _innerProvider;
+        private readonly IFileSystem _fileSystem;
+        private readonly string _finalExecutablePath;
+        private readonly Action<string> _afterExtract;
 
+        public ObservingZipArchiveProvider(IFileSystem fileSystem, string finalExecutablePath, Action<string> afterExtract)
+        {
+            _innerProvider = new FakeZipArchiveProvider(fileSystem);
+            _fileSystem = fileSystem;
+            _finalExecutablePath = finalExecutablePath;
+            _afterExtract = afterExtract;
+        }
+
+        public string? StagedPath { get; private set; }
+
+        public bool ObservedExtraction { get; private set; }
+
+        public ZipArchive OpenRead(string archiveFileName)
+        {
+            return _innerProvider.OpenRead(archiveFileName);
+        }
+
+        public void ExtractToFile(ZipArchiveEntry source, string destinationFileName, bool overwrite)
+        {
+            _innerProvider.ExtractToFile(source, destinationFileName, overwrite);
+
+            StagedPath = destinationFileName;
+            ObservedExtraction = true;
+            Assert.True(_fileSystem.File.Exists(destinationFileName), "Expected staged executable to exist after extraction");
+            Assert.False(_fileSystem.File.Exists(_finalExecutablePath), "Final executable should not exist during extraction");
+            _afterExtract(destinationFileName);
+        }
+    }
+
+    private sealed class RecordingChmodProvider : IChmodProvider
+    {
         public string? LastPath { get; private set; }
 
         public void EnsureExecutablePermissions(string filePath)
         {
             LastPath = filePath;
-            _entered.Set();
-            if (!_release.Wait(TimeSpan.FromMinutes(1)))
-            {
-                throw new TimeoutException("Timed out waiting for test to release staged executable publication.");
-            }
         }
-
-        public void Release() => _release.Set();
-
-        public bool WaitForFirstCall(TimeSpan timeout) => _entered.Wait(timeout);
     }
 
     private sealed class ThrowingChmodProvider : IChmodProvider
