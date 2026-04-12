@@ -16,14 +16,14 @@
     </PackageReference>
   </ItemGroup>
 
-  <Target Name="BunInstall" AfterTargets="Build">
+  <Target Name="BunInstall" AfterTargets="Build" Condition="'$(TargetFramework)' != ''">
     <MSBuild Projects="$(MSBuildProjectFullPath)"
              Targets="Bun"
              Properties="BunCommand=install;BunWorkingDirectory=$(MSBuildProjectDirectory)" />
   </Target>
 
   <!-- Using MSBuild task to pass per-call properties -->
-  <Target Name="BunBuildTest" AfterTargets="Build">
+  <Target Name="BunBuildTest" AfterTargets="Build" Condition="'$(TargetFramework)' != ''">
     <MSBuild Projects="$(MSBuildProjectFullPath)"
              Targets="Bun"
              Properties="BunCommand=run;BunArguments=build.mjs;BunWorkingDirectory=$(MSBuildProjectDirectory)" />
