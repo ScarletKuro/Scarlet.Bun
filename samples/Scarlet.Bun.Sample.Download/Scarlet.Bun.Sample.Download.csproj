@@ -36,7 +36,7 @@
       <Message Text="Installing dependencies with Bun (download mode)..." Importance="high" />
       <MSBuild Projects="$(MSBuildProjectFullPath)"
                Targets="Bun"
-               Properties="BunCommand=install;WorkingDirectory=$(MSBuildProjectDirectory);BunTimeoutMilliseconds=60000" />
+               Properties="BunCommand=install;BunArguments=--frozen-lockfile;WorkingDirectory=$(MSBuildProjectDirectory);BunTimeoutMilliseconds=60000" />
   </Target>
 
   <!-- Build assets using Bun (using downloaded runtime) -->

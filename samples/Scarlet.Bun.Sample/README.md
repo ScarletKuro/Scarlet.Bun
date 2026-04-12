@@ -6,7 +6,7 @@ This is a sample application demonstrating the use of `Scarlet.Bun.MSBuild` in a
 
 This sample project shows how to integrate Bun into your .NET build process using the Scarlet.Bun.MSBuild task. During the build:
 
-1. **Bun Install** - Dependencies are installed from `package.json` using `bun install`
+1. **Bun Install** - Dependencies are installed from `package.json` using `bun install --frozen-lockfile`
 2. **Asset Bundling** - JavaScript files are concatenated and minified using Terser
 3. **SCSS Compilation** - SCSS files are compiled to CSS and minified using Sass
 4. **Build Integration** - All of this happens automatically as part of the MSBuild process
