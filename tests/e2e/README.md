@@ -52,7 +52,7 @@ The E2E tests verify that:
 6. Builds the test project (triggers Bun execution via MSBuild)
 7. Verifies that Bun executed successfully by checking for output.txt
 
-The runtime package is selected from the current OS and CPU architecture:
+The runtime package is selected from the `dotnet --info` RID first, which keeps the script aligned with the same `dotnet` host that later runs MSBuild:
 - Windows ARM64 uses `Scarlet.Bun.Runtime.windows-aarch64`
 - Windows x64 uses `Scarlet.Bun.Runtime.windows-x64-baseline`
 - Linux ARM64 uses `Scarlet.Bun.Runtime.linux-aarch64`
@@ -60,7 +60,13 @@ The runtime package is selected from the current OS and CPU architecture:
 - macOS ARM64 uses `Scarlet.Bun.Runtime.darwin-aarch64`
 - macOS x64 uses `Scarlet.Bun.Runtime.darwin-x64-baseline`
 
-The script logs the detected platform, architecture, and selected runtime package before installing packages. Unsupported OS/architecture combinations fail fast with a clear error.
+If the RID cannot be determined, the script falls back to shell-based OS and architecture detection. The script logs the detected `dotnet` RID, shell platform, shell architecture, and selected runtime package before installing packages. Unsupported combinations fail fast with a clear error.
+
+### monorepo-download/verify.sh
+
+**Purpose**: Validates the shared runtime-download path used by `BunRuntimeDownload=true` when multiple projects build in parallel.
+
+This script does not choose a runtime package in bash. Instead, it logs the current `dotnet --info` RID for observability and then relies on `BunRunTask` and `BunRuntimeResolver.GetCurrentPlatform()` to choose the correct runtime for the current host. The scenario specifically exercises the shared download mutex plus atomic executable publication so parallel projects do not observe a partially written Bun binary. After the build, it prints the downloaded runtime path(s) under the shared runtime directory so Windows ARM runs can be inspected directly.
 
 **Template System**:
 
@@ -93,9 +99,13 @@ The E2E tests are integrated into the CI workflow (`.github/workflows/ci.yml`):
 3. **E2E Test - Package installation and verification** - Runs `tests/e2e/package-installation/verify.sh` which:
    - Creates test project
    - Installs packages
-   - Detects the correct platform-specific runtime package, including Windows ARM64
+   - Detects the correct platform-specific runtime package from the `dotnet` RID, including Windows ARM64
    - Builds project (triggers Bun execution)
    - Verifies Bun execution (warns if it fails)
+4. **E2E Test - Monorepo download** - Runs `tests/e2e/monorepo-download/verify.sh` which:
+   - Configures `BunRuntimeDownload=true`
+   - Relies on task-side platform detection instead of selecting a runtime package in bash
+   - Logs the `dotnet` RID and downloaded runtime path(s) for inspection
 
 The test runs on all platforms (Linux, Windows, macOS) to ensure cross-platform compatibility.
 
@@ -144,7 +154,8 @@ The E2E test creates the following structure in `/tmp/nuget-verification`:
 - If you see "invalid character" errors in NuGet.Config, this is due to path escaping
 - The script automatically handles Windows backslashes in paths
 - Ensure you're using Git Bash or a compatible shell on Windows
-- Windows runners select the runtime package by architecture, so Windows ARM64 requires the `windows-aarch64` package to be present in `./packages`
+- `package-installation/verify.sh` uses the `dotnet` RID as the source of truth, so Windows ARM64 requires the `windows-aarch64` package to be present in `./packages`
+- `monorepo-download/verify.sh` does not install a runtime package directly; it relies on `BunRuntimeDownload=true` and logs the resolved runtime path after build
 
 **Build errors**:
 - Check that the package structure is correct

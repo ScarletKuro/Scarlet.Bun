@@ -77,6 +77,10 @@ public class BunDownloaderTests
         // Assert
         Assert.Equal(expectedPath, result);
         Assert.True(mockFileSystem.File.Exists(result), $"Expected executable to exist at {result}");
+        Assert.False(mockFileSystem.File.Exists(expectedPath + ".complete"));
+        Assert.Equal(
+            new[] { Path.GetFullPath(result) },
+            mockFileSystem.Directory.GetFiles(Path.Combine(tempDir, runtimeId, "native")));
     }
 
     [Fact]
@@ -160,6 +164,42 @@ public class BunDownloaderTests
     }
 
     [Fact]
+    public async Task DownloadRuntimeAsync_ShouldKeepFinalExecutableHiddenUntilPublished()
+    {
+        var tempDir = "/test-runtime";
+        var platform = Platform.LinuxX64;
+        var runtimeId = BunRuntimeResolver.GetRuntimeIdentifier(platform);
+        var executableName = BunRuntimeResolver.GetExecutableName(platform);
+        var expectedPath = Path.Combine(tempDir, runtimeId, "native", executableName);
+
+        var mockFileSystem = new MockFileSystem();
+        var mockHttp = new MockHttpMessageHandler();
+        var zipContent = CreateMockBunZip(executableName);
+        mockHttp.When("https://github.com/oven-sh/bun/releases/latest/download/bun-linux-x64-baseline.zip")
+                .Respond("application/zip", zipContent);
+
+        var chmodProvider = new BlockingChmodProvider();
+        var httpClient = mockHttp.ToHttpClient();
+        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeZipArchiveProvider(mockFileSystem), chmodProvider, platform, new NoOpBunLogger());
+
+        var downloadTask = downloader.DownloadRuntimeAsync(tempDir);
+
+        Assert.True(chmodProvider.WaitForFirstCall(TimeSpan.FromSeconds(5)));
+        Assert.NotNull(chmodProvider.LastPath);
+        Assert.NotEqual(expectedPath, chmodProvider.LastPath);
+        Assert.True(mockFileSystem.File.Exists(chmodProvider.LastPath!), "Expected staged executable to exist while publication is blocked");
+        Assert.False(mockFileSystem.File.Exists(expectedPath), "Final executable should not be visible before publication");
+
+        chmodProvider.Release();
+
+        var result = await downloadTask;
+
+        Assert.Equal(expectedPath, result);
+        Assert.True(mockFileSystem.File.Exists(expectedPath));
+        Assert.False(mockFileSystem.File.Exists(chmodProvider.LastPath!));
+    }
+
+    [Fact]
     public async Task DownloadRuntimeAsync_WithInvalidVersion_ShouldThrowException()
     {
         // Arrange
@@ -234,6 +274,32 @@ public class BunDownloaderTests
 
         Assert.Contains("not found after extraction", ex.Message);
         Assert.Contains(expectedPath, ex.Message);
+    }
+
+    [Fact]
+    public async Task DownloadRuntimeAsync_WhenPublicationFails_ShouldCleanUpStagedExecutable()
+    {
+        var tempDir = "/test-runtime";
+        var platform = Platform.LinuxX64;
+        var runtimeId = BunRuntimeResolver.GetRuntimeIdentifier(platform);
+        var executableName = BunRuntimeResolver.GetExecutableName(platform);
+        var nativeDirectory = Path.Combine(tempDir, runtimeId, "native");
+        var expectedPath = Path.Combine(nativeDirectory, executableName);
+
+        var mockFileSystem = new MockFileSystem();
+        var mockHttp = new MockHttpMessageHandler();
+        var zipContent = CreateMockBunZip(executableName);
+        mockHttp.When("https://github.com/oven-sh/bun/releases/latest/download/bun-linux-x64-baseline.zip")
+                .Respond("application/zip", zipContent);
+
+        var chmodProvider = new ThrowingChmodProvider();
+        var httpClient = mockHttp.ToHttpClient();
+        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeZipArchiveProvider(mockFileSystem), chmodProvider, platform, new NoOpBunLogger());
+
+        await Assert.ThrowsAsync<IOException>(() => downloader.DownloadRuntimeAsync(tempDir));
+
+        Assert.False(mockFileSystem.File.Exists(expectedPath));
+        Assert.Empty(mockFileSystem.Directory.GetFiles(nativeDirectory));
     }
 
     [Theory]
@@ -333,6 +399,10 @@ public class BunDownloaderTests
 
         Assert.Equal(expectedPath, result);
         Assert.True(mockFileSystem.File.Exists(result), $"Expected executable to exist at {result}");
+        Assert.False(mockFileSystem.File.Exists(expectedPath + ".complete"));
+        Assert.Equal(
+            new[] { Path.GetFullPath(result) },
+            mockFileSystem.Directory.GetFiles(Path.Combine(tempDir, runtimeId, "native")));
     }
 
     [Fact]
@@ -495,5 +565,32 @@ public class BunDownloaderTests
         }
         memoryStream.Position = 0;
         return memoryStream;
+    }
+
+    private sealed class BlockingChmodProvider : IChmodProvider
+    {
+        private readonly ManualResetEventSlim _entered = new(initialState: false);
+        private readonly ManualResetEventSlim _release = new(initialState: false);
+
+        public string? LastPath { get; private set; }
+
+        public void EnsureExecutablePermissions(string filePath)
+        {
+            LastPath = filePath;
+            _entered.Set();
+            _release.Wait(TimeSpan.FromSeconds(5));
+        }
+
+        public void Release() => _release.Set();
+
+        public bool WaitForFirstCall(TimeSpan timeout) => _entered.Wait(timeout);
+    }
+
+    private sealed class ThrowingChmodProvider : IChmodProvider
+    {
+        public void EnsureExecutablePermissions(string filePath)
+        {
+            throw new IOException($"chmod failed for {filePath}");
+        }
     }
 }

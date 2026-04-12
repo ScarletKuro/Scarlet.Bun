@@ -60,7 +60,8 @@ public sealed class BunDownloader
         var fullRuntimePath = Path.Combine(runtimeDirectory, runtimeId, "native");
         var bunExecutablePath = Path.Combine(fullRuntimePath, executableName);
 
-        // Fast path: runtime already exists, no synchronization needed
+        // Fast path: runtime already exists, no synchronization needed.
+        // The executable is published atomically only after extraction and chmod complete.
         if (_fileSystem.File.Exists(bunExecutablePath))
         {
             _chmodProvider.EnsureExecutablePermissions(bunExecutablePath);
@@ -119,18 +120,11 @@ public sealed class BunDownloader
                 downloadUrl = $"{GithubReleasesUrl}/download/bun-v{version}/{platformName}.zip";
             }
 
-            DownloadAndExtractAsync(downloadUrl, fullRuntimePath, platformName, executableName)
+            var stagedExecutablePath = CreateStagedExecutablePath(fullRuntimePath, executableName);
+            DownloadAndExtractAsync(downloadUrl, stagedExecutablePath, platformName, executableName)
                 .GetAwaiter().GetResult();
 
-            if (!_fileSystem.File.Exists(bunExecutablePath))
-            {
-                throw new FileNotFoundException(
-                    $"Bun executable was not found after extraction at expected path: {bunExecutablePath}");
-            }
-
-            _chmodProvider.EnsureExecutablePermissions(bunExecutablePath);
-
-            return bunExecutablePath;
+            return PublishStagedExecutable(stagedExecutablePath, bunExecutablePath);
         }
         finally
         {
@@ -183,17 +177,10 @@ public sealed class BunDownloader
 
         // Download and extract
         _fileSystem.Directory.CreateDirectory(fullRuntimePath);
-        await DownloadAndExtractAsync(downloadUrl, fullRuntimePath, platformName, executableName);
+        var stagedExecutablePath = CreateStagedExecutablePath(fullRuntimePath, executableName);
+        await DownloadAndExtractAsync(downloadUrl, stagedExecutablePath, platformName, executableName);
 
-        if (!_fileSystem.File.Exists(bunExecutablePath))
-        {
-            throw new FileNotFoundException(
-                $"Bun executable was not found after extraction at expected path: {bunExecutablePath}");
-        }
-
-        _chmodProvider.EnsureExecutablePermissions(bunExecutablePath);
-
-        return bunExecutablePath;
+        return PublishStagedExecutable(stagedExecutablePath, bunExecutablePath);
     }
 
     /// <summary>
@@ -226,7 +213,7 @@ public sealed class BunDownloader
     /// <summary>
     /// Downloads and extracts the Bun runtime archive.
     /// </summary>
-    private async Task DownloadAndExtractAsync(string downloadUrl, string extractPath, string platformName, string executableName)
+    private async Task DownloadAndExtractAsync(string downloadUrl, string stagedExecutablePath, string platformName, string executableName)
     {
         // Download to temporary file
         var tempDir = Path.GetTempPath();
@@ -260,8 +247,7 @@ public sealed class BunDownloader
                 // Look for the bun executable in the archive
                 if (entry.Name.Equals(executableName, StringComparison.OrdinalIgnoreCase))
                 {
-                    var destinationPath = Path.Combine(extractPath, executableName);
-                    _zipProvider.ExtractToFile(entry, destinationPath, overwrite: true);
+                    _zipProvider.ExtractToFile(entry, stagedExecutablePath, overwrite: true);
                     extracted = true;
                     break;
                 }
@@ -286,6 +272,68 @@ public sealed class BunDownloader
                     // Ignore cleanup errors
                 }
             }
+        }
+    }
+
+    private string PublishStagedExecutable(string stagedExecutablePath, string bunExecutablePath)
+    {
+        try
+        {
+            if (!_fileSystem.File.Exists(stagedExecutablePath))
+            {
+                throw new FileNotFoundException(
+                    $"Bun executable was not found after extraction before publication. Final path: {bunExecutablePath}. Staging path: {stagedExecutablePath}");
+            }
+
+            _chmodProvider.EnsureExecutablePermissions(stagedExecutablePath);
+
+            if (_fileSystem.File.Exists(bunExecutablePath))
+            {
+                return bunExecutablePath;
+            }
+
+            try
+            {
+                _fileSystem.File.Move(stagedExecutablePath, bunExecutablePath);
+            }
+            catch (IOException) when (_fileSystem.File.Exists(bunExecutablePath))
+            {
+                return bunExecutablePath;
+            }
+
+            if (!_fileSystem.File.Exists(bunExecutablePath))
+            {
+                throw new FileNotFoundException(
+                    $"Bun executable was not found after publication at expected path: {bunExecutablePath}");
+            }
+
+            return bunExecutablePath;
+        }
+        finally
+        {
+            DeleteFileIfExists(stagedExecutablePath);
+        }
+    }
+
+    private static string CreateStagedExecutablePath(string directoryPath, string executableName)
+    {
+        return Path.Combine(directoryPath, $".{executableName}.{Guid.NewGuid():N}.tmp");
+    }
+
+    private void DeleteFileIfExists(string path)
+    {
+        if (!_fileSystem.File.Exists(path))
+        {
+            return;
+        }
+
+        try
+        {
+            _fileSystem.File.Delete(path);
+        }
+        catch
+        {
+            // Ignore cleanup errors
         }
     }
 }

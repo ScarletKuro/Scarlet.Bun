@@ -3,7 +3,8 @@ set -e
 
 # End-to-End test for monorepo parallel download scenario.
 # Two projects share the same BunRuntimeDirectory and build in parallel.
-# The named mutex in BunDownloader.DownloadRuntime prevents "process is busy" errors.
+# BunDownloader uses a named mutex to deduplicate downloads and publishes the final
+# executable atomically so parallel builds never see a partially written Bun binary.
 #
 # Usage: ./verify.sh <workspace-path> <package-version> <bun-version>
 #
@@ -120,8 +121,7 @@ dotnet sln add App2/App2.csproj
 echo "✓ Created solution with App1 and App2"
 
 # Build the solution — MSBuild will build both projects in parallel.
-# Without the mutex, this would fail with "process is busy" errors
-# when both try to download the same Bun runtime simultaneously.
+# The shared runtime path exercises the download mutex and atomic publish flow.
 echo ""
 echo "Building solution (parallel)..."
 echo "=========================================="
