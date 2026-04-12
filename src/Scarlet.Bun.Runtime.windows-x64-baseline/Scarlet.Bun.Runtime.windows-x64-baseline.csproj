@@ -10,6 +10,9 @@
     <!-- RID-specific settings -->
     <RuntimeRid>win-x64</RuntimeRid>
     <BunFileName>bun.exe</BunFileName>
+
+    <!-- CI -->
+    <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
   </PropertyGroup>
 
   <PropertyGroup>
