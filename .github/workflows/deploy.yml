@@ -114,6 +114,14 @@ jobs:
       - name: List generated packages
         run: ls -lh ./packages/
 
+      - name: Upload packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: packages-${{ steps.get_version.outputs.version }}
+          path: |
+            ./packages/*.nupkg
+            ./packages/*.snupkg
+
       - name: NuGet login
         id: login
         uses: NuGet/login@v1
@@ -123,11 +131,6 @@ jobs:
       - name: Push packages to NuGet
         run: |
           dotnet nuget push "./packages/*.nupkg" \
-            --api-key "${{ steps.login.outputs.NUGET_API_KEY }}" \
-            --source "https://api.nuget.org/v3/index.json" \
-            --skip-duplicate
-          
-          dotnet nuget push "./packages/*.snupkg" \
             --api-key "${{ steps.login.outputs.NUGET_API_KEY }}" \
             --source "https://api.nuget.org/v3/index.json" \
             --skip-duplicate
