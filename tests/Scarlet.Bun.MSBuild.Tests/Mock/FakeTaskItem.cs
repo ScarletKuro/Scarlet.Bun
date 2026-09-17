@@ -8,11 +8,17 @@ namespace Scarlet.Bun.MSBuild.Tests.Mock;
 /// </summary>
 internal sealed class FakeTaskItem : ITaskItem
 {
-    private readonly Dictionary<string, string> _metadata = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, string?> _metadata = new(StringComparer.OrdinalIgnoreCase);
 
-    public FakeTaskItem(string itemSpec, IDictionary<string, string>? metadata = null)
+    /// <param name="itemSpec">
+    /// The item identity. A test may pass <see langword="null"/> to stand in for an <see cref="ITaskItem"/>
+    /// implementation that does not honour the non-nullable <see cref="ItemSpec"/> contract; that is the one
+    /// place the suppression below is needed.
+    /// </param>
+    /// <param name="metadata">Metadata for the item. A value may be <see langword="null"/> for the same reason.</param>
+    public FakeTaskItem(string? itemSpec, IDictionary<string, string?>? metadata = null)
     {
-        ItemSpec = itemSpec;
+        ItemSpec = itemSpec!;
 
         if (metadata is null)
         {
@@ -31,17 +37,21 @@ internal sealed class FakeTaskItem : ITaskItem
 
     public int MetadataCount => _metadata.Count;
 
-    public IDictionary CloneCustomMetadata() => new Dictionary<string, string>(_metadata, StringComparer.OrdinalIgnoreCase);
+    public IDictionary CloneCustomMetadata() => new Dictionary<string, string?>(_metadata, StringComparer.OrdinalIgnoreCase);
 
     public void CopyMetadataTo(ITaskItem destinationItem)
     {
         foreach (var pair in _metadata)
         {
-            destinationItem.SetMetadata(pair.Key, pair.Value);
+            destinationItem.SetMetadata(pair.Key, pair.Value ?? string.Empty);
         }
     }
 
-    public string GetMetadata(string metadataName) => _metadata.TryGetValue(metadataName, out var value) ? value : string.Empty;
+    /// <summary>
+    /// Returns the stored value, which a test may deliberately set to <see langword="null"/> to stand in for an
+    /// <see cref="ITaskItem"/> implementation that does not honour the "empty string when absent" convention.
+    /// </summary>
+    public string GetMetadata(string metadataName) => (_metadata.TryGetValue(metadataName, out var value) ? value : string.Empty)!;
 
     public void RemoveMetadata(string metadataName) => _metadata.Remove(metadataName);
 

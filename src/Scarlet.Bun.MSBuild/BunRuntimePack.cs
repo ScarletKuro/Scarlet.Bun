@@ -111,10 +111,10 @@ public sealed class BunRuntimePack
     /// <summary>
     /// Builds the list of packs described by the given MSBuild items, dropping malformed and duplicate entries.
     /// </summary>
-    /// <param name="items">The <c>BunRuntimePack</c> items, may be <see langword="null"/>.</param>
+    /// <param name="items">The <c>BunRuntimePack</c> items. The sequence, and any entry in it, may be <see langword="null"/>.</param>
     /// <param name="onInvalidItem">Invoked with a human readable reason for every item that had to be dropped.</param>
     /// <returns>The valid, de-duplicated packs in declaration order.</returns>
-    public static IReadOnlyList<BunRuntimePack> FromTaskItems(IEnumerable<ITaskItem>? items, Action<string>? onInvalidItem = null)
+    public static IReadOnlyList<BunRuntimePack> FromTaskItems(IEnumerable<ITaskItem?>? items, Action<string>? onInvalidItem = null)
     {
         if (items is null)
         {

@@ -18,7 +18,7 @@ public class BunRuntimeResolverTests
     {
         // Act & Assert
         var exception = Assert.Throws<FileNotFoundException>(() =>
-            BunRuntimeResolver.ResolveBunExecutable(new MockFileSystem(), new NoOpChmodProvider(), runtimeDirectory: null));
+            BunRuntimeResolver.ResolveBunExecutable(new MockFileSystem(), NoOpChmodProvider.Instance, runtimeDirectory: null));
         Assert.Contains("Bun runtime package not found", exception.Message);
         Assert.Contains("Scarlet.Bun.Runtime", exception.Message);
     }
@@ -35,7 +35,7 @@ public class BunRuntimeResolverTests
         var exception = Assert.Throws<FileNotFoundException>(() =>
             BunRuntimeResolver.ResolveBunExecutable(
                 mockFileSystem,
-                new NoOpChmodProvider(),
+                NoOpChmodProvider.Instance,
                 platform,
                 runtimeDirectory));
 
@@ -64,7 +64,7 @@ public class BunRuntimeResolverTests
         // Act
         var result = BunRuntimeResolver.ResolveBunExecutable(
             mockFileSystem,
-            new NoOpChmodProvider(),
+            NoOpChmodProvider.Instance,
             platform,
             runtimeDirectory);
 
@@ -77,7 +77,7 @@ public class BunRuntimeResolverTests
     {
         // Act & Assert
         Assert.ThrowsAny<Exception>(() =>
-            BunRuntimeResolver.ResolveBunExecutable(new MockFileSystem(), new NoOpChmodProvider()));
+            BunRuntimeResolver.ResolveBunExecutable(new MockFileSystem(), NoOpChmodProvider.Instance));
     }
 
     [Fact]
@@ -95,7 +95,7 @@ public class BunRuntimeResolverTests
         // Act
         var result = BunRuntimeResolver.ResolveBunExecutable(
             fileSystem,
-            new NoOpChmodProvider(),
+            NoOpChmodProvider.Instance,
             platform,
             runtimeDirectory: null,
             runtimePacks: packs);
@@ -115,7 +115,7 @@ public class BunRuntimeResolverTests
         // Act
         var result = BunRuntimeResolver.ResolveBunExecutable(
             fileSystem,
-            new NoOpChmodProvider(),
+            NoOpChmodProvider.Instance,
             platform,
             runtimeDirectory: "/explicit",
             runtimePacks: packs);
@@ -141,7 +141,7 @@ public class BunRuntimeResolverTests
         // Act
         var result = BunRuntimeResolver.ResolveBunExecutable(
             fileSystem,
-            new NoOpChmodProvider(),
+            NoOpChmodProvider.Instance,
             platform,
             runtimeDirectory: null,
             runtimePacks: packs);
@@ -165,7 +165,7 @@ public class BunRuntimeResolverTests
         // Act
         var result = BunRuntimeResolver.ResolveBunExecutable(
             fileSystem,
-            new NoOpChmodProvider(),
+            NoOpChmodProvider.Instance,
             platform,
             runtimeDirectory: null,
             runtimePacks: packs);
@@ -184,7 +184,7 @@ public class BunRuntimeResolverTests
         var exception = Assert.Throws<FileNotFoundException>(() =>
             BunRuntimeResolver.ResolveBunExecutable(
                 new MockFileSystem(),
-                new NoOpChmodProvider(),
+                NoOpChmodProvider.Instance,
                 Platform.MacOsArm64,
                 runtimeDirectory: null,
                 runtimePacks: packs));
@@ -206,7 +206,7 @@ public class BunRuntimeResolverTests
         var exception = Assert.Throws<FileNotFoundException>(() =>
             BunRuntimeResolver.ResolveBunExecutable(
                 new MockFileSystem(),
-                new NoOpChmodProvider(),
+                NoOpChmodProvider.Instance,
                 Platform.MacOsArm64,
                 runtimeDirectory: null,
                 runtimePacks: packs));
@@ -229,7 +229,7 @@ public class BunRuntimeResolverTests
         // Act
         BunRuntimeResolver.ResolveBunExecutable(
             fileSystem,
-            new NoOpChmodProvider(),
+            NoOpChmodProvider.Instance,
             platform,
             runtimeDirectory: null,
             runtimePacks: packs,
@@ -255,6 +255,74 @@ public class BunRuntimeResolverTests
         // Assert
         Assert.Equal(new[] { "m-pack", "a-pack", "z-pack" }, forward.Select(pack => pack.Id));
         Assert.Equal(forward.Select(pack => pack.Id), reversed.Select(pack => pack.Id));
+    }
+
+    [Fact]
+    public void SelectPacks_WithSameIdAndPriority_ShouldBreakTheTieOnPath()
+    {
+        // Arrange - two packs indistinguishable except for where they live
+        var second = new BunRuntimePack("same-id", "linux-x64", "/b/runtimes");
+        var first = new BunRuntimePack("same-id", "linux-x64", "/a/runtimes");
+
+        // Act
+        var forward = BunRuntimeResolver.SelectPacks(new[] { second, first }, Platform.LinuxX64);
+        var reversed = BunRuntimeResolver.SelectPacks(new[] { first, second }, Platform.LinuxX64);
+
+        // Assert
+        Assert.Equal(new[] { "/a/runtimes", "/b/runtimes" }, forward.Select(pack => pack.RuntimesPath));
+        Assert.Equal(forward.Select(pack => pack.RuntimesPath), reversed.Select(pack => pack.RuntimesPath));
+    }
+
+    [Fact]
+    public void ResolveBunExecutable_WithSeveralCandidates_ShouldLogHowManyWereConsidered()
+    {
+        // Arrange
+        var platform = Platform.LinuxX64;
+        var packs = new[]
+        {
+            new BunRuntimePack("Contoso.Bun.linux-x64", "linux-x64", "/packs/custom/runtimes", priority: 100),
+            new BunRuntimePack("Scarlet.Bun.Runtime.linux-x64-baseline", "linux-x64", "/packs/baseline/runtimes", "baseline")
+        };
+        var fileSystem = FileSystemWithBun("/packs/custom/runtimes", platform);
+        var messages = new List<string>();
+
+        // Act
+        BunRuntimeResolver.ResolveBunExecutable(
+            fileSystem,
+            NoOpChmodProvider.Instance,
+            platform,
+            runtimeDirectory: null,
+            runtimePacks: packs,
+            log: messages.Add);
+
+        // Assert
+        Assert.Contains(messages, message =>
+            message.Contains("Contoso.Bun.linux-x64") && message.Contains("out of 2 candidates"));
+    }
+
+    [Fact]
+    public void ResolveBunExecutable_WithSeveralCandidatesAndNoBinary_ShouldListEveryLocation()
+    {
+        // Arrange
+        var packs = new[]
+        {
+            new BunRuntimePack("Contoso.Bun.linux-x64", "linux-x64", "/packs/custom/runtimes", priority: 100),
+            new BunRuntimePack("Scarlet.Bun.Runtime.linux-x64-baseline", "linux-x64", "/packs/baseline/runtimes", "baseline")
+        };
+
+        // Act
+        var exception = Assert.Throws<FileNotFoundException>(() =>
+            BunRuntimeResolver.ResolveBunExecutable(
+                new MockFileSystem(),
+                NoOpChmodProvider.Instance,
+                Platform.LinuxX64,
+                runtimeDirectory: null,
+                runtimePacks: packs));
+
+        // Assert
+        Assert.Contains("2 runtime packs target linux-x64", exception.Message);
+        Assert.Contains(BunRuntimeResolver.GetExecutablePath("/packs/custom/runtimes", Platform.LinuxX64), exception.Message);
+        Assert.Contains(BunRuntimeResolver.GetExecutablePath("/packs/baseline/runtimes", Platform.LinuxX64), exception.Message);
     }
 
     [Fact]

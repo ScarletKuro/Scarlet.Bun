@@ -12,7 +12,7 @@ public class BunRuntimePackTests
         string? variant = null,
         string? priority = null)
     {
-        var metadata = new Dictionary<string, string>();
+        var metadata = new Dictionary<string, string?>();
 
         if (rid is not null)
         {
@@ -127,6 +127,115 @@ public class BunRuntimePackTests
 
         // Assert
         Assert.Equal("/packs/osx-arm64/runtimes", pack.RuntimesPath);
+    }
+
+    [Fact]
+    public void FromTaskItems_WithNullEntry_ShouldSkipItSilently()
+    {
+        // Arrange - not something MSBuild produces, but FromTaskItems is public
+        var items = new ITaskItem?[] { null, Pack("Good.Pack") };
+        var reported = new List<string>();
+
+        // Act
+        var pack = Assert.Single(BunRuntimePack.FromTaskItems(items, reported.Add));
+
+        // Assert
+        Assert.Equal("Good.Pack", pack.Id);
+        Assert.Empty(reported);
+    }
+
+    [Fact]
+    public void FromTaskItems_WithEmptyIdentity_ShouldSkipAndReport()
+    {
+        // Arrange
+        var reported = new List<string>();
+        var items = new ITaskItem[] { Pack(string.Empty) };
+
+        // Act
+        var packs = BunRuntimePack.FromTaskItems(items, reported.Add);
+
+        // Assert
+        Assert.Empty(packs);
+        Assert.Contains("without an identity", Assert.Single(reported));
+    }
+
+    [Theory]
+    [InlineData(BunRuntimePack.RidMetadataName)]
+    [InlineData(BunRuntimePack.RuntimesPathMetadataName)]
+    public void FromTaskItems_WithNullRequiredMetadata_ShouldTreatItAsMissing(string metadataName)
+    {
+        // Arrange - ITaskItem.GetMetadata is meant to return an empty string for absent metadata, but the
+        // interface cannot enforce it, so a null must not take the parser down
+        var reported = new List<string>();
+        var metadata = new Dictionary<string, string?>
+        {
+            [BunRuntimePack.RidMetadataName] = "osx-arm64",
+            [BunRuntimePack.RuntimesPathMetadataName] = "/packs/runtimes",
+            [metadataName] = null
+        };
+
+        // Act
+        var packs = BunRuntimePack.FromTaskItems(new ITaskItem[] { new FakeTaskItem("Null.Pack", metadata) }, reported.Add);
+
+        // Assert
+        Assert.Empty(packs);
+        Assert.Contains(metadataName, Assert.Single(reported));
+    }
+
+    [Fact]
+    public void FromTaskItems_WithNullOptionalMetadata_ShouldFallBackToDefaults()
+    {
+        // Arrange
+        var reported = new List<string>();
+        var metadata = new Dictionary<string, string?>
+        {
+            [BunRuntimePack.RidMetadataName] = "osx-arm64",
+            [BunRuntimePack.RuntimesPathMetadataName] = "/packs/runtimes",
+            [BunRuntimePack.VariantMetadataName] = null,
+            [BunRuntimePack.PriorityMetadataName] = null
+        };
+
+        // Act
+        var pack = Assert.Single(BunRuntimePack.FromTaskItems(new ITaskItem[] { new FakeTaskItem("Null.Pack", metadata) }, reported.Add));
+
+        // Assert
+        Assert.Null(pack.Variant);
+        Assert.Equal(0, pack.Priority);
+        Assert.Empty(reported);
+    }
+
+    [Fact]
+    public void FromTaskItems_WithNullIdentity_ShouldSkipAndReport()
+    {
+        // Arrange
+        var reported = new List<string>();
+        var items = new ITaskItem[] { new FakeTaskItem(itemSpec: null) };
+
+        // Act
+        var packs = BunRuntimePack.FromTaskItems(items, reported.Add);
+
+        // Assert
+        Assert.Empty(packs);
+        Assert.Contains("without an identity", Assert.Single(reported));
+    }
+
+    [Fact]
+    public void Deduplicate_WithUnresolvablePath_ShouldNotThrow()
+    {
+        // Arrange - a path the OS cannot canonicalize must still be usable as a comparison key
+        var packs = new[]
+        {
+            new BunRuntimePack("a", "linux-x64", "::invalid|path\0"),
+            new BunRuntimePack("b", "linux-x64", "::invalid|path\0"),
+            new BunRuntimePack("c", "linux-x64", "/other/runtimes")
+        };
+
+        // Act
+        var result = BunRuntimePack.Deduplicate(packs);
+
+        // Assert - the two identical unresolvable paths still collapse
+        Assert.Equal(2, result.Count);
+        Assert.Equal(new[] { "a", "c" }, result.Select(pack => pack.Id));
     }
 
     [Fact]

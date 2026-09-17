@@ -280,10 +280,17 @@ process_template "$TEMPLATES_DIR/TestBunPackage.csproj.template" "TestBunPackage
 echo "✓ Updated project file with MSBuild Bun targets"
 
 # Build the test project (this should trigger BunRunTask)
+# Normal verbosity so the runtime discovery messages are visible; they are logged at normal importance.
 echo ""
 echo "Building test project..."
 echo "=========================================="
-dotnet build --verbosity minimal
+dotnet build --verbosity normal 2>&1 | tee build.log
+BUILD_STATUS=${PIPESTATUS[0]}
+
+if [ "$BUILD_STATUS" -ne 0 ]; then
+    echo "✗ Build failed with exit code $BUILD_STATUS"
+    exit 1
+fi
 
 echo ""
 echo "=========================================="
@@ -309,6 +316,35 @@ fi
 
 echo ""
 echo "=========================================="
+echo "Verifying the runtime discovery contract..."
+echo "=========================================="
+
+# Proves the whole chain a unit test cannot reach: the packed build/*.props is imported, it contributes
+# @(BunRuntimePack), and the Bun target binds it to the task's RuntimePacks parameter.
+#
+# The two checks below only carry that claim together. The resolver logs the same line whichever contract
+# supplied the pack, so the first check proves resolution happened and the second proves the item - not the
+# deprecated property - is what supplied it.
+CONTRACT_OK=true
+
+if grep -qE "(Using|Selected) Bun runtime pack $RUNTIME_PACKAGE" build.log; then
+    echo "✓ Bun was resolved from runtime pack $RUNTIME_PACKAGE"
+else
+    echo "✗ Expected the build log to report resolving Bun from pack $RUNTIME_PACKAGE"
+    echo "  Runtime-related log lines:"
+    grep -E "Bun runtime pack|Using Bun at|Runtime packs" build.log || echo "  (none)"
+    CONTRACT_OK=false
+fi
+
+if grep -q "deprecated BunRuntime_" build.log; then
+    echo "✗ That pack came from the deprecated BunRuntime_<rid> property, not the @(BunRuntimePack) item"
+    CONTRACT_OK=false
+else
+    echo "✓ That pack came from the @(BunRuntimePack) item, not the deprecated property"
+fi
+
+echo ""
+echo "=========================================="
 
 # Cleanup function
 cleanup() {
@@ -326,8 +362,8 @@ else
     echo "Test directory: $TEST_DIR"
 fi
 
-if [ "$BUN_SUCCESS" = true ]; then
-    echo "✓ E2E test completed successfully - Bun executed"
+if [ "$BUN_SUCCESS" = true ] && [ "$CONTRACT_OK" = true ]; then
+    echo "✓ E2E test completed successfully - Bun executed via the BunRuntimePack contract"
     exit 0
 else
     exit 1

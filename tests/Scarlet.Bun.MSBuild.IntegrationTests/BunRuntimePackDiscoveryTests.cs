@@ -119,6 +119,45 @@ public class BunRuntimePackDiscoveryTests
     }
 
     [Fact]
+    public void Execute_WithNoRuntimeAtAll_ShouldFailWithTheResolverMessageAndNoStackTrace()
+    {
+        // Arrange - no packs, no legacy property, no explicit directory
+        var engine = new MockBuildEngine();
+        var task = new BunRunTask { Command = "--version", BuildEngine = engine };
+
+        // Act
+        var result = task.Execute();
+
+        // Assert
+        Assert.False(result);
+        Assert.Equal(-1, task.ExitCode);
+
+        var error = Assert.Single(engine.Errors).Message;
+        Assert.NotNull(error);
+        Assert.Contains("Bun runtime package not found", error);
+        Assert.Contains("Runtime packs visible to this project: (none)", error);
+
+        // The actionable text is the whole point of that error; a stack trace would bury it
+        Assert.DoesNotContain("at Scarlet.Bun.MSBuild.", error);
+    }
+
+    [Fact]
+    public void Execute_WithNoRuntimeAndContinueOnError_ShouldStillReportButNotFailTheTask()
+    {
+        // Arrange
+        var engine = new MockBuildEngine();
+        var task = new BunRunTask { Command = "--version", BuildEngine = engine, ContinueOnError = true };
+
+        // Act
+        var result = task.Execute();
+
+        // Assert
+        Assert.True(result);
+        Assert.Equal(-1, task.ExitCode);
+        Assert.Single(engine.Errors);
+    }
+
+    [Fact]
     public void CollectRuntimePacks_WithMalformedItem_ShouldWarnAndSkip()
     {
         // Arrange
