@@ -80,16 +80,32 @@ public static class BunRuntimeResolver
     /// </summary>
     public static Platform GetCurrentPlatform()
     {
-        var osPlatform = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? OSPlatform.Windows
-            : RuntimeInformation.IsOSPlatform(OSPlatform.Linux) ? OSPlatform.Linux
-            : RuntimeInformation.IsOSPlatform(OSPlatform.OSX) ? OSPlatform.OSX
-            : default;
+        var osPlatform = DetectOSPlatform(
+            RuntimeInformation.IsOSPlatform(OSPlatform.Windows),
+            RuntimeInformation.IsOSPlatform(OSPlatform.Linux),
+            RuntimeInformation.IsOSPlatform(OSPlatform.OSX));
 
         return GetPlatform(
             osPlatform,
             RuntimeInformation.ProcessArchitecture,
             IsMuslLibc(),
             RuntimeInformation.OSDescription);
+    }
+
+    /// <summary>
+    /// Maps the three OS checks .NET exposes to an <see cref="OSPlatform"/>.
+    /// </summary>
+    /// <returns><see langword="default"/> when none of the three match.</returns>
+    /// <remarks>
+    /// Split out from <see cref="GetCurrentPlatform"/> so the "none of the three matched" case can be
+    /// tested: no real CI host can produce it, since every runner is Windows, Linux, or macOS.
+    /// </remarks>
+    internal static OSPlatform DetectOSPlatform(bool isWindows, bool isLinux, bool isOSX)
+    {
+        return isWindows ? OSPlatform.Windows
+            : isLinux ? OSPlatform.Linux
+            : isOSX ? OSPlatform.OSX
+            : default;
     }
 
     /// <summary>

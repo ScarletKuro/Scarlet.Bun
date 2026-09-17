@@ -111,4 +111,47 @@ public class HostPlatformTests
         Assert.True(Enum.IsDefined(current));
         Assert.Equal(RuntimeInformation.ProcessArchitecture == Architecture.Arm64, current is Platform.WindowsArm64 or Platform.LinuxArm64 or Platform.LinuxMuslArm64 or Platform.MacOsArm64);
     }
+
+    [Fact]
+    public void DetectOSPlatform_WhenWindows_ShouldReturnWindows()
+    {
+        // Act
+        var osPlatform = BunRuntimeResolver.DetectOSPlatform(isWindows: true, isLinux: false, isOSX: false);
+
+        // Assert
+        Assert.Equal(OSPlatform.Windows, osPlatform);
+    }
+
+    [Fact]
+    public void DetectOSPlatform_WhenLinux_ShouldReturnLinux()
+    {
+        // Act
+        var osPlatform = BunRuntimeResolver.DetectOSPlatform(isWindows: false, isLinux: true, isOSX: false);
+
+        // Assert
+        Assert.Equal(OSPlatform.Linux, osPlatform);
+    }
+
+    [Fact]
+    public void DetectOSPlatform_WhenOSX_ShouldReturnOSX()
+    {
+        // Act
+        var osPlatform = BunRuntimeResolver.DetectOSPlatform(isWindows: false, isLinux: false, isOSX: true);
+
+        // Assert
+        Assert.Equal(OSPlatform.OSX, osPlatform);
+    }
+
+    [Fact]
+    public void DetectOSPlatform_WhenNoneMatch_ShouldReturnDefault()
+    {
+        // Arrange - this is the case no real CI host can produce: every runner is Windows, Linux, or
+        // macOS, so GetCurrentPlatform() can never observe all three checks come back false.
+
+        // Act
+        var osPlatform = BunRuntimeResolver.DetectOSPlatform(isWindows: false, isLinux: false, isOSX: false);
+
+        // Assert
+        Assert.Equal(default, osPlatform);
+    }
 }
