@@ -337,6 +337,15 @@ public class BunRunTask : Task
     }
 
     /// <summary>
+    /// First <c>Scarlet.Bun.Runtime.*</c> version that declares a <see cref="BunRuntimePack"/> item.
+    /// </summary>
+    /// <remarks>
+    /// A fixed historical fact rather than a moving target - every release from this one on carries the item, so
+    /// "update to this or later" stays correct indefinitely. Remove it with the rest of the legacy contract.
+    /// </remarks>
+    internal const string FirstItemAwareRuntimeVersion = "1.4.2";
+
+    /// <summary>
     /// Reports packs that only the deprecated property contract knows about.
     /// </summary>
     /// <remarks>
@@ -357,7 +366,7 @@ public class BunRunTask : Task
             Log.LogMessage(
                 MessageImportance.Normal,
                 $"Bun runtime pack {pack} was discovered through the deprecated {GetLegacyPropertyName(pack.Rid)} property. " +
-                $"Update that runtime package to a newer version, which declares a {BunRuntimePack.ItemName} item instead. " +
+                $"Update that runtime package to {FirstItemAwareRuntimeVersion} or later, which declares a {BunRuntimePack.ItemName} item instead. " +
                 "The property contract will be removed in a future major version of Scarlet.Bun.MSBuild.");
         }
     }

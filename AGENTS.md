@@ -164,7 +164,7 @@ It is two deprecations with different lifetimes, and they come out at different 
 | Half | Lives in | Protects | Remove when |
 |------|----------|----------|-------------|
 | Packages *setting* the property | `<PropertyGroup>` in each runtime package's `build/*.props` | New runtime package + old `Scarlet.Bun.MSBuild` | You drop support for the pre-item major of `Scarlet.Bun.MSBuild`. Cheap enough to keep indefinitely. |
-| Task *reading* the property | `BunRunTask.BunRuntime_*`, `CreateLegacyPacks()`, 12 attribute lines across the two `.targets` | Old runtime package + new `Scarlet.Bun.MSBuild` | A **major** version, once the oldest Bun version worth pinning is newer than the first runtime package that emits the item. |
+| Task *reading* the property | `BunRunTask.BunRuntime_*`, `CreateLegacyPacks()`, 12 attribute lines across the two `.targets` | Old runtime package + new `Scarlet.Bun.MSBuild` | A **major** version, once the oldest Bun version worth pinning is newer than **1.4.2**, the first runtime package version that emits the item. |
 
 The second half is the long-lived one: runtime packages are versioned by Bun version, so people pin them on
 purpose, not out of neglect. Breaking that on a task-package upgrade would be a nasty surprise.
@@ -181,9 +181,10 @@ Two things to watch:
   a missing property gives a clear error, a wrong one gives a mystery.
 
 Removal checklist: the six task parameters and `CreateLegacyPacks()`/`ReportDeprecatedPacks()`/
-`GetLegacyPropertyName()`, the `BunRuntimePackSource` enum and `BunRuntimePack.Source`, the six
-`BunRuntime_*` attributes in both `.targets` files, the legacy `<PropertyGroup>` in six `build/*.props`,
-the legacy cases in `BunRuntimePackDiscoveryTests`, and the notes in `README.md` and this file.
+`GetLegacyPropertyName()`/`FirstItemAwareRuntimeVersion`, the `BunRuntimePackSource` enum and
+`BunRuntimePack.Source`, the six `BunRuntime_*` attributes in both `.targets` files, the legacy
+`<PropertyGroup>` in six `build/*.props`, the legacy cases in `BunRuntimePackDiscoveryTests` and
+`RuntimePackagePropsTests`, and the notes in `README.md` and this file.
 
 ### 5. MSBuild Integration (`build/*.props` & `build/*.targets`)
 - Automatically loaded when package is referenced

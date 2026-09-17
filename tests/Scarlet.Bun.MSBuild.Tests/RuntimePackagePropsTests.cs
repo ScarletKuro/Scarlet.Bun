@@ -91,6 +91,27 @@ public class RuntimePackagePropsTests
         Assert.Equal(expected, onDisk);
     }
 
+    [Fact]
+    public void FirstItemAwareRuntimeVersion_ShouldNotBeAheadOfTheVersionBeingBuilt()
+    {
+        // Arrange - the deprecation message tells people to update to this version, so it must be one that
+        // this repository has actually reached. Remove with the legacy contract.
+        var directoryBuildProps = XDocument.Load(Path.Combine(RepositoryRoot, "Directory.Build.props")).Root;
+        Assert.NotNull(directoryBuildProps);
+
+        var bunVersionElement = Assert.Single(directoryBuildProps.Descendants("BunVersion"));
+
+        // Act
+        var bunVersion = Version.Parse(bunVersionElement.Value);
+        var firstItemAware = Version.Parse(BunRunTask.FirstItemAwareRuntimeVersion);
+
+        // Assert
+        Assert.True(
+            firstItemAware <= bunVersion,
+            $"FirstItemAwareRuntimeVersion ({firstItemAware}) is newer than BunVersion ({bunVersion}), "
+            + "so it names a runtime package version that was never published.");
+    }
+
     /// <summary>
     /// Walks up from the test assembly until the directory holding the solution file is found.
     /// </summary>

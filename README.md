@@ -249,11 +249,12 @@ pack resolution entirely. If a pack's `bun` is missing, the next candidate for t
 
 > **Legacy contract (deprecated):** runtime packages also still set a `BunRuntime_<rid>` property (for
 > example `BunRuntime_osx_arm64`), pointing at the package root. It exists so that new runtime packages keep
-> working with older `Scarlet.Bun.MSBuild` versions and vice versa. If a runtime is found *only* through that
-> property — meaning the runtime package predates `BunRuntimePack` — the build logs a message at normal
-> verbosity (`dotnet build -v:n`) telling you which package to update. It is a message rather than a warning
-> because pinning an older runtime package is how you pin a Bun version, and that must not fail builds using
-> `TreatWarningsAsErrors`. The property will be removed in a future major version.
+> working with older `Scarlet.Bun.MSBuild` versions and vice versa. Runtime packages declare `BunRuntimePack`
+> from version **1.4.2** onwards; if a runtime is found *only* through the property — meaning the package is
+> older than that — the build logs a message at normal verbosity (`dotnet build -v:n`) telling you which
+> package to update. It is a message rather than a warning because pinning an older runtime package is how
+> you pin a Bun version, and that must not fail builds using `TreatWarningsAsErrors`. The property will be
+> removed in a future major version.
 
 ## Usage
 

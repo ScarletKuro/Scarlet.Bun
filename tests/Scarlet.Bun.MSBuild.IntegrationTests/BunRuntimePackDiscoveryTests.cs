@@ -73,7 +73,8 @@ public class BunRuntimePackDiscoveryTests
         Assert.Contains(engine.Messages, message =>
             message.Message is not null
             && message.Message.Contains("BunRuntime_osx_arm64")
-            && message.Message.Contains("deprecated"));
+            && message.Message.Contains("deprecated")
+            && message.Message.Contains(BunRunTask.FirstItemAwareRuntimeVersion));
     }
 
     [Fact]
