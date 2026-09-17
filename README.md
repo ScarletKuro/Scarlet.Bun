@@ -4,8 +4,11 @@
 [![codecov](https://codecov.io/gh/ScarletKuro/Scarlet.Bun/graph/badge.svg?token=A7MOQE06ZQ)](https://codecov.io/gh/ScarletKuro/Scarlet.Bun)
 [![GitHub](https://img.shields.io/github/license/ScarletKuro/Scarlet.Bun?color=594ae2&logo=github&style=flat-square)](https://github.com/ScarletKuro/Scarlet.Bun/blob/master/LICENSE)
 [![NuGet version](https://img.shields.io/nuget/v/Scarlet.Bun.MSBuild?color=ff4081&label=nuget%20version&logo=nuget&style=flat-square)](https://www.nuget.org/packages/Scarlet.Bun.MSBuild/)
+[![NuGet CLI version](https://img.shields.io/nuget/v/Scarlet.Bun.Cli?color=ff4081&label=nuget%20cli&logo=nuget&style=flat-square)](https://www.nuget.org/packages/Scarlet.Bun.Cli/)
 
 An MSBuild task package that integrates [Bun](https://bun.sh/) - a fast all-in-one JavaScript runtime - into your .NET build process. This package allows you to run Bun commands as part of your .NET project build, enabling JavaScript/TypeScript bundling, minification, and other Bun-powered operations.
+
+The repository also ships [`Scarlet.Bun.Cli`](#command-line-tool-dotnet-bun), a .NET tool that runs the same pinned Bun from the command line with `dotnet bun ...`.
 
 ## Table of Contents
 
@@ -23,6 +26,10 @@ An MSBuild task package that integrates [Bun](https://bun.sh/) - a fast all-in-o
   - [Task Parameters](#task-parameters)
   - [Output Parameters](#output-parameters)
 - [Example: JavaScript/SCSS Build Script](#example-javascriptscss-build-script)
+- [Command Line Tool (dotnet bun)](#command-line-tool-dotnet-bun)
+  - [Installing the Tool](#installing-the-tool)
+  - [How the Tool Finds Bun](#how-the-tool-finds-bun)
+  - [Environment Variables](#environment-variables)
 - [Development](#development)
 - [Requirements](#requirements)
 - [License](#license)
@@ -431,6 +438,90 @@ Don't forget to add dependencies in `package.json`:
   }
 }
 ```
+
+## Command Line Tool (dotnet bun)
+
+`Scarlet.Bun.Cli` runs Bun from the command line as a .NET tool. Every argument is forwarded to Bun
+verbatim, so anything you can type after `bun` works after `dotnet bun`.
+
+```bash
+dotnet bun install
+dotnet bun run build.mjs
+dotnet bun --version      # prints Bun's version, not the tool's
+```
+
+The reason to use it instead of installing Bun directly is pinning: the Bun version lives in
+`.config/dotnet-tools.json` alongside your other tooling, `dotnet tool restore` brings it down with the
+rest of the repo, and the binary is hash-verified by NuGet. It needs no network at run time.
+
+### Installing the Tool
+
+As a local tool, pinned per repository (recommended):
+
+```bash
+dotnet new tool-manifest          # once per repository
+dotnet tool install Scarlet.Bun.Cli
+dotnet bun --version
+```
+
+Committing `.config/dotnet-tools.json` means every contributor and CI agent gets the same Bun from
+`dotnet tool restore`. Or install it globally:
+
+```bash
+dotnet tool install -g Scarlet.Bun.Cli
+dotnet bun --version
+```
+
+Or run it once without installing anything (.NET 10 SDK):
+
+```bash
+dnx Scarlet.Bun.Cli -- run build.mjs
+```
+
+> **Note:** The tool version *is* the Bun version - `Scarlet.Bun.Cli` 1.4.2 contains Bun 1.4.2, exactly
+> like the `Scarlet.Bun.Runtime.*` packages.
+
+### How the Tool Finds Bun
+
+`Scarlet.Bun.Cli` is published as a platform-specific .NET tool. Installing it pulls one package for your
+platform, and that package **contains the Bun binary** - so `dotnet tool restore` works on a machine with
+no access to github.com, and the Bun you get is byte-identical to the one the MSBuild task uses.
+
+Platforms without a published binary (Alpine/musl, `linux-arm`, riscv64) fall back to a small portable
+package that downloads Bun on first use and caches it per user.
+
+Resolution order:
+
+1. `SCARLET_BUN_PATH`, if set - fails outright when it points at nothing, rather than quietly falling back
+2. the Bun embedded in the installed package
+3. a previously downloaded Bun in the per-user cache
+4. a download
+
+To see what it picked and why:
+
+```bash
+dotnet bun --scarlet-info          # human readable
+dotnet bun --scarlet-info --json   # for scripts
+```
+
+This is the only argument the tool reserves for itself, it is only recognised as the *first* argument, and
+`SCARLET_BUN_PASSTHROUGH=1` disables even that if you need absolute forwarding. It never downloads
+anything - it reports the URL it *would* use.
+
+### Environment Variables
+
+| Variable | Effect |
+|----------|--------|
+| `SCARLET_BUN_PATH` | Use this Bun executable. Highest precedence; errors if it does not exist. |
+| `SCARLET_BUN_VERSION` | Resolve a different Bun version (or `latest`). Bypasses the embedded binary and downloads. |
+| `SCARLET_BUN_CACHE` | Override the download cache root. |
+| `SCARLET_BUN_NO_EMBEDDED` | Ignore the embedded binary and use the cache/download path. |
+| `SCARLET_BUN_DIAGNOSTICS` | Print the resolved Bun path to stderr before running. |
+| `SCARLET_BUN_PASSTHROUGH` | Disable `--scarlet-info` so every argument reaches Bun. |
+| `SCARLET_BUN_DOWNLOAD_TIMEOUT` | Seconds to wait for a concurrent download. Defaults to 300. |
+
+Configuration is environment variables rather than flags on purpose: every command-line argument belongs
+to Bun, so a flag Bun adds in future keeps working without a release of this package.
 
 ## Development
 

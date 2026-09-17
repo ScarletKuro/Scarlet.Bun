@@ -1,5 +1,6 @@
 using Microsoft.Build.Framework;
 using Microsoft.Build.Utilities;
+using Scarlet.Bun.Core;
 
 namespace Scarlet.Bun.MSBuild;
 

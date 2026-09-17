@@ -23,7 +23,7 @@ public class RuntimePackagePropsTests
         // Arrange
         var packageId = BunRuntimeResolver.GetRuntimePackageName(platform);
         var expectedRid = BunRuntimeResolver.GetRuntimeIdentifier(platform);
-        var propsPath = Path.Combine(RepositoryRoot, "src", packageId, "build", $"{packageId}.props");
+        var propsPath = Path.Combine(RepositoryRoot.Path, "src", packageId, "build", $"{packageId}.props");
 
         Assert.True(File.Exists(propsPath), $"Props file not found: {propsPath}");
 
@@ -57,7 +57,7 @@ public class RuntimePackagePropsTests
         // Arrange - remove this test together with the BunRuntime_<rid> contract
         var packageId = BunRuntimeResolver.GetRuntimePackageName(platform);
         var expectedProperty = "BunRuntime_" + BunRuntimeResolver.GetRuntimeIdentifier(platform).Replace('-', '_');
-        var propsPath = Path.Combine(RepositoryRoot, "src", packageId, "build", $"{packageId}.props");
+        var propsPath = Path.Combine(RepositoryRoot.Path, "src", packageId, "build", $"{packageId}.props");
 
         // Act
         var project = XDocument.Load(propsPath).Root;
@@ -83,7 +83,7 @@ public class RuntimePackagePropsTests
 
         // Act
         var onDisk = Directory
-            .EnumerateDirectories(Path.Combine(RepositoryRoot, "src"), "Scarlet.Bun.Runtime.*")
+            .EnumerateDirectories(Path.Combine(RepositoryRoot.Path, "src"), "Scarlet.Bun.Runtime.*")
             .Select(Path.GetFileName)
             .OrderBy(name => name, StringComparer.Ordinal);
 
@@ -96,7 +96,7 @@ public class RuntimePackagePropsTests
     {
         // Arrange - the deprecation message tells people to update to this version, so it must be one that
         // this repository has actually reached. Remove with the legacy contract.
-        var directoryBuildProps = XDocument.Load(Path.Combine(RepositoryRoot, "Directory.Build.props")).Root;
+        var directoryBuildProps = XDocument.Load(Path.Combine(RepositoryRoot.Path, "Directory.Build.props")).Root;
         Assert.NotNull(directoryBuildProps);
 
         var bunVersionElement = Assert.Single(directoryBuildProps.Descendants("BunVersion"));
@@ -110,29 +110,5 @@ public class RuntimePackagePropsTests
             firstItemAware <= bunVersion,
             $"FirstItemAwareRuntimeVersion ({firstItemAware}) is newer than BunVersion ({bunVersion}), "
             + "so it names a runtime package version that was never published.");
-    }
-
-    /// <summary>
-    /// Walks up from the test assembly until the directory holding the solution file is found.
-    /// </summary>
-    private static string RepositoryRoot
-    {
-        get
-        {
-            var directory = new DirectoryInfo(AppContext.BaseDirectory);
-
-            while (directory is not null)
-            {
-                if (File.Exists(Path.Combine(directory.FullName, "Scarlet.Bun.MSBuild.slnx")))
-                {
-                    return directory.FullName;
-                }
-
-                directory = directory.Parent;
-            }
-
-            throw new DirectoryNotFoundException(
-                $"Could not locate the repository root above '{AppContext.BaseDirectory}'.");
-        }
     }
 }

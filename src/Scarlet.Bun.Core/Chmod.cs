@@ -1,8 +1,8 @@
-﻿using Scarlet.Bun.MSBuild.Providers;
+﻿using Scarlet.Bun.Core.Providers;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 
-namespace Scarlet.Bun.MSBuild;
+namespace Scarlet.Bun.Core;
 
 /// <summary>
 /// Factory for creating the platform-correct <see cref="IChmodProvider"/>.

@@ -1,0 +1,200 @@
+using System.Globalization;
+
+namespace Scarlet.Bun.Cli;
+
+/// <summary>
+/// Everything the tool can be configured with.
+/// </summary>
+/// <remarks>
+/// Configuration is environment variables rather than command-line flags because every argument belongs to
+/// Bun: <c>dotnet bun --version</c> has to print Bun's version, and a flag Bun adds tomorrow has to keep
+/// working without a release of this package. The <c>SCARLET_BUN_</c> prefix cannot collide with Bun's own
+/// <c>BUN_*</c> or <c>NODE_*</c> variables.
+/// </remarks>
+internal sealed class BunCliOptions
+{
+    /// <summary>Name of the variable holding an explicit Bun executable path.</summary>
+    public const string PathVariable = "SCARLET_BUN_PATH";
+
+    /// <summary>Name of the variable selecting which Bun version to resolve.</summary>
+    public const string VersionVariable = "SCARLET_BUN_VERSION";
+
+    /// <summary>Name of the variable overriding the cache root.</summary>
+    public const string CacheVariable = "SCARLET_BUN_CACHE";
+
+    /// <summary>Name of the variable that suppresses use of the embedded binary.</summary>
+    public const string NoEmbeddedVariable = "SCARLET_BUN_NO_EMBEDDED";
+
+    /// <summary>Name of the variable that disables the reserved diagnostic flag entirely.</summary>
+    public const string PassthroughVariable = "SCARLET_BUN_PASSTHROUGH";
+
+    /// <summary>Name of the variable that reports the resolved Bun on stderr before running it.</summary>
+    public const string DiagnosticsVariable = "SCARLET_BUN_DIAGNOSTICS";
+
+    /// <summary>Name of the variable overriding how long to wait for a concurrent download.</summary>
+    public const string DownloadTimeoutVariable = "SCARLET_BUN_DOWNLOAD_TIMEOUT";
+
+    /// <summary>The version token meaning "whatever GitHub currently marks as latest".</summary>
+    public const string LatestVersion = "latest";
+
+    private const int DefaultDownloadTimeoutSeconds = 300;
+
+    private BunCliOptions(
+        string? explicitBunPath,
+        string requestedVersion,
+        string cacheRoot,
+        bool ignoreEmbedded,
+        bool purePassthrough,
+        bool diagnostics,
+        int downloadTimeoutSeconds)
+    {
+        ExplicitBunPath = explicitBunPath;
+        RequestedVersion = requestedVersion;
+        CacheRoot = cacheRoot;
+        IgnoreEmbedded = ignoreEmbedded;
+        PurePassthrough = purePassthrough;
+        Diagnostics = diagnostics;
+        DownloadTimeoutSeconds = downloadTimeoutSeconds;
+    }
+
+    /// <summary>An explicit Bun executable supplied by the user, or <see langword="null"/>.</summary>
+    public string? ExplicitBunPath { get; }
+
+    /// <summary>The Bun version to resolve. Either a concrete version or <see cref="LatestVersion"/>.</summary>
+    public string RequestedVersion { get; }
+
+    /// <summary>Root directory for downloaded Bun runtimes.</summary>
+    public string CacheRoot { get; }
+
+    /// <summary>Whether the binary embedded in the package should be ignored.</summary>
+    public bool IgnoreEmbedded { get; }
+
+    /// <summary>Whether the reserved diagnostic flag is disabled, making argument forwarding absolute.</summary>
+    public bool PurePassthrough { get; }
+
+    /// <summary>Whether to report the resolved Bun on stderr before running it.</summary>
+    public bool Diagnostics { get; }
+
+    /// <summary>How long to wait for another process that is already downloading Bun.</summary>
+    public int DownloadTimeoutSeconds { get; }
+
+    /// <summary>Whether the requested version is the floating "latest".</summary>
+    public bool UseLatest => string.Equals(RequestedVersion, LatestVersion, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// The directory handed to the downloader. It is version-scoped on purpose.
+    /// </summary>
+    /// <remarks>
+    /// <c>BunDownloader</c> treats an existing file as a cache hit without checking which version it is. A
+    /// single shared directory would therefore keep serving the first version ever downloaded, silently
+    /// ignoring a later change of <see cref="RequestedVersion"/>. Scoping the directory by version makes
+    /// that existence check mean what it appears to mean.
+    /// </remarks>
+    public string RuntimeDirectory => Path.Combine(CacheRoot, "runtimes", RequestedVersion);
+
+    /// <summary>
+    /// The version to pass to the downloader: <see langword="null"/> asks it for the latest release.
+    /// </summary>
+    public string? DownloadVersion => UseLatest ? null : RequestedVersion;
+
+    /// <summary>
+    /// Reads the configuration from the environment.
+    /// </summary>
+    /// <param name="environment">The environment to read.</param>
+    /// <param name="pinnedVersion">The Bun version this package was built against, used when none is requested.</param>
+    /// <returns>The resolved options.</returns>
+    public static BunCliOptions FromEnvironment(IEnvironmentProvider environment, string pinnedVersion)
+    {
+        var requestedVersion = environment.GetVariable(VersionVariable)?.Trim();
+
+        return new BunCliOptions(
+            explicitBunPath: environment.GetVariable(PathVariable)?.Trim(),
+            requestedVersion: string.IsNullOrEmpty(requestedVersion) ? pinnedVersion : requestedVersion!,
+            cacheRoot: ResolveCacheRoot(environment),
+            ignoreEmbedded: IsEnabled(environment.GetVariable(NoEmbeddedVariable)),
+            purePassthrough: IsEnabled(environment.GetVariable(PassthroughVariable)),
+            diagnostics: IsEnabled(environment.GetVariable(DiagnosticsVariable)),
+            downloadTimeoutSeconds: ReadTimeout(environment.GetVariable(DownloadTimeoutVariable)));
+    }
+
+    /// <summary>
+    /// Picks the per-user cache root for the host platform.
+    /// </summary>
+    /// <remarks>
+    /// Written out per OS rather than using <see cref="Environment.SpecialFolder.LocalApplicationData"/>
+    /// everywhere, because .NET maps that to <c>~/.local/share</c> on macOS, which is not where a macOS
+    /// user expects a cache to live.
+    /// </remarks>
+    internal static string ResolveCacheRoot(IEnvironmentProvider environment)
+    {
+        var overridden = environment.GetVariable(CacheVariable)?.Trim();
+        if (!string.IsNullOrEmpty(overridden))
+        {
+            return overridden!;
+        }
+
+        var home = environment.HomeDirectory;
+
+        if (environment.IsWindows)
+        {
+            var localAppData = environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+
+            return Combine(localAppData) ?? Combine(home) ?? Fallback(environment);
+        }
+
+        if (environment.IsMacOs)
+        {
+            return Combine(home, "Library", "Caches") ?? Fallback(environment);
+        }
+
+        var xdgCache = environment.GetVariable("XDG_CACHE_HOME")?.Trim();
+
+        return Combine(xdgCache) ?? Combine(home, ".cache") ?? Fallback(environment);
+    }
+
+    private static string? Combine(string? root, params string[] segments)
+    {
+        if (string.IsNullOrWhiteSpace(root))
+        {
+            return null;
+        }
+
+        var parts = new List<string> { root! };
+        parts.AddRange(segments);
+        parts.Add("ScarletKuro");
+        parts.Add("Scarlet.Bun");
+
+        return Path.Combine(parts.ToArray());
+    }
+
+    // Containers frequently run without HOME set. Falling back to temp keeps the tool usable there instead
+    // of failing on a path it could not build.
+    private static string Fallback(IEnvironmentProvider environment) =>
+        Path.Combine(environment.TempDirectory, "ScarletKuro", "Scarlet.Bun");
+
+    private static bool IsEnabled(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return false;
+        }
+
+        var trimmed = value!.Trim();
+
+        return trimmed is "1"
+            || string.Equals(trimmed, "true", StringComparison.OrdinalIgnoreCase)
+            || string.Equals(trimmed, "yes", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static int ReadTimeout(string? value)
+    {
+        if (!string.IsNullOrWhiteSpace(value)
+            && int.TryParse(value!.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var seconds)
+            && seconds > 0)
+        {
+            return seconds;
+        }
+
+        return DefaultDownloadTimeoutSeconds;
+    }
+}

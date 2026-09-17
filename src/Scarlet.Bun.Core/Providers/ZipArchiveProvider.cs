@@ -1,6 +1,6 @@
 ﻿using System.IO.Compression;
 
-namespace Scarlet.Bun.MSBuild.Providers;
+namespace Scarlet.Bun.Core.Providers;
 
 /// <summary>
 /// Default <see cref="IZipArchiveProvider"/> implementation that delegates to <see cref="ZipFile"/>.

@@ -69,12 +69,26 @@ The complete MSBuild documentation for LLMs is available at `.github/agents/msbu
 ├── build/
 │   └── BunRuntime.targets             # Shared MSBuild targets for runtime packages
 ├── src/
-│   ├── Scarlet.Bun.MSBuild/           # Main MSBuild task library
+│   ├── Scarlet.Bun.Core/              # Shared library (netstandard2.0, IsPackable=false)
 │   │   ├── Platform.cs                    # Platform enum (Windows/Linux/macOS x64/ARM64)
-│   │   ├── BunRuntimePack.cs              # The @(BunRuntimePack) item contract and its parsing
+│   │   ├── PlatformInfo.cs                # Per-platform RID / archive / executable names
+│   │   ├── BunRuntimePack.cs              # The @(BunRuntimePack) item contract (MSBuild-free)
+│   │   ├── BunRuntimePackSource.cs        # Item vs legacy-property provenance
 │   │   ├── BunRuntimeResolver.cs          # Runtime detection, pack selection and path resolution
-│   │   ├── BunRunTask.cs                  # Main MSBuild task for executing Bun commands
 │   │   ├── BunDownloader.cs               # Runtime download functionality
+│   │   ├── Chmod.cs / IBunLogger.cs       # Platform helpers
+│   │   └── Providers/                     # chmod and zip abstractions
+│   ├── Scarlet.Bun.Cli/               # `dotnet bun` .NET tool (net10.0)
+│   │   ├── Program.cs                     # Composition root
+│   │   ├── BunCliApplication.cs           # Orchestration, reserved flag, diagnostics
+│   │   ├── BunCliResolver.cs              # explicit > embedded > cache > download
+│   │   ├── BunCliOptions.cs               # SCARLET_BUN_* configuration, cache locations
+│   │   ├── ProcessLauncher.cs             # Argument forwarding, stream inheritance, signals
+│   │   └── DiagnosticsReport.cs           # --scarlet-info rendering
+│   ├── Scarlet.Bun.MSBuild/           # Main MSBuild task library
+│   │   ├── BunRunTask.cs                  # Main MSBuild task for executing Bun commands
+│   │   ├── BunRuntimePackFactory.cs       # @(BunRuntimePack) item parsing (the MSBuild-coupled half)
+│   │   ├── MsBuildBunLogger.cs            # IBunLogger over TaskLoggingHelper
 │   │   └── build/
 │   │       ├── Scarlet.Bun.MSBuild.props      # MSBuild properties
 │   │       └── Scarlet.Bun.MSBuild.targets    # MSBuild targets
@@ -111,6 +125,22 @@ The complete MSBuild documentation for LLMs is available at `.github/agents/msbu
 ```
 
 ## Key Components
+
+### 0. Shared Library (`Scarlet.Bun.Core`)
+
+Everything that is not MSBuild-specific lives here: platform detection, `BunRuntimeResolver`,
+`BunDownloader`, `BunRuntimePack`, the chmod/zip providers. `netstandard2.0` so the MSBuild task can load
+it; `IsPackable=false` because it is never published on its own.
+
+Both shipping packages carry the assembly rather than depending on it: `Scarlet.Bun.MSBuild` packs it into
+`tools/netstandard2.0/`, and `Scarlet.Bun.Cli` gets it through its publish output.
+
+**The packing rule, which is easy to break and expensive to discover:** MSBuild resolves a task's
+dependencies from the folder the task assembly lives in, so *every* assembly `Scarlet.Bun.MSBuild`
+references must also appear as a `<None ... PackagePath="tools/netstandard2.0/" />` item. Miss one and the
+task fails to load in every consumer build - while the in-process integration tests stay green, because
+they resolve through ordinary project references. `TaskPackagingTests` encodes this rule and fails in
+milliseconds; the `package-installation` e2e catches it for real.
 
 ### 1. Platform Detection (`Platform.cs` & `BunRuntimeResolver.cs`)
 - Detects the current OS and architecture (Windows/Linux/macOS, x64/ARM64)
@@ -192,6 +222,33 @@ Removal checklist: the six task parameters and `CreateLegacyPacks()`/`ReportDepr
 - Provides default properties
 - Integrates platform-specific runtime packages
 
+### 6. Command Line Tool (`Scarlet.Bun.Cli`)
+
+A .NET tool (`ToolCommandName=dotnet-bun`, invoked as `dotnet bun ...`) that forwards every argument to
+Bun verbatim. Packaged with `RuntimeIdentifiers`, so one `dotnet pack` produces **eight** packages: six
+RID-specific ones with the Bun binary embedded, a portable `any` one that downloads Bun on first use, and
+a top-level pointer package.
+
+Things that will bite you if changed carelessly:
+
+- **The version tracks `$(BunVersion)`**, like the runtime packages. `$(BunCliVersionSuffix)` exists so a
+  CLI-only fix can ship as `1.4.2.1`; without it a re-release at the same version is silently dropped by
+  the deploy push, which skips duplicates.
+- **Push order is load-bearing.** Every RID package must reach the feed *before* the pointer package, or
+  installs fail. A `*.nupkg` glob gets this backwards because `.` sorts before any letter, which is why
+  `deploy.yml` pushes the pointer explicitly last.
+- **Do not set `PublishTrimmed` / `PublishSingleFile` / `PublishAot`.** Each implies `SelfContained`, which
+  would add ~70 MB of .NET runtime on top of a 61-94 MB Bun in every RID package, for no benefit - a
+  dotnet tool already needs a .NET install to be invoked.
+- **The embedded binary must be chmod'd at run time.** NuGet packages carry no Unix permission bits, so it
+  is extracted `0644` and would fail with `EACCES` on first use on Linux and macOS.
+- **Arguments are never parsed.** `--scarlet-info` is the single reserved token, honoured only as the first
+  argument, with `SCARLET_BUN_PASSTHROUGH=1` as a permanent opt-out. Adding tool-level flags would break
+  the promise that anything valid after `bun` is valid after `dotnet bun`.
+- `tests/e2e/cli-tool/verify.sh` depends on `SCARLET_BUN_DIAGNOSTICS=1` printing
+  `Scarlet.Bun: using Bun at <path>` to stderr, and on `--scarlet-info` reporting `Source ... embedded`.
+  Reword either and update that script in the same commit.
+
 ## How to Build
 
 ```bash
@@ -227,6 +284,20 @@ dotnet test tests/Scarlet.Bun.MSBuild.Tests/Scarlet.Bun.MSBuild.Tests.csproj --f
 - Runtime directory name mapping
 - Executable name resolution
 - Path resolution logic
+
+### CLI Tests
+
+Cover the `dotnet bun` tool. Everything except the literal `Process.Start` is unit-testable, through
+`IFileSystem`, `IEnvironmentProvider`, `IProcessLauncher` and an injected base directory - which is how the
+Windows, macOS and Linux cache layouts are all covered from a single CI leg:
+
+```bash
+dotnet test tests/Scarlet.Bun.Cli.Tests/Scarlet.Bun.Cli.Tests.csproj
+```
+
+The most important ones are in `ArgumentForwardingTests`: they assert that the argument list handed to Bun
+is reference-equal to what the user typed, for spaces, embedded quotes, trailing backslashes, non-ASCII,
+empty strings and `--`.
 
 ### Integration Tests
 
@@ -302,6 +373,12 @@ If all three commands succeed, the project is in good shape.
 - [ ] **Package creation succeeds** - `dotnet pack` creates .nupkg file
 - [ ] **No unexpected files in source control** - Check `git status`
 - [ ] **Runtime packages build correctly** - All 6 platform-specific runtime packages compile
+- [ ] **Task dependencies are packed** - `tools/netstandard2.0/` in the packed `Scarlet.Bun.MSBuild` nupkg
+      contains `Scarlet.Bun.Core.dll` alongside the task and the System.IO.Abstractions assemblies
+- [ ] **The staged Bun is the pinned Bun** - `BunBinaryVersionTests` runs the host platform's binary and
+      compares `--version` to `$(BunVersion)`
+- [ ] **CLI packs to 8 packages** - `dotnet pack src/Scarlet.Bun.Cli` yields six RID packages, an `any`
+      package with no Bun in it, and a pointer package containing only `DotnetToolSettings.xml`
 
 ### Common Issues and Solutions
 
@@ -311,6 +388,14 @@ If all three commands succeed, the project is in good shape.
 
 - **Issue:** Dependencies not installed
 - **Solution:** Check that `bun install` command works in TestAssets directory
+
+#### "Could not load file or assembly 'Scarlet.Bun.Core'" in a consumer build
+- **Issue:** The task assembly was packed without one of its dependencies
+- **Solution:** Add a `<None Include="$(OutputPath)\netstandard2.0\<name>.dll" Pack="true" PackagePath="tools/netstandard2.0/" />` item to `Scarlet.Bun.MSBuild.csproj`. `TaskPackagingTests` catches this in milliseconds; the in-process integration tests cannot, because they resolve through project references
+
+#### Bun reports a different version than `$(BunVersion)`
+- **Issue:** The staged binary is stale. This shipped once: the download scripts extracted into the project directory and then searched it, found the binary they were about to replace, skipped the move and wrote the version marker anyway
+- **Solution:** Delete the `<exe>.version` markers and rebuild. `BunBinaryVersionTests` now fails when this happens. The scripts extract to a temp directory and only write the marker after a successful move
 
 #### Build Warnings
 - **Issue:** NU1903 warnings about Microsoft.Build packages

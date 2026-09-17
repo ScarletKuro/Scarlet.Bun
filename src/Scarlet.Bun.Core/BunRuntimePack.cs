@@ -1,10 +1,8 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.IO;
-using Microsoft.Build.Framework;
 
-namespace Scarlet.Bun.MSBuild;
+namespace Scarlet.Bun.Core;
 
 /// <summary>
 /// A Bun runtime pack contributed to the build through the <c>BunRuntimePack</c> MSBuild item.
@@ -107,66 +105,6 @@ public sealed class BunRuntimePack
     /// that no runtime package described as an item - which is exactly the case worth reporting.
     /// </remarks>
     public BunRuntimePackSource Source { get; }
-
-    /// <summary>
-    /// Builds the list of packs described by the given MSBuild items, dropping malformed and duplicate entries.
-    /// </summary>
-    /// <param name="items">The <c>BunRuntimePack</c> items. The sequence, and any entry in it, may be <see langword="null"/>.</param>
-    /// <param name="onInvalidItem">Invoked with a human readable reason for every item that had to be dropped.</param>
-    /// <returns>The valid, de-duplicated packs in declaration order.</returns>
-    public static IReadOnlyList<BunRuntimePack> FromTaskItems(IEnumerable<ITaskItem?>? items, Action<string>? onInvalidItem = null)
-    {
-        if (items is null)
-        {
-            return Array.Empty<BunRuntimePack>();
-        }
-
-        var packs = new List<BunRuntimePack>();
-
-        foreach (var item in items)
-        {
-            if (item is null)
-            {
-                continue;
-            }
-
-            var id = item.ItemSpec?.Trim();
-            if (string.IsNullOrEmpty(id))
-            {
-                onInvalidItem?.Invoke($"A {ItemName} item without an identity was ignored.");
-                continue;
-            }
-
-            var rid = item.GetMetadata(RidMetadataName)?.Trim();
-            if (string.IsNullOrEmpty(rid))
-            {
-                onInvalidItem?.Invoke($"{ItemName} \"{id}\" was ignored because it does not set the \"{RidMetadataName}\" metadata.");
-                continue;
-            }
-
-            var runtimesPath = item.GetMetadata(RuntimesPathMetadataName)?.Trim();
-            if (string.IsNullOrEmpty(runtimesPath))
-            {
-                onInvalidItem?.Invoke($"{ItemName} \"{id}\" was ignored because it does not set the \"{RuntimesPathMetadataName}\" metadata.");
-                continue;
-            }
-
-            var variant = item.GetMetadata(VariantMetadataName);
-            var priorityText = item.GetMetadata(PriorityMetadataName)?.Trim();
-            var priority = 0;
-
-            if (!string.IsNullOrEmpty(priorityText)
-                && !int.TryParse(priorityText, NumberStyles.Integer, CultureInfo.InvariantCulture, out priority))
-            {
-                onInvalidItem?.Invoke($"{ItemName} \"{id}\" has a non-numeric \"{PriorityMetadataName}\" metadata (\"{priorityText}\"); 0 was used instead.");
-                priority = 0;
-            }
-
-            packs.Add(new BunRuntimePack(id!, rid!, runtimesPath!, variant, priority));
-        }
-
-        return Deduplicate(packs);
-    }
 
     /// <summary>
     /// Removes packs that resolve to the same RID and directory.

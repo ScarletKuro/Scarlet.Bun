@@ -4,6 +4,10 @@ param (
   [string]$BunVersion
 )
 
+# Any failure must stop the script before the version marker is written. Without this, a failed download or
+# move would still stamp the marker, and every later build would skip the download and keep a stale binary.
+$ErrorActionPreference = 'Stop'
+
 # Version marker file to track which version is downloaded
 $versionFile = "$ExecutablePath.version"
 
@@ -36,48 +40,46 @@ if (-not $needsDownload) {
 }
 
 $downloadUrl = "https://github.com/oven-sh/bun/releases/download/bun-v$($BunVersion)/$($DownloadFilename)"
-# Use unique temp file name to avoid conflicts when multiple projects build in parallel
-$tempZip = "$env:TEMP\bun-$([System.Guid]::NewGuid().ToString('N').Substring(0,8)).zip"
-$extractDir = Split-Path $ExecutablePath
+# Unique temp paths so parallel project builds never collide.
+$unique = [System.Guid]::NewGuid().ToString('N').Substring(0, 8)
+$tempZip = Join-Path $env:TEMP "bun-$unique.zip"
 
-Write-Host "Downloading Bun from $downloadUrl"
-Invoke-WebRequest -Uri $downloadUrl -OutFile $tempZip -UseBasicParsing
+# Extract into a temp directory, NEVER next to $ExecutablePath. Extracting into the project directory made
+# the search below find the binary it was about to replace, so the move was skipped as a no-op and a stale
+# binary kept its place while the marker advertised the new version.
+$tempExtract = Join-Path $env:TEMP "bun-extract-$unique"
 
-Write-Host "Extracting to $extractDir"
-Expand-Archive -Path $tempZip -DestinationPath $extractDir -Force
-
-# Bun zip files contain a directory with the bun executable inside
-# Find the executable and move it to the correct location
-$extractedFiles = Get-ChildItem -Path $extractDir -Recurse -File | Where-Object { $_.Name -match "^bun(\.exe)?$" -and $_.DirectoryName -notlike "*__MACOSX*" }
-if ($extractedFiles) {
-  $bunExe = $extractedFiles | Select-Object -First 1
-  if ($bunExe.FullName -ne $ExecutablePath) {
-    Write-Host "Moving $($bunExe.FullName) to $ExecutablePath"
-    Move-Item -Path $bunExe.FullName -Destination $ExecutablePath -Force
-    
-    # Clean up only extracted bun-* directories (not project directories like build/)
-    Get-ChildItem -Path $extractDir -Directory | Where-Object { $_.Name -like "bun-*" -or $_.Name -eq "__MACOSX" } | ForEach-Object {
-      Remove-Item -Path $_.FullName -Recurse -Force -ErrorAction SilentlyContinue
-    }
-  }
-}
-
-# Clean up temp file with retry logic
 try {
-  Remove-Item $tempZip -ErrorAction Stop
-} catch {
-  Write-Warning "Could not remove temp file $tempZip : $($_.Exception.Message)"
-  # Try to remove it again after a short delay
-  Start-Sleep -Milliseconds 100
-  try {
-    Remove-Item $tempZip -ErrorAction Stop
-  } catch {
-    Write-Warning "Second attempt to remove temp file failed. Continuing anyway."
+  Write-Host "Downloading Bun from $downloadUrl"
+  Invoke-WebRequest -Uri $downloadUrl -OutFile $tempZip -UseBasicParsing
+
+  Write-Host "Extracting to $tempExtract"
+  New-Item -ItemType Directory -Path $tempExtract -Force | Out-Null
+  Expand-Archive -Path $tempZip -DestinationPath $tempExtract -Force
+
+  # Bun zip files contain a directory with the bun executable inside.
+  $bunExe = Get-ChildItem -Path $tempExtract -Recurse -File |
+    Where-Object { $_.Name -match "^bun(\.exe)?$" -and $_.DirectoryName -notlike "*__MACOSX*" } |
+    Select-Object -First 1
+
+  if (-not $bunExe) {
+    throw "The archive '$DownloadFilename' did not contain a bun executable."
   }
+
+  Write-Host "Moving $($bunExe.FullName) to $ExecutablePath"
+  New-Item -ItemType Directory -Path (Split-Path $ExecutablePath) -Force | Out-Null
+  Move-Item -Path $bunExe.FullName -Destination $ExecutablePath -Force
+
+  if (-not (Test-Path $ExecutablePath)) {
+    throw "Bun was not present at $ExecutablePath after extraction."
+  }
+
+  # Only now is the marker true.
+  Set-Content -Path $versionFile -Value $BunVersion -NoNewline
+  Write-Host "Version marker created: $versionFile"
+  Write-Host "Bun setup complete at $ExecutablePath"
 }
-
-# Write version marker file
-Set-Content -Path $versionFile -Value $BunVersion -NoNewline
-Write-Host "Version marker created: $versionFile"
-
-Write-Host "Bun setup complete at $ExecutablePath"
+finally {
+  Remove-Item -Path $tempZip -Force -ErrorAction SilentlyContinue
+  Remove-Item -Path $tempExtract -Recurse -Force -ErrorAction SilentlyContinue
+}

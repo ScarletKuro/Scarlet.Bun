@@ -66,8 +66,17 @@
     <PackageReference Include="System.IO.Abstractions" Version="22.1.0" PrivateAssets="all" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Shared implementation, also used by Scarlet.Bun.Cli. PrivateAssets keeps its own package
+         references from leaking into this package's dependency list; the assembly itself is packed below. -->
+    <ProjectReference Include="..\Scarlet.Bun.Core\Scarlet.Bun.Core.csproj" PrivateAssets="all" />
+  </ItemGroup>
+
   <!-- Pack copied DLLs (We get them from CopyLocalLockFileAssemblies) -->
   <ItemGroup>
+    <!-- The task will not load without this: UsingTask points at tools/netstandard2.0/Scarlet.Bun.MSBuild.dll,
+         which now depends on Scarlet.Bun.Core.dll sitting next to it. -->
+    <None Include="$(OutputPath)\netstandard2.0\Scarlet.Bun.Core.dll" Pack="true" PackagePath="tools/netstandard2.0/" />
     <None Include="$(OutputPath)\netstandard2.0\System.IO.Abstractions.dll" Pack="true" PackagePath="tools/netstandard2.0/" />
     <None Include="$(OutputPath)\netstandard2.0\TestableIO.System.IO.Abstractions.dll" Pack="true" PackagePath="tools/netstandard2.0/" />
     <None Include="$(OutputPath)\netstandard2.0\TestableIO.System.IO.Abstractions.Wrappers.dll" Pack="true" PackagePath="tools/netstandard2.0/" />

@@ -1,5 +1,4 @@
 using System.IO.Abstractions.TestingHelpers;
-using Scarlet.Bun.MSBuild.Providers;
 
 namespace Scarlet.Bun.MSBuild.Tests;
 

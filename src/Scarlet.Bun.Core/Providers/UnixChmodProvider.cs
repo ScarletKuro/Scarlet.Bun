@@ -3,7 +3,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Runtime.InteropServices;
 
-namespace Scarlet.Bun.MSBuild.Providers;
+namespace Scarlet.Bun.Core.Providers;
 
 /// <summary>
 /// Unix-specific implementation of <see cref="IChmodProvider"/> that applies executable

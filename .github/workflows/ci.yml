@@ -123,6 +123,13 @@ jobs:
             --configuration Release \
             --output ./packages
 
+          # Pack the dotnet tool. Like the runtime packages it versions from BunVersion, so no -p:Version;
+          # and no --no-build, because one pack fans out into a build per runtime identifier. This produces
+          # the six RID packages, the portable 'any' package and the top-level pointer package.
+          dotnet pack src/Scarlet.Bun.Cli/Scarlet.Bun.Cli.csproj \
+            --configuration Release \
+            --output ./packages
+
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "BUN_VERSION=$BUN_VERSION" >> $GITHUB_ENV
 
@@ -130,6 +137,9 @@ jobs:
         shell: bash
         run: ls -lh ./packages/
 
+      # The Scarlet.Bun.Cli RID packages are excluded: each embeds a 60-90 MB Bun, so uploading all six
+      # from every matrix leg would cost gigabytes per push for no diagnostic value. The CLI E2E step
+      # below consumes them straight off disk instead.
       - name: Upload packages
         uses: actions/upload-artifact@v4
         with:
@@ -137,6 +147,7 @@ jobs:
           path: |
             ./packages/*.nupkg
             ./packages/*.snupkg
+            !./packages/Scarlet.Bun.Cli.*.nupkg
 
       - name: E2E Test - Package installation
         shell: bash
@@ -155,6 +166,15 @@ jobs:
         run: |
           chmod +x tests/e2e/multi-tfm/verify.sh
           tests/e2e/multi-tfm/verify.sh "${{ github.workspace }}" "${{ env.VERSION }}" "${{ env.BUN_VERSION }}"
+
+      # Runs on every matrix leg deliberately: this is the only thing that proves the correct RID
+      # sub-package is selected on win-arm64 and linux-arm64, and that the embedded Bun is executable
+      # after NuGet extraction strips the Unix permission bits.
+      - name: E2E Test - CLI tool
+        shell: bash
+        run: |
+          chmod +x tests/e2e/cli-tool/verify.sh
+          tests/e2e/cli-tool/verify.sh "${{ github.workspace }}" "${{ env.VERSION }}" "${{ env.BUN_VERSION }}"
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5

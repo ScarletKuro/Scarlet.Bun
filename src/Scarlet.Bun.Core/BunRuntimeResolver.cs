@@ -4,9 +4,9 @@ using System.IO;
 using System.IO.Abstractions;
 using System.Runtime.InteropServices;
 using System.Text;
-using Scarlet.Bun.MSBuild.Providers;
+using Scarlet.Bun.Core.Providers;
 
-namespace Scarlet.Bun.MSBuild;
+namespace Scarlet.Bun.Core;
 
 /// <summary>
 /// Helper class for detecting and resolving Bun runtime paths.

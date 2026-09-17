@@ -1,4 +1,4 @@
-﻿namespace Scarlet.Bun.MSBuild;
+﻿namespace Scarlet.Bun.Core;
 
 public sealed class PlatformInfo
 {

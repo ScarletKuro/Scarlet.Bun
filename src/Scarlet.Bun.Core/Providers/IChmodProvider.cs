@@ -1,4 +1,4 @@
-﻿namespace Scarlet.Bun.MSBuild.Providers;
+﻿namespace Scarlet.Bun.Core.Providers;
 
 /// <summary>
 /// Defines an abstraction for applying executable file permissions.

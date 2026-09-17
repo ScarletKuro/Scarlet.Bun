@@ -6,9 +6,9 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using Scarlet.Bun.MSBuild.Providers;
+using Scarlet.Bun.Core.Providers;
 
-namespace Scarlet.Bun.MSBuild;
+namespace Scarlet.Bun.Core;
 
 /// <summary>
 /// Handles downloading Bun runtimes from GitHub releases.
@@ -197,7 +197,7 @@ public sealed class BunDownloader
         {
             Timeout = TimeSpan.FromMinutes(5)
         };
-        client.DefaultRequestHeaders.Add("User-Agent", "Scarlet.Bun.MSBuild");
+        client.DefaultRequestHeaders.Add("User-Agent", "Scarlet.Bun");
         return client;
     }
 

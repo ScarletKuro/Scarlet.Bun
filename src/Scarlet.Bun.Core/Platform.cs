@@ -1,4 +1,4 @@
-namespace Scarlet.Bun.MSBuild;
+namespace Scarlet.Bun.Core;
 
 /// <summary>
 /// Represents the supported platforms for Bun runtime.

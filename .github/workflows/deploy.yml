@@ -112,6 +112,13 @@ jobs:
             --configuration Release \
             --output ./packages
 
+          # Pack the dotnet tool. Like the runtime packages it versions from BunVersion, so no /p:Version;
+          # and no --no-build, because one pack fans out into a build per runtime identifier. This produces
+          # the six RID packages, the portable 'any' package and the top-level pointer package.
+          dotnet pack src/Scarlet.Bun.Cli/Scarlet.Bun.Cli.csproj \
+            --configuration Release \
+            --output ./packages
+
       - name: List generated packages
         run: ls -lh ./packages/
 
@@ -130,8 +137,30 @@ jobs:
           user: ${{ secrets.NUGET_USER }}
 
       - name: Push packages to NuGet
+        shell: bash
         run: |
-          dotnet nuget push "./packages/*.nupkg" \
+          # The .NET CLI picks a tool's RID-specific package using the version of the top-level pointer
+          # package, so the pointer has to be the LAST thing to appear on the feed. A "*.nupkg" glob pushes
+          # in lexicographic order, and '.' sorts before any letter, which puts
+          # Scarlet.Bun.Cli.<version>.nupkg ahead of Scarlet.Bun.Cli.<rid>.<version>.nupkg - exactly the
+          # wrong way round. Any install during that window fails.
+          CLI_POINTER="./packages/Scarlet.Bun.Cli.${{ steps.get_bun_version.outputs.bun_version }}.nupkg"
+
+          if [ ! -f "$CLI_POINTER" ]; then
+            echo "Expected the Scarlet.Bun.Cli pointer package at $CLI_POINTER"
+            ls -1 ./packages/
+            exit 1
+          fi
+
+          for package in ./packages/*.nupkg; do
+            [ "$package" = "$CLI_POINTER" ] && continue
+            dotnet nuget push "$package" \
+              --api-key "${{ steps.login.outputs.NUGET_API_KEY }}" \
+              --source "https://api.nuget.org/v3/index.json" \
+              --skip-duplicate
+          done
+
+          dotnet nuget push "$CLI_POINTER" \
             --api-key "${{ steps.login.outputs.NUGET_API_KEY }}" \
             --source "https://api.nuget.org/v3/index.json" \
             --skip-duplicate
@@ -139,7 +168,18 @@ jobs:
       - name: Publish to GitHub Packages
         shell: bash
         run: |
-          dotnet nuget push "./packages/*.nupkg" \
+          # Same ordering rule as above: every RID package first, the pointer last.
+          CLI_POINTER="./packages/Scarlet.Bun.Cli.${{ steps.get_bun_version.outputs.bun_version }}.nupkg"
+
+          for package in ./packages/*.nupkg; do
+            [ "$package" = "$CLI_POINTER" ] && continue
+            dotnet nuget push "$package" \
+              --source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json" \
+              --api-key "${{ secrets.GITHUB_TOKEN }}" \
+              --skip-duplicate
+          done
+
+          dotnet nuget push "$CLI_POINTER" \
             --source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json" \
             --api-key "${{ secrets.GITHUB_TOKEN }}" \
             --skip-duplicate
@@ -148,3 +188,8 @@ jobs:
         run: |
           chmod +x tests/e2e/package-installation/verify.sh
           tests/e2e/package-installation/verify.sh "${{ github.workspace }}" "${{ steps.get_version.outputs.version }}" "${{ steps.get_bun_version.outputs.bun_version }}"
+
+      - name: E2E Test - CLI tool
+        run: |
+          chmod +x tests/e2e/cli-tool/verify.sh
+          tests/e2e/cli-tool/verify.sh "${{ github.workspace }}" "${{ steps.get_version.outputs.version }}" "${{ steps.get_bun_version.outputs.bun_version }}"

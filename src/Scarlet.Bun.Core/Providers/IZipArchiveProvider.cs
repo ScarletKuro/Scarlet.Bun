@@ -1,6 +1,6 @@
 ﻿using System.IO.Compression;
 
-namespace Scarlet.Bun.MSBuild.Providers;
+namespace Scarlet.Bun.Core.Providers;
 
 /// <summary>
 /// Abstracts zip archive operations so they can be replaced in tests.

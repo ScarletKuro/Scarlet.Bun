@@ -4,13 +4,22 @@ This document describes how to deploy new versions of the Scarlet.Bun.MSBuild Nu
 
 ## Overview
 
-The project consists of 6 NuGet packages:
+The project publishes 15 NuGet packages:
+
 1. `Scarlet.Bun.MSBuild` - Main MSBuild task package
 2. `Scarlet.Bun.Runtime.windows-x64-baseline` - Windows x64 runtime
-3. `Scarlet.Bun.Runtime.linux-x64-baseline` - Linux x64 runtime
-4. `Scarlet.Bun.Runtime.linux-aarch64` - Linux ARM64 runtime
-5. `Scarlet.Bun.Runtime.darwin-x64-baseline` - macOS x64 runtime
-6. `Scarlet.Bun.Runtime.darwin-aarch64` - macOS ARM64 runtime
+3. `Scarlet.Bun.Runtime.windows-aarch64` - Windows ARM64 runtime
+4. `Scarlet.Bun.Runtime.linux-x64-baseline` - Linux x64 runtime
+5. `Scarlet.Bun.Runtime.linux-aarch64` - Linux ARM64 runtime
+6. `Scarlet.Bun.Runtime.darwin-x64-baseline` - macOS x64 runtime
+7. `Scarlet.Bun.Runtime.darwin-aarch64` - macOS ARM64 runtime
+8. `Scarlet.Bun.Cli` - the `dotnet bun` tool, which is itself **eight** packages: one per runtime
+   identifier (six), a portable `any` fallback, and a top-level pointer package. A single
+   `dotnet pack` produces all of them.
+
+`Scarlet.Bun.Core` is a shared library used by both shipping packages. It is deliberately **not**
+published: `Scarlet.Bun.MSBuild` packs the assembly into its `tools/netstandard2.0/` folder and
+`Scarlet.Bun.Cli` carries it in its publish output.
 
 ## Prerequisites
 
@@ -173,9 +182,25 @@ dotnet pack src/Scarlet.Bun.Runtime.linux-aarch64/Scarlet.Bun.Runtime.linux-aarc
 dotnet pack src/Scarlet.Bun.Runtime.darwin-x64-baseline/Scarlet.Bun.Runtime.darwin-x64-baseline.csproj --configuration Release --output ./packages /p:Version=$VERSION
 dotnet pack src/Scarlet.Bun.Runtime.darwin-aarch64/Scarlet.Bun.Runtime.darwin-aarch64.csproj --configuration Release --output ./packages /p:Version=$VERSION
 
-# Push to NuGet (requires API key)
-dotnet nuget push "./packages/*.nupkg" --api-key YOUR_API_KEY --source https://api.nuget.org/v3/index.json --skip-duplicate
-dotnet nuget push "./packages/*.snupkg" --api-key YOUR_API_KEY --source https://api.nuget.org/v3/index.json --skip-duplicate
+# Pack the dotnet tool. No /p:Version - it versions from BunVersion, like the runtime packages.
+# This one command produces eight packages: six RID-specific, one portable "any", one pointer.
+dotnet pack src/Scarlet.Bun.Cli/Scarlet.Bun.Cli.csproj --configuration Release --output ./packages
+
+# Push to NuGet (requires API key).
+#
+# The pointer package MUST go last. The .NET CLI resolves a tool's RID-specific package from the version
+# of the pointer package, so if the pointer is live before its RID packages, every install in that window
+# fails. A "*.nupkg" glob gets this exactly backwards: '.' sorts before any letter, so
+# Scarlet.Bun.Cli.<version>.nupkg would be pushed ahead of Scarlet.Bun.Cli.<rid>.<version>.nupkg.
+BUN_VERSION=$(sed -n 's/.*<BunVersion>\([^<]*\)<\/BunVersion>.*/\1/p' Directory.Build.props)
+CLI_POINTER="./packages/Scarlet.Bun.Cli.${BUN_VERSION}.nupkg"
+
+for package in ./packages/*.nupkg; do
+  [ "$package" = "$CLI_POINTER" ] && continue
+  dotnet nuget push "$package" --api-key YOUR_API_KEY --source https://api.nuget.org/v3/index.json --skip-duplicate
+done
+
+dotnet nuget push "$CLI_POINTER" --api-key YOUR_API_KEY --source https://api.nuget.org/v3/index.json --skip-duplicate
 ```
 
 ## Version Strategy
@@ -189,7 +214,14 @@ Recommended version strategy:
 
 ## Notes
 
-- All packages must use the same version number
+- `Scarlet.Bun.MSBuild` versions from the git tag. `Scarlet.Bun.Runtime.*` and `Scarlet.Bun.Cli` version
+  from `$(BunVersion)` in `Directory.Build.props`, so their version *is* the Bun version they contain
+- **The `Scarlet.Bun.Cli` pointer package must be pushed last**, after all seven of its sub-packages. The
+  .NET CLI resolves the RID-specific package from the pointer's version, so publishing the pointer first
+  makes every install fail until the rest land. `deploy.yml` pushes file-by-file for this reason rather
+  than using a `*.nupkg` glob
+- A CLI-only fix cannot be released at an unchanged `BunVersion`: `--skip-duplicate` would drop it
+  silently. Set `$(BunCliVersionSuffix)` (for example `.1`, giving `1.4.2.1`) to ship one
 - Symbol packages (`.snupkg`) are uploaded for debugging support
 - The workflow uses `--skip-duplicate` to allow re-running failed deployments
 - Runtime binaries are downloaded on-demand during build if not present

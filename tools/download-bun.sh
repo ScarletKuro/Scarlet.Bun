@@ -32,41 +32,50 @@ if [ -f "$EXECUTABLE_PATH" ]; then
 fi
 
 DOWNLOAD_URL="https://github.com/oven-sh/bun/releases/download/bun-v$BUN_VERSION/$DOWNLOAD_FILENAME"
-# Use unique temp file name to avoid conflicts when multiple projects build in parallel
-TMP_ZIP="/tmp/bun-$(uuidgen | cut -d'-' -f1).zip"
-EXTRACT_DIR=$(dirname "$EXECUTABLE_PATH")
+
+# Unique temp paths so parallel project builds never collide.
+TMP_ZIP="$(mktemp -t bun-XXXXXXXX.zip)"
+
+# Extract into a temp directory, NEVER next to $EXECUTABLE_PATH. Extracting into the project directory made
+# the search below find the binary it was about to replace, so the move was skipped as a no-op and a stale
+# binary kept its place while the marker advertised the new version.
+TMP_EXTRACT="$(mktemp -d -t bun-extract-XXXXXXXX)"
+
+cleanup() {
+  rm -f "$TMP_ZIP" 2>/dev/null || true
+  rm -rf "$TMP_EXTRACT" 2>/dev/null || true
+}
+trap cleanup EXIT
 
 echo "Downloading Bun from $DOWNLOAD_URL"
-curl -L "$DOWNLOAD_URL" -o "$TMP_ZIP"
+curl -fL "$DOWNLOAD_URL" -o "$TMP_ZIP"
 
-echo "Extracting to $EXTRACT_DIR"
-unzip -o "$TMP_ZIP" -d "$EXTRACT_DIR"
+echo "Extracting to $TMP_EXTRACT"
+unzip -o -q "$TMP_ZIP" -d "$TMP_EXTRACT"
 
 # Bun zip files contain a directory structure - find and move the executable
-# Extract the expected filename (e.g., "bun" or "bun.exe") from the target path
 EXPECTED_FILENAME=$(basename "$EXECUTABLE_PATH")
 echo "Looking for executable named: $EXPECTED_FILENAME"
 
-BUN_EXE=$(find "$EXTRACT_DIR" -type f -name "$EXPECTED_FILENAME" -not -path "*/.*" | head -n 1)
-if [ -n "$BUN_EXE" ] && [ "$BUN_EXE" != "$EXECUTABLE_PATH" ]; then
-  echo "Moving $BUN_EXE to $EXECUTABLE_PATH"
-  mv "$BUN_EXE" "$EXECUTABLE_PATH"
-  
-  # Clean up only extracted bun-* directories (not project directories like build/)
-  find "$EXTRACT_DIR" -mindepth 1 -maxdepth 1 -type d -name "bun-*" -exec rm -rf {} + 2>/dev/null || true
-  # Also clean up __MACOSX if present
-  [ -d "$EXTRACT_DIR/__MACOSX" ] && rm -rf "$EXTRACT_DIR/__MACOSX" 2>/dev/null || true
+BUN_EXE=$(find "$TMP_EXTRACT" -type f -name "$EXPECTED_FILENAME" -not -path "*__MACOSX*" | head -n 1)
+
+if [ -z "$BUN_EXE" ]; then
+  echo "Error: the archive '$DOWNLOAD_FILENAME' did not contain an executable named '$EXPECTED_FILENAME'." >&2
+  exit 1
 fi
 
-# Clean up temp file with error handling
-if ! rm "$TMP_ZIP" 2>/dev/null; then
-  echo "Warning: Could not remove temp file $TMP_ZIP"
+echo "Moving $BUN_EXE to $EXECUTABLE_PATH"
+mkdir -p "$(dirname "$EXECUTABLE_PATH")"
+mv -f "$BUN_EXE" "$EXECUTABLE_PATH"
+
+if [ ! -f "$EXECUTABLE_PATH" ]; then
+  echo "Error: Bun was not present at $EXECUTABLE_PATH after extraction." >&2
+  exit 1
 fi
 
-# Write version marker file
+chmod +x "$EXECUTABLE_PATH"
+
+# Only now is the marker true.
 echo -n "$BUN_VERSION" > "$VERSION_FILE"
 echo "Version marker created: $VERSION_FILE"
-
-# Ensure the binary is executable
-chmod +x "$EXECUTABLE_PATH"
 echo "Bun setup complete at $EXECUTABLE_PATH"
