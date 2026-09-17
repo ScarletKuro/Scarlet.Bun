@@ -48,7 +48,8 @@ dotnet bun run build.mjs
 ```
 
 The tool version *is* the Bun version, so `.config/dotnet-tools.json` pins Bun alongside the rest of your
-tooling. The platform-specific package embeds the Bun binary, so it needs no network at run time.
+tooling. `Scarlet.Bun.Cli` is a pointer package; installing it also pulls a matching `Scarlet.Bun.Cli.*`
+sub-package for your platform, and that one embeds the Bun binary, so it needs no network at run time.
 
 📖 **[Full documentation →](src/Scarlet.Bun.Cli/README.md)** — installing, how it finds Bun, and the
 environment variables.
@@ -68,8 +69,13 @@ environment variables.
 | [Scarlet.Bun.Runtime.darwin-x64-baseline](https://www.nuget.org/packages/Scarlet.Bun.Runtime.darwin-x64-baseline/) | Bun for macOS x64 |
 | [Scarlet.Bun.Runtime.darwin-aarch64](https://www.nuget.org/packages/Scarlet.Bun.Runtime.darwin-aarch64/) | Bun for macOS ARM64 |
 
-The `Scarlet.Bun.Runtime.*` packages are consumed by `Scarlet.Bun.MSBuild`; the CLI embeds its own Bun and
-does not use them. Their package version is the Bun version they contain.
+The `Scarlet.Bun.Runtime.*` packages are consumed by `Scarlet.Bun.MSBuild` and can also be installed
+directly (see its README); the CLI embeds its own Bun and does not use them. Their package version is the
+Bun version they contain.
+
+`Scarlet.Bun.Cli` restores its own per-platform `Scarlet.Bun.Cli.*` sub-packages (one per RID, plus a
+portable `.any` fallback) automatically — unlike the `Runtime.*` packages, these are a `dotnet tool`
+implementation detail, never meant to be installed directly, so they aren't listed here.
 
 ## Supported Platforms
 

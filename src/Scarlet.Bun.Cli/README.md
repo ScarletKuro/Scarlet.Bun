@@ -50,13 +50,19 @@ dnx Scarlet.Bun.Cli -- run build.mjs
 
 ## How it finds Bun
 
-Installing pulls one package for your platform, and that package carries the matching Bun binary.
-A small portable package is also published as a fallback; it downloads Bun on first use and caches it
-per user.
+`Scarlet.Bun.Cli` is a pointer package: it owns the `dotnet-bun` command but carries no Bun binary itself.
+Installing it makes `dotnet tool install`/`dotnet tool restore` also pull one matching sub-package for your
+machine's RID — `Scarlet.Bun.Cli.win-x64`, `Scarlet.Bun.Cli.linux-arm64`, and so on — and *that* package
+embeds the actual Bun binary. This is automatic; you never name a sub-package yourself, and running
+`dotnet add package Scarlet.Bun.Cli.<rid>` on one directly installs nothing usable — it carries no library
+assets, only a tool payload NuGet places when `Scarlet.Bun.Cli` asks for it.
 
 **Supported platforms are Windows, Linux and macOS on x64 or arm64**, including musl-based Linux
-distributions such as Alpine. Any other architecture gets an explanatory error rather than a mismatched
-binary — install Bun through its own installer and point at it with `SCARLET_BUN_PATH` if you need one.
+distributions such as Alpine — one sub-package per combination, eight in total. Hosts outside that matrix
+restore `Scarlet.Bun.Cli.any` instead: a portable fallback with no embedded binary, so it downloads Bun on
+first use and caches it per user rather than shipping a mismatched one. Any other architecture gets an
+explanatory error rather than a mismatched binary — install Bun through its own installer and point at it
+with `SCARLET_BUN_PATH` if you need one.
 
 Resolution order:
 
@@ -90,6 +96,18 @@ That is the only argument the tool reserves for itself, it is recognised only as
 
 Configuration is environment variables rather than command-line flags on purpose: every argument belongs
 to Bun, so a flag Bun adds in future keeps working without a release of this package.
+
+`SCARLET_BUN_VERSION` changes which **Bun binary** gets downloaded and run — it never changes which
+**NuGet package** is installed; that's decided once, at `dotnet tool install` time (see
+[How it finds Bun](#how-it-finds-bun)). Setting it to anything other than the version baked into the
+installed package skips the embedded binary and downloads the requested one into the per-user cache,
+scoped by version (`<cache>/runtimes/<version>/`), so later runs with the same value reuse it instead of
+re-downloading.
+
+That caching applies to `latest` too, literally: the first run resolves whatever GitHub currently tags as
+newest and caches it under a folder named `latest`, and every run after that reuses that cached binary
+without checking GitHub again — `latest` means "newest at the time I first asked," not "always current."
+Clear `<cache>/runtimes/latest/` (or point `SCARLET_BUN_CACHE` elsewhere) to pick up a newer release.
 
 ## Running Bun during a build instead
 
