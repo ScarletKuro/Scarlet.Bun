@@ -75,6 +75,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Scarlet.Bun.MSBuild.Tests" />
+    <InternalsVisibleTo Include="Scarlet.Bun.MSBuild.IntegrationTests" />
   </ItemGroup>
 
   <ItemGroup>

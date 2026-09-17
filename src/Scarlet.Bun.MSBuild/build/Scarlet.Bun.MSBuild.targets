@@ -1,18 +1,18 @@
 <Project>
   <!-- Load the Bun MSBuild task -->
   <UsingTask TaskName="Scarlet.Bun.MSBuild.BunRunTask" AssemblyFile="$(MSBuildThisFileDirectory)../tools/netstandard2.0/Scarlet.Bun.MSBuild.dll" />
-  
+
   <!--
     Expose a reusable MSBuild task wrapper that automatically passes runtime properties.
-    
+
     Users can call this using the MSBuild Task syntax with properties:
-    
+
     <MSBuild Projects="$(MSBuildProjectFullPath)"
              Targets="Bun"
              Properties="BunCommand=install;BunWorkingDirectory=$(MSBuildProjectDirectory)" />
-    
+
     Or define a target that sets properties and calls Bun:
-    
+
     <PropertyGroup>
       <BunCommand>install</BunCommand>
       <BunWorkingDirectory>$(MSBuildProjectDirectory)</BunWorkingDirectory>
@@ -20,28 +20,43 @@
     <Target Name="BunInstall" BeforeTargets="Build">
       <CallTarget Targets="Bun" />
     </Target>
-    
+
     Supported properties:
     - BunCommand (required) - The Bun command to execute
     - BunArguments (optional) - Command arguments
     - BunWorkingDirectory (optional) - Working directory
     - BunTimeoutMilliseconds (optional) - Timeout in milliseconds
     - BunContinueOnError (optional) - Continue on error
-    - BunRuntimeDirectory (optional) - Override runtime directory
+    - BunRuntimeDirectory (optional) - Override runtime directory; wins over @(BunRuntimePack)
     - BunRuntimeDownload (optional) - Download runtime from GitHub instead of using embedded
     - BunVersionDownload (optional) - Specific version to download (defaults to latest)
-    
-    Runtime properties are automatically picked up from runtime packages via buildTransitive props:
-    - BunRuntime_win_x64
-    - BunRuntime_win_arm64
-    - BunRuntime_linux_x64
-    - BunRuntime_linux_arm64
-    - BunRuntime_osx_x64
-    - BunRuntime_osx_arm64
+    - BunDownloadMutexTimeoutSeconds (optional) - How long to wait for a concurrent download
+
+    How the runtime is found:
+    Each referenced Scarlet.Bun.Runtime.* package contributes a @(BunRuntimePack) item from its
+    build/*.props, and the task picks the one matching the build host. Because the contract is an item,
+    a new runtime identifier needs no change to this package. To point at a Bun you built yourself:
+
+    <ItemGroup>
+      <BunRuntimePack Include="MyCompany.Bun.linux-x64-musl">
+        <Rid>linux-x64</Rid>
+        <RuntimesPath>$(MSBuildProjectDirectory)/bun/runtimes</RuntimesPath>
+        <Priority>100</Priority>
+      </BunRuntimePack>
+    </ItemGroup>
+
+    RuntimesPath must contain <rid>/native/bun (bun.exe on Windows). When several packs serve the same
+    Rid the highest Priority wins; ties are broken by pack id so the result never depends on restore order.
+
+    Note that runtime packages are marked as development dependencies, so their props apply to the
+    project that references them directly - they do not flow to projects that reference that project.
+
+    The BunRuntime_<rid> properties below are the previous contract. They are still passed so that
+    runtime packages published before @(BunRuntimePack) existed keep working.
   -->
   <Target Name="Bun">
     <Error Text="BunCommand property is required" Condition="'$(BunCommand)' == ''" />
-    
+
     <BunRunTask Command="$(BunCommand)"
                 Arguments="$(BunArguments)"
                 WorkingDirectory="$(BunWorkingDirectory)"
@@ -51,6 +66,7 @@
                 BunRuntimeDownload="$(BunRuntimeDownload)"
                 BunVersionDownload="$(BunVersionDownload)"
                 DownloadMutexTimeoutSeconds="$(BunDownloadMutexTimeoutSeconds)"
+                RuntimePacks="@(BunRuntimePack)"
                 BunRuntime_win_x64="$(BunRuntime_win_x64)"
                 BunRuntime_win_arm64="$(BunRuntime_win_arm64)"
                 BunRuntime_linux_x64="$(BunRuntime_linux_x64)"

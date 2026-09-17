@@ -15,6 +15,7 @@ An MSBuild task package that integrates [Bun](https://bun.sh/) - a fast all-in-o
   - [Option 1: Runtime Download](#option-1-runtime-download)
   - [Option 2: Platform-Specific Runtime Packages](#option-2-platform-specific-runtime-packages)
   - [Option 3: Conditional Package References](#option-3-conditional-package-references)
+  - [How the Runtime Is Discovered](#how-the-runtime-is-discovered)
 - [Usage](#usage)
   - [Basic Example](#basic-example)
   - [Using Runtime Download](#using-runtime-download)
@@ -201,6 +202,59 @@ Use MSBuild conditions to reference only the runtime package matching the curren
 - **Use Option 2 (Single Runtime Package)** if you want a single platform and want embedded runtime (without downloads)
 - **Use Option 3 (Conditional References)** if you want a multi-platform and want embedded runtimes (without downloads)
 
+### How the Runtime Is Discovered
+
+Bun runs on the machine doing the build, not on the machine the project targets, so NuGet's usual RID
+resolution is the wrong mechanism here — it resolves against `$(RuntimeIdentifier)`. Instead, each
+`Scarlet.Bun.Runtime.*` package contributes a `BunRuntimePack` item from its `build/*.props`, and the task
+picks the one matching the build host:
+
+```xml
+<ItemGroup>
+  <BunRuntimePack Include="Scarlet.Bun.Runtime.darwin-aarch64">
+    <Rid>osx-arm64</Rid>
+    <RuntimesPath>...\runtimes\</RuntimesPath>
+    <Variant>default</Variant>
+    <Priority>0</Priority>
+  </BunRuntimePack>
+</ItemGroup>
+```
+
+You normally never write one of these. You would if you want the build to use a Bun you supply yourself —
+a musl build, a non-baseline build, or a locally compiled one — without waiting for a runtime package:
+
+```xml
+<ItemGroup>
+  <BunRuntimePack Include="MyCompany.Bun.linux-x64-musl">
+    <Rid>linux-x64</Rid>
+    <RuntimesPath>$(MSBuildProjectDirectory)/bun/runtimes</RuntimesPath>
+    <Priority>100</Priority>
+  </BunRuntimePack>
+</ItemGroup>
+```
+
+| Metadata | Required | Description |
+|----------|----------|-------------|
+| `Rid` | Yes | The runtime identifier this pack serves, for example `osx-arm64` |
+| `RuntimesPath` | Yes | Directory containing `<rid>/native/bun` (`bun.exe` on Windows) |
+| `Variant` | No | Bun build variant, shown in build logs and error messages |
+| `Priority` | No | Higher wins when several packs serve the same `Rid`. Defaults to `0`; ties are broken by pack id so the result never depends on restore order |
+
+Precedence: an explicit `BunRuntimeDirectory` wins over every pack, and `BunRuntimeDownload=true` bypasses
+pack resolution entirely. If a pack's `bun` is missing, the next candidate for the same RID is tried.
+
+> **Note:** Runtime packages are development dependencies, so their props apply to the project that
+> references them directly. They do not flow to projects that reference *that* project — add the
+> `PackageReference` in each project that runs Bun, or in a shared `Directory.Build.props`.
+
+> **Legacy contract (deprecated):** runtime packages also still set a `BunRuntime_<rid>` property (for
+> example `BunRuntime_osx_arm64`), pointing at the package root. It exists so that new runtime packages keep
+> working with older `Scarlet.Bun.MSBuild` versions and vice versa. If a runtime is found *only* through that
+> property — meaning the runtime package predates `BunRuntimePack` — the build logs a message at normal
+> verbosity (`dotnet build -v:n`) telling you which package to update. It is a message rather than a warning
+> because pinning an older runtime package is how you pin a Bun version, and that must not fail builds using
+> `TreatWarningsAsErrors`. The property will be removed in a future major version.
+
 ## Usage
 
 ### Basic Example
@@ -291,7 +345,8 @@ The `BunRunTask` supports the following parameters:
 | `Command` | Yes | The Bun command to execute (e.g., "run", "install", "build") | - |
 | `Arguments` | No | Arguments to pass to the Bun command | "" |
 | `WorkingDirectory` | No | Working directory for command execution | Current directory |
-| `RuntimeDirectory` | No | Path to the runtime directory containing Bun executables. If not specified, uses the default NuGet package structure. Required when using `BunRuntimeDownload`. | null |
+| `RuntimeDirectory` | No | Path to the runtime directory containing Bun executables. Overrides `RuntimePacks` when set. Required when using `BunRuntimeDownload`. | null |
+| `RuntimePacks` | No | The Bun runtimes available to the build, normally `@(BunRuntimePack)`. See [How the Runtime Is Discovered](#how-the-runtime-is-discovered). | empty |
 | `TimeoutMilliseconds` | No | Timeout in milliseconds (0 = no timeout) | 0 |
 | `ContinueOnError` | No | Whether to continue build if command fails | false |
 | `BunRuntimeDownload` | No | When true, downloads the Bun runtime from GitHub releases instead of using embedded runtimes | false |

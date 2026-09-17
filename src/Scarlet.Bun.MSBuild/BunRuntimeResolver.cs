@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.IO.Abstractions;
 using System.Runtime.InteropServices;
+using System.Text;
 using Scarlet.Bun.MSBuild.Providers;
 
 namespace Scarlet.Bun.MSBuild;
@@ -115,45 +116,216 @@ public static class BunRuntimeResolver
     public static string GetDownloadName(Platform platform) => GetInfo(platform).DownloadName;
 
     /// <summary>
+    /// Gets the full path the Bun executable is expected at inside a runtimes directory.
+    /// </summary>
+    /// <param name="runtimesPath">Directory containing <c>&lt;rid&gt;/native/&lt;executable&gt;</c>.</param>
+    /// <param name="platform">The platform to build the path for.</param>
+    /// <returns>The full path to the Bun executable. The file is not required to exist.</returns>
+    public static string GetExecutablePath(string runtimesPath, Platform platform)
+    {
+        var info = GetInfo(platform);
+
+        return Path.GetFullPath(Path.Combine(runtimesPath, info.Rid, "native", info.ExecutableName));
+    }
+
+    /// <summary>
+    /// Selects the runtime packs that can serve the given platform, best candidate first.
+    /// </summary>
+    /// <param name="packs">All packs contributed to the build. May be <see langword="null"/>.</param>
+    /// <param name="platform">The platform that has to be served.</param>
+    /// <returns>
+    /// The matching packs ordered by descending <see cref="BunRuntimePack.Priority"/>, then by pack id and path so
+    /// that the outcome does not depend on the order NuGet happened to import the runtime packages in.
+    /// </returns>
+    public static IReadOnlyList<BunRuntimePack> SelectPacks(IEnumerable<BunRuntimePack>? packs, Platform platform)
+    {
+        if (packs is null)
+        {
+            return Array.Empty<BunRuntimePack>();
+        }
+
+        var rid = GetRuntimeIdentifier(platform);
+        var matches = new List<BunRuntimePack>();
+
+        foreach (var pack in packs)
+        {
+            if (string.Equals(pack.Rid, rid, StringComparison.OrdinalIgnoreCase))
+            {
+                matches.Add(pack);
+            }
+        }
+
+        matches.Sort(static (left, right) =>
+        {
+            var byPriority = right.Priority.CompareTo(left.Priority);
+            if (byPriority != 0)
+            {
+                return byPriority;
+            }
+
+            var byId = string.CompareOrdinal(left.Id, right.Id);
+
+            return byId != 0 ? byId : string.CompareOrdinal(left.RuntimesPath, right.RuntimesPath);
+        });
+
+        return matches;
+    }
+
+    /// <summary>
     /// Resolves the full path to the Bun executable.
     /// </summary>
     /// <param name="fileSystem">File system abstraction.</param>
     /// <param name="chmodProvider">Provider for setting executable permissions.</param>
     /// <param name="platform">Target platform. If null, uses current platform.</param>
-    /// <param name="runtimeDirectory">Optional path to the runtime directory. If not specified, throws an error.</param>
+    /// <param name="runtimeDirectory">Optional explicit runtime directory. When set, it wins over <paramref name="runtimePacks"/>.</param>
+    /// <param name="runtimePacks">Runtime packs contributed by the referenced runtime packages.</param>
+    /// <param name="log">Optional sink for diagnostic messages about the selection.</param>
     /// <returns>Full path to the Bun executable.</returns>
-    public static string ResolveBunExecutable(IFileSystem fileSystem, IChmodProvider chmodProvider, Platform? platform = null, string? runtimeDirectory = null)
+    /// <exception cref="FileNotFoundException">No usable Bun executable could be found.</exception>
+    public static string ResolveBunExecutable(
+        IFileSystem fileSystem,
+        IChmodProvider chmodProvider,
+        Platform? platform = null,
+        string? runtimeDirectory = null,
+        IReadOnlyList<BunRuntimePack>? runtimePacks = null,
+        Action<string>? log = null)
     {
         var targetPlatform = platform ?? GetCurrentPlatform();
-        var runtimeId = GetRuntimeIdentifier(targetPlatform);
-        var executableName = GetExecutableName(targetPlatform);
 
-        if (string.IsNullOrEmpty(runtimeDirectory))
+        // An explicit directory is a deliberate override, so it is never second-guessed against the packs.
+        if (!string.IsNullOrEmpty(runtimeDirectory))
         {
-            // No runtime directory provided - provide helpful error message
-            var runtimePackageName = GetRuntimePackageName(targetPlatform);
-            throw new FileNotFoundException(
-                $"Bun runtime package not found.\n\n" +
-                $"The {runtimePackageName} package must be installed for your platform.\n\n" +
-                $"Add this to your project file:\n" +
-                $"  <PackageReference Include=\"{runtimePackageName}\" Version=\"1.0.0\" />\n\n" +
-                $"The runtime package will automatically provide its location via MSBuild properties.");
+            return ResolveFromDirectory(fileSystem, chmodProvider, targetPlatform, runtimeDirectory!);
         }
 
-        var bunPath = Path.GetFullPath(Path.Combine(runtimeDirectory, runtimeId, "native", executableName));
+        var candidates = SelectPacks(runtimePacks, targetPlatform);
+        var searched = new List<string>();
+
+        foreach (var candidate in candidates)
+        {
+            var candidatePath = GetExecutablePath(candidate.RuntimesPath, targetPlatform);
+
+            if (fileSystem.File.Exists(candidatePath))
+            {
+                if (candidates.Count > 1)
+                {
+                    log?.Invoke($"Selected Bun runtime pack {candidate} out of {candidates.Count} candidates for {GetRuntimeIdentifier(targetPlatform)}.");
+                }
+                else
+                {
+                    log?.Invoke($"Using Bun runtime pack {candidate}.");
+                }
+
+                chmodProvider.EnsureExecutablePermissions(candidatePath);
+
+                return candidatePath;
+            }
+
+            searched.Add(candidatePath);
+        }
+
+        throw new FileNotFoundException(candidates.Count > 0
+            ? BuildIncompletePackMessage(targetPlatform, candidates, searched)
+            : BuildMissingPackMessage(targetPlatform, runtimePacks));
+    }
+
+    /// <summary>
+    /// Resolves the Bun executable inside an explicitly configured runtimes directory.
+    /// </summary>
+    private static string ResolveFromDirectory(
+        IFileSystem fileSystem,
+        IChmodProvider chmodProvider,
+        Platform platform,
+        string runtimeDirectory)
+    {
+        var bunPath = GetExecutablePath(runtimeDirectory, platform);
 
         if (!fileSystem.File.Exists(bunPath))
         {
-            var runtimePackageName = GetRuntimePackageName(targetPlatform);
+            var runtimePackageName = GetRuntimePackageName(platform);
+
             throw new FileNotFoundException(
                 $"Bun executable not found at: {bunPath}\n\n" +
-                $"The {runtimePackageName} package appears to be installed but the executable is missing.\n" +
-                $"Try cleaning and rebuilding your project.");
+                $"BunRuntimeDirectory points at '{runtimeDirectory}', which does not contain a Bun build for {GetRuntimeIdentifier(platform)}.\n" +
+                $"Either clear that property and reference the {runtimePackageName} package, or make sure the directory " +
+                $"contains '{GetRuntimeIdentifier(platform)}/native/{GetExecutableName(platform)}'.");
         }
 
         chmodProvider.EnsureExecutablePermissions(bunPath);
 
         return bunPath;
+    }
+
+    /// <summary>
+    /// Builds the error shown when no runtime pack targets the build host.
+    /// </summary>
+    private static string BuildMissingPackMessage(Platform platform, IEnumerable<BunRuntimePack>? allPacks)
+    {
+        var runtimePackageName = GetRuntimePackageName(platform);
+        var rid = GetRuntimeIdentifier(platform);
+
+        var message = new StringBuilder();
+        message.Append("Bun runtime package not found.\n\n");
+        message.Append($"No Bun runtime is available for this build host ({rid}).\n\n");
+        message.Append("Add the matching runtime package to your project:\n");
+        message.Append($"  <PackageReference Include=\"{runtimePackageName}\" Version=\"<bun-version>\" PrivateAssets=\"all\" />\n\n");
+        message.Append("...or let the build download Bun on demand:\n");
+        message.Append("  <PropertyGroup>\n");
+        message.Append("    <BunRuntimeDownload>true</BunRuntimeDownload>\n");
+        message.Append("    <BunRuntimeDirectory>$(MSBuildProjectDirectory)/runtimes</BunRuntimeDirectory>\n");
+        message.Append("  </PropertyGroup>\n\n");
+        message.Append(DescribeVisiblePacks(allPacks));
+
+        return message.ToString();
+    }
+
+    /// <summary>
+    /// Builds the error shown when a matching runtime pack is referenced but its binary is missing.
+    /// </summary>
+    private static string BuildIncompletePackMessage(
+        Platform platform,
+        IReadOnlyList<BunRuntimePack> candidates,
+        IReadOnlyList<string> searched)
+    {
+        var message = new StringBuilder();
+        message.Append($"Bun executable not found at: {searched[0]}\n\n");
+        message.Append(candidates.Count == 1
+            ? $"The runtime pack {candidates[0]} is referenced but its Bun executable is missing.\n"
+            : $"{candidates.Count} runtime packs target {GetRuntimeIdentifier(platform)} but none of them contains a Bun executable.\n");
+        message.Append("Try clearing the NuGet cache for the runtime package and rebuilding.\n\n");
+        message.Append("Locations searched:\n");
+
+        foreach (var path in searched)
+        {
+            message.Append($"  - {path}\n");
+        }
+
+        return message.ToString();
+    }
+
+    /// <summary>
+    /// Renders the packs the build can see, which is the fastest way to spot a host/pack mismatch.
+    /// </summary>
+    private static string DescribeVisiblePacks(IEnumerable<BunRuntimePack>? allPacks)
+    {
+        var message = new StringBuilder("Runtime packs visible to this project:");
+        var any = false;
+
+        if (allPacks is not null)
+        {
+            foreach (var pack in allPacks)
+            {
+                message.Append($"\n  - {pack}");
+                any = true;
+            }
+        }
+
+        if (!any)
+        {
+            message.Append(" (none)");
+        }
+
+        return message.ToString();
     }
 
     private static PlatformInfo GetInfo(Platform platform)

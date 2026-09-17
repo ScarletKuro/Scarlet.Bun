@@ -71,13 +71,14 @@ The complete MSBuild documentation for LLMs is available at `.github/agents/msbu
 ├── src/
 │   ├── Scarlet.Bun.MSBuild/           # Main MSBuild task library
 │   │   ├── Platform.cs                    # Platform enum (Windows/Linux/macOS x64/ARM64)
-│   │   ├── BunRuntimeResolver.cs          # Runtime detection and path resolution
+│   │   ├── BunRuntimePack.cs              # The @(BunRuntimePack) item contract and its parsing
+│   │   ├── BunRuntimeResolver.cs          # Runtime detection, pack selection and path resolution
 │   │   ├── BunRunTask.cs                  # Main MSBuild task for executing Bun commands
 │   │   ├── BunDownloader.cs               # Runtime download functionality
 │   │   └── build/
 │   │       ├── Scarlet.Bun.MSBuild.props      # MSBuild properties
 │   │       └── Scarlet.Bun.MSBuild.targets    # MSBuild targets
-│   └── Scarlet.Bun.Runtime.{platform}/  # Platform-specific runtime packages (5 packages)
+│   └── Scarlet.Bun.Runtime.{platform}/  # Platform-specific runtime packages (6 packages)
 │       ├── build/                         # MSBuild integration for each runtime
 │       │   └── Scarlet.Bun.Runtime.{platform}.props
 │       └── {platform}.csproj              # Downloads/packages Bun binary for platform
@@ -87,10 +88,12 @@ The complete MSBuild documentation for LLMs is available at `.github/agents/msbu
 ├── tests/
 │   ├── Scarlet.Bun.MSBuild.Tests/         # Unit tests
 │   │   ├── PlatformTests.cs                  # Platform detection tests
+│   │   ├── BunRuntimePackTests.cs            # BunRuntimePack item parsing and de-duplication
 │   │   ├── BunRuntimeResolverTests.cs        # Runtime resolver tests
 │   │   └── BunDownloaderTests.cs             # Runtime downloader tests
 │   └── Scarlet.Bun.MSBuild.IntegrationTests/  # Integration tests
 │       ├── BunIntegrationTests.cs            # End-to-end Bun execution tests
+│       ├── BunRuntimePackDiscoveryTests.cs    # Item + legacy property merging in BunRunTask
 │       ├── BunDownloadIntegrationTests.cs    # Runtime download integration tests
 │       ├── MockBuildEngine.cs                # Mock MSBuild engine for testing
 │       └── TestAssets/                       # Test files for integration tests
@@ -129,10 +132,58 @@ The complete MSBuild documentation for LLMs is available at `.github/agents/msbu
 - Validates runtime availability before download
 
 ### 4. Platform-Specific Runtime Packages (`Scarlet.Bun.Runtime.{platform}`)
-- Five separate NuGet packages, one for each supported platform
+- Six separate NuGet packages, one for each supported platform
 - Downloads platform-specific Bun binaries during build
-- Packages binaries for distribution via NuGet
+- Packages binaries for distribution via NuGet (asset-only: no `lib/` assembly is shipped)
 - Each package includes MSBuild integration via `.props` files
+
+### 4a. Runtime Discovery Contract (`BunRuntimePack`)
+
+**This is the extension point — read it before adding a platform.**
+
+Bun runs on the *build host*, not on the project's target RID, so NuGet's RID-graph resolution does not
+apply. Instead each runtime package's `build/*.props` contributes one `@(BunRuntimePack)` item
+(`Rid`, `RuntimesPath`, `Variant`, `Priority`), the `Bun` target passes `@(BunRuntimePack)` to the task,
+and `BunRuntimeResolver.SelectPacks` picks the best match for the host. Consequences:
+
+- **Adding a runtime identifier needs no change to `Scarlet.Bun.MSBuild`.** A new package that emits the
+  item is enough - no new task parameter, no new targets line, no version lockstep between packages.
+- The same RID can be served by several packs; the highest `Priority` wins, ties break by pack id so the
+  outcome never depends on NuGet import order.
+- Anyone can point the build at their own Bun by declaring the item in their project file.
+- `BunRuntimeDirectory` overrides packs entirely; `BunRuntimeDownload=true` bypasses them.
+
+The older `BunRuntime_<rid>` properties are still set by the runtime packages and still read by the task.
+That is deliberate: it keeps new runtime packages working with old task versions and vice versa. Do not
+add new RIDs to that property set - it is frozen at the six original platforms.
+
+#### Retiring the legacy property contract
+
+It is two deprecations with different lifetimes, and they come out at different times:
+
+| Half | Lives in | Protects | Remove when |
+|------|----------|----------|-------------|
+| Packages *setting* the property | `<PropertyGroup>` in each runtime package's `build/*.props` | New runtime package + old `Scarlet.Bun.MSBuild` | You drop support for the pre-item major of `Scarlet.Bun.MSBuild`. Cheap enough to keep indefinitely. |
+| Task *reading* the property | `BunRunTask.BunRuntime_*`, `CreateLegacyPacks()`, 12 attribute lines across the two `.targets` | Old runtime package + new `Scarlet.Bun.MSBuild` | A **major** version, once the oldest Bun version worth pinning is newer than the first runtime package that emits the item. |
+
+The second half is the long-lived one: runtime packages are versioned by Bun version, so people pin them on
+purpose, not out of neglect. Breaking that on a task-package upgrade would be a nasty surprise.
+
+Two things to watch:
+
+- **`ReportDeprecatedPacks` in `BunRunTask` is stage one of the removal.** It logs at `Normal` importance
+  when a pack was found only through the property. One release before removal, promote it to
+  `Log.LogWarning`. Not sooner - a warning is noise for everyone legitimately pinned to an older Bun.
+- **Shipping two packs for one RID forces the issue early.** A property can only hold one path per RID, so
+  a baseline *and* a non-baseline `linux-x64` package would silently fight over `BunRuntime_linux_x64`,
+  last import winning, with no diagnostic. The item contract handles it via `Priority`. If that day comes,
+  drop the legacy `<PropertyGroup>` from at least those packages' props even if the task still reads it -
+  a missing property gives a clear error, a wrong one gives a mystery.
+
+Removal checklist: the six task parameters and `CreateLegacyPacks()`/`ReportDeprecatedPacks()`/
+`GetLegacyPropertyName()`, the `BunRuntimePackSource` enum and `BunRuntimePack.Source`, the six
+`BunRuntime_*` attributes in both `.targets` files, the legacy `<PropertyGroup>` in six `build/*.props`,
+the legacy cases in `BunRuntimePackDiscoveryTests`, and the notes in `README.md` and this file.
 
 ### 5. MSBuild Integration (`build/*.props` & `build/*.targets`)
 - Automatically loaded when package is referenced
@@ -249,7 +300,7 @@ If all three commands succeed, the project is in good shape.
   - Content is minified/bundled correctly
 - [ ] **Package creation succeeds** - `dotnet pack` creates .nupkg file
 - [ ] **No unexpected files in source control** - Check `git status`
-- [ ] **Runtime packages build correctly** - All 5 platform-specific runtime packages compile
+- [ ] **Runtime packages build correctly** - All 6 platform-specific runtime packages compile
 
 ### Common Issues and Solutions
 

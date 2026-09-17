@@ -1,6 +1,32 @@
 <Project>
-  <!-- Set the runtime package path for Windows x64 -->
+  <!--
+    Bun runtime pack for Windows x64.
+
+    BunRuntimePack is the contract Scarlet.Bun.MSBuild reads. It is an item rather than a
+    BunRuntime_<rid> property so that a new runtime identifier - a musl build, a non-baseline build,
+    or a locally built Bun - only needs a package that contributes one of these items; the task,
+    its parameters and its targets stay untouched.
+
+    Metadata:
+      Rid          - runtime identifier this pack serves. Required.
+      RuntimesPath - directory containing <rid>/native/<executable>. Required.
+      Variant      - Bun build variant, for diagnostics only.
+      Priority     - higher wins when several packs serve the same Rid. Defaults to 0.
+  -->
+  <ItemGroup>
+    <BunRuntimePack Include="Scarlet.Bun.Runtime.windows-x64-baseline">
+      <Rid>win-x64</Rid>
+      <RuntimesPath>$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)..', 'runtimes'))</RuntimesPath>
+      <Variant>baseline</Variant>
+      <Priority>0</Priority>
+    </BunRuntimePack>
+  </ItemGroup>
+
+  <!--
+    Legacy contract. Kept so this package still works with Scarlet.Bun.MSBuild versions released before
+    BunRuntimePack existed. Unlike RuntimesPath above, it points at the package root.
+  -->
   <PropertyGroup>
-    <BunRuntime_win_x64>$(MSBuildThisFileDirectory)..</BunRuntime_win_x64>
+    <BunRuntime_win_x64>$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)..'))</BunRuntime_win_x64>
   </PropertyGroup>
 </Project>
