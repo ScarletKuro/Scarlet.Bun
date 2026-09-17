@@ -1,0 +1,113 @@
+name: Bun Version Bump
+
+on:
+  schedule:
+    # 06:00 UTC on the 1st of every month.
+    - cron: '0 6 1 * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: bun-version-bump
+  cancel-in-progress: false
+
+jobs:
+  bump:
+    name: Check for a new Bun release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Require master
+        run: |
+          if [ "${{ github.ref }}" != "refs/heads/master" ]; then
+            echo "This workflow must run from master so the pushed bump and deploy ref match."
+            exit 1
+          fi
+
+      - name: Checkout code
+        uses: actions/checkout@v6
+        with:
+          ref: master
+
+      - name: Get current BunVersion
+        id: current
+        run: |
+          CURRENT=$(sed -n 's/.*<BunVersion>\([^<]*\)<\/BunVersion>.*/\1/p' Directory.Build.props)
+          if ! [[ "$CURRENT" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Directory.Build.props contains an invalid BunVersion: $CURRENT"
+            exit 1
+          fi
+
+          echo "version=$CURRENT" >> "$GITHUB_OUTPUT"
+          echo "Current BunVersion: $CURRENT"
+
+      - name: Get latest Bun release
+        id: latest
+        run: |
+          RELEASE=$(curl -fsSL https://api.github.com/repos/oven-sh/bun/releases/latest)
+          TAG=$(jq -r '.tag_name' <<< "$RELEASE")
+          DRAFT=$(jq -r '.draft' <<< "$RELEASE")
+          PRERELEASE=$(jq -r '.prerelease' <<< "$RELEASE")
+
+          if [ "$DRAFT" != "false" ] || [ "$PRERELEASE" != "false" ]; then
+            echo "Refusing to publish a draft or prerelease Bun release: $TAG"
+            exit 1
+          fi
+
+          if ! [[ "$TAG" =~ ^bun-v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Latest Bun release tag is not a stable SemVer tag: $TAG"
+            exit 1
+          fi
+
+          LATEST="${TAG#bun-v}"
+          echo "version=$LATEST" >> "$GITHUB_OUTPUT"
+          echo "Latest Bun release: $LATEST"
+
+      - name: Bump BunVersion and push
+        id: bump
+        if: steps.current.outputs.version != steps.latest.outputs.version
+        run: |
+          CURRENT="${{ steps.current.outputs.version }}"
+          LATEST="${{ steps.latest.outputs.version }}"
+
+          NEWEST=$(printf '%s\n%s\n' "$CURRENT" "$LATEST" | sort -V | tail -n 1)
+          if [ "$NEWEST" != "$LATEST" ]; then
+            echo "Latest Bun release ($LATEST) is not newer than current BunVersion ($CURRENT); nothing to publish."
+            echo "bumped=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          sed -i "s/<BunVersion>$CURRENT<\/BunVersion>/<BunVersion>$LATEST<\/BunVersion>/" Directory.Build.props
+          # Reset alongside BunVersion - see the BunCliRevision comment in Directory.Build.props.
+          sed -i "s/<BunCliRevision>[0-9]*<\/BunCliRevision>/<BunCliRevision>0<\/BunCliRevision>/" Directory.Build.props
+
+          if ! grep -q "<BunVersion>$LATEST</BunVersion>" Directory.Build.props; then
+            echo "Failed to update BunVersion to $LATEST."
+            exit 1
+          fi
+
+          if ! grep -q "<BunCliRevision>0</BunCliRevision>" Directory.Build.props; then
+            echo "Failed to reset BunCliRevision to 0."
+            exit 1
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Directory.Build.props
+          git commit -m "Bump Bun to $LATEST"
+          git push origin HEAD:master
+
+          echo "bumped=true" >> "$GITHUB_OUTPUT"
+
+      # deploy.yml runs the full test matrix (including musl) before its deploy job, and only
+      # publishes if every test job succeeds - so a bad Bun release fails loudly here without
+      # anything reaching NuGet.
+      - name: Trigger runtime-and-cli deploy
+        if: steps.bump.outputs.bumped == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run deploy.yml --ref master -f release_target=runtime-and-cli

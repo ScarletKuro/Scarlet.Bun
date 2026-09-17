@@ -42,6 +42,14 @@ Before deploying, ensure you have:
    - Value: Paste your API key
    - Click "Add secret"
 
+## Automatic Bun Version Bump
+
+`.github/workflows/bun-version-bump.yml` runs monthly (and on manual dispatch). It checks the
+latest stable SemVer `oven-sh/bun` release against `BunVersion` in `Directory.Build.props`; if newer,
+it commits the bump (resetting `BunCliRevision` to 0) directly to `master` and dispatches `deploy.yml`
+with `release_target: runtime-and-cli`. That deploy run still runs the full test matrix first, so a Bun
+release that breaks something here fails the workflow instead of publishing.
+
 ## Deployment Process
 
 The deployment is automated via GitHub Actions and triggered by pushing a SemVer 2.0 compliant tag.
