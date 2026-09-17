@@ -72,11 +72,22 @@ internal static class DiagnosticsReport
         return JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = true }) + Environment.NewLine;
     }
 
-    private static string DescribePackage()
+    private static string DescribePackage() => DescribePackage(BunBuildInfo.PackagedRuntimeIdentifier);
+
+    /// <summary>
+    /// Names the package this build came from.
+    /// </summary>
+    /// <param name="packagedRuntimeIdentifier">The RID baked in at build time, empty for the portable package.</param>
+    /// <returns>For example <c>Scarlet.Bun.Cli.win-x64</c>.</returns>
+    /// <remarks>
+    /// Takes the identifier rather than reading the constant so both branches are reachable from a test:
+    /// the test build has no runtime identifier, so it could only ever exercise the portable one.
+    /// </remarks>
+    internal static string DescribePackage(string packagedRuntimeIdentifier)
     {
-        return string.IsNullOrEmpty(BunBuildInfo.PackagedRuntimeIdentifier)
+        return string.IsNullOrEmpty(packagedRuntimeIdentifier)
             ? "Scarlet.Bun.Cli (portable)"
-            : $"Scarlet.Bun.Cli.{BunBuildInfo.PackagedRuntimeIdentifier}";
+            : $"Scarlet.Bun.Cli.{packagedRuntimeIdentifier}";
     }
 
     private static string DescribeSource(BunResolution resolution)

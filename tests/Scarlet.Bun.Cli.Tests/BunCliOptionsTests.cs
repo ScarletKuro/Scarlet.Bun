@@ -158,6 +158,45 @@ public class BunCliOptionsTests
     }
 
     [Fact]
+    public void ResolveCacheRoot_OnMacOsWithNoHome_ShouldFallBackToTemp()
+    {
+        // Arrange
+        var environment = new FakeEnvironmentProvider(home: null, isMacOs: true, tempDirectory: "/tmp");
+
+        // Act
+        var root = BunCliOptions.ResolveCacheRoot(environment);
+
+        // Assert
+        Assert.Equal(Path.Combine("/tmp", "ScarletKuro", "Scarlet.Bun"), root);
+    }
+
+    [Fact]
+    public void ResolveCacheRoot_OnWindowsWithoutLocalAppData_ShouldFallBackToHome()
+    {
+        // Arrange - GetFolderPath can come back empty on a stripped-down or containerised Windows
+        var environment = new FakeEnvironmentProvider(home: @"C:\Users\tester", isWindows: true);
+
+        // Act
+        var root = BunCliOptions.ResolveCacheRoot(environment);
+
+        // Assert
+        Assert.Equal(Path.Combine(@"C:\Users\tester", "ScarletKuro", "Scarlet.Bun"), root);
+    }
+
+    [Fact]
+    public void ResolveCacheRoot_OnWindowsWithNeither_ShouldFallBackToTemp()
+    {
+        // Arrange
+        var environment = new FakeEnvironmentProvider(home: null, isWindows: true, tempDirectory: @"C:\Temp");
+
+        // Act
+        var root = BunCliOptions.ResolveCacheRoot(environment);
+
+        // Assert
+        Assert.Equal(Path.Combine(@"C:\Temp", "ScarletKuro", "Scarlet.Bun"), root);
+    }
+
+    [Fact]
     public void ResolveCacheRoot_WithOverride_ShouldWinEverywhere()
     {
         // Arrange

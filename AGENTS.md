@@ -79,6 +79,7 @@ The complete MSBuild documentation for LLMs is available at `.github/agents/msbu
 │   │   ├── Chmod.cs / IBunLogger.cs       # Platform helpers
 │   │   └── Providers/                     # chmod and zip abstractions
 │   ├── Scarlet.Bun.Cli/               # `dotnet bun` .NET tool (net10.0)
+│   │   ├── README.md                      # Package readme shown on nuget.org
 │   │   ├── Program.cs                     # Composition root
 │   │   ├── BunCliApplication.cs           # Orchestration, reserved flag, diagnostics
 │   │   ├── BunCliResolver.cs              # explicit > embedded > cache > download
@@ -86,6 +87,7 @@ The complete MSBuild documentation for LLMs is available at `.github/agents/msbu
 │   │   ├── ProcessLauncher.cs             # Argument forwarding, stream inheritance, signals
 │   │   └── DiagnosticsReport.cs           # --scarlet-info rendering
 │   ├── Scarlet.Bun.MSBuild/           # Main MSBuild task library
+│   │   ├── README.md                      # Package readme shown on nuget.org
 │   │   ├── BunRunTask.cs                  # Main MSBuild task for executing Bun commands
 │   │   ├── BunRuntimePackFactory.cs       # @(BunRuntimePack) item parsing (the MSBuild-coupled half)
 │   │   ├── MsBuildBunLogger.cs            # IBunLogger over TaskLoggingHelper
@@ -119,7 +121,7 @@ The complete MSBuild documentation for LLMs is available at `.github/agents/msbu
 │   ├── download-bun.sh                # Bash script to download Bun runtime
 │   └── download-bun.ps1               # PowerShell script to download Bun runtime
 ├── AGENTS.md                          # This file - guide for AI agents
-├── README.md                          # User-facing documentation
+├── README.md                          # Repository landing page - routes to the per-package READMEs
 └── Scarlet.Bun.MSBuild.slnx           # Solution file
 
 ```
