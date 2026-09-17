@@ -16,5 +16,9 @@ public enum Platform
     /// <summary>macOS ARM64</summary>
     MacOsArm64,
     /// <summary>Windows ARM64</summary>
-    WindowsArm64
+    WindowsArm64,
+    /// <summary>Linux x64, musl libc (e.g. Alpine)</summary>
+    LinuxMuslX64,
+    /// <summary>Linux ARM64, musl libc (e.g. Alpine)</summary>
+    LinuxMuslArm64
 }

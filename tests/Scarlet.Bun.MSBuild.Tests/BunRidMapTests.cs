@@ -19,6 +19,8 @@ public class BunRidMapTests
         Platform.WindowsArm64,
         Platform.LinuxX64,
         Platform.LinuxArm64,
+        Platform.LinuxMuslX64,
+        Platform.LinuxMuslArm64,
         Platform.MacOsX64,
         Platform.MacOsArm64
     ];
@@ -89,7 +91,7 @@ public class BunRidMapTests
             Assert.Contains(BunRuntimeResolver.GetRuntimeIdentifier(platform), declared);
         }
 
-        // The portable fallback is what serves hosts the six RIDs miss.
+        // The portable fallback is what serves hosts the eight RIDs miss.
         Assert.Contains("any", declared);
     }
 

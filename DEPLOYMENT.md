@@ -4,18 +4,20 @@ This document describes how to deploy new versions of the Scarlet.Bun.MSBuild Nu
 
 ## Overview
 
-The project publishes 15 NuGet packages:
+The project publishes 19 NuGet packages:
 
 1. `Scarlet.Bun.MSBuild` - Main MSBuild task package
 2. `Scarlet.Bun.Runtime.windows-x64-baseline` - Windows x64 runtime
 3. `Scarlet.Bun.Runtime.windows-aarch64` - Windows ARM64 runtime
 4. `Scarlet.Bun.Runtime.linux-x64-baseline` - Linux x64 runtime
 5. `Scarlet.Bun.Runtime.linux-aarch64` - Linux ARM64 runtime
-6. `Scarlet.Bun.Runtime.darwin-x64-baseline` - macOS x64 runtime
-7. `Scarlet.Bun.Runtime.darwin-aarch64` - macOS ARM64 runtime
-8. `Scarlet.Bun.Cli` - the `dotnet bun` tool, which is itself **eight** packages: one per runtime
-   identifier (six), a portable `any` fallback, and a top-level pointer package. A single
-   `dotnet pack` produces all of them.
+6. `Scarlet.Bun.Runtime.linux-x64-musl-baseline` - Linux x64 runtime, musl (Alpine)
+7. `Scarlet.Bun.Runtime.linux-aarch64-musl` - Linux ARM64 runtime, musl (Alpine)
+8. `Scarlet.Bun.Runtime.darwin-x64-baseline` - macOS x64 runtime
+9. `Scarlet.Bun.Runtime.darwin-aarch64` - macOS ARM64 runtime
+10. `Scarlet.Bun.Cli` - the `dotnet bun` tool, which is itself **ten** packages: one per runtime
+    identifier (eight), a portable `any` fallback, and a top-level pointer package. A single
+    `dotnet pack` produces all of them.
 
 `Scarlet.Bun.Core` is a shared library used by both shipping packages. It is deliberately **not**
 published: `Scarlet.Bun.MSBuild` packs the assembly into its `tools/netstandard2.0/` folder and
@@ -179,11 +181,13 @@ dotnet pack src/Scarlet.Bun.MSBuild/Scarlet.Bun.MSBuild.csproj --configuration R
 dotnet pack src/Scarlet.Bun.Runtime.windows-x64-baseline/Scarlet.Bun.Runtime.windows-x64-baseline.csproj --configuration Release --output ./packages /p:Version=$VERSION
 dotnet pack src/Scarlet.Bun.Runtime.linux-x64-baseline/Scarlet.Bun.Runtime.linux-x64-baseline.csproj --configuration Release --output ./packages /p:Version=$VERSION
 dotnet pack src/Scarlet.Bun.Runtime.linux-aarch64/Scarlet.Bun.Runtime.linux-aarch64.csproj --configuration Release --output ./packages /p:Version=$VERSION
+dotnet pack src/Scarlet.Bun.Runtime.linux-x64-musl-baseline/Scarlet.Bun.Runtime.linux-x64-musl-baseline.csproj --configuration Release --output ./packages /p:Version=$VERSION
+dotnet pack src/Scarlet.Bun.Runtime.linux-aarch64-musl/Scarlet.Bun.Runtime.linux-aarch64-musl.csproj --configuration Release --output ./packages /p:Version=$VERSION
 dotnet pack src/Scarlet.Bun.Runtime.darwin-x64-baseline/Scarlet.Bun.Runtime.darwin-x64-baseline.csproj --configuration Release --output ./packages /p:Version=$VERSION
 dotnet pack src/Scarlet.Bun.Runtime.darwin-aarch64/Scarlet.Bun.Runtime.darwin-aarch64.csproj --configuration Release --output ./packages /p:Version=$VERSION
 
 # Pack the dotnet tool. No /p:Version - it versions from BunVersion, like the runtime packages.
-# This one command produces eight packages: six RID-specific, one portable "any", one pointer.
+# This one command produces ten packages: eight RID-specific, one portable "any", one pointer.
 dotnet pack src/Scarlet.Bun.Cli/Scarlet.Bun.Cli.csproj --configuration Release --output ./packages
 
 # Push to NuGet (requires API key).

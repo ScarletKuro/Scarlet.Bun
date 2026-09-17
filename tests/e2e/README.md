@@ -65,6 +65,8 @@ The runtime package is selected from the `dotnet --info` RID first, which keeps 
 - Windows x64 uses `Scarlet.Bun.Runtime.windows-x64-baseline`
 - Linux ARM64 uses `Scarlet.Bun.Runtime.linux-aarch64`
 - Linux x64 uses `Scarlet.Bun.Runtime.linux-x64-baseline`
+- Linux ARM64, musl (Alpine) uses `Scarlet.Bun.Runtime.linux-aarch64-musl`
+- Linux x64, musl (Alpine) uses `Scarlet.Bun.Runtime.linux-x64-musl-baseline`
 - macOS ARM64 uses `Scarlet.Bun.Runtime.darwin-aarch64`
 - macOS x64 uses `Scarlet.Bun.Runtime.darwin-x64-baseline`
 

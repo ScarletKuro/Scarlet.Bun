@@ -34,7 +34,10 @@ fi
 DOWNLOAD_URL="https://github.com/oven-sh/bun/releases/download/bun-v$BUN_VERSION/$DOWNLOAD_FILENAME"
 
 # Unique temp paths so parallel project builds never collide.
-TMP_ZIP="$(mktemp -t bun-XXXXXXXX.zip)"
+# No suffix after the X's: BusyBox's mktemp (Alpine) requires the X's to be the very last characters of
+# the template and rejects a trailing suffix like ".zip" with "Invalid argument", unlike GNU mktemp. curl
+# and unzip do not care that the file has no .zip extension.
+TMP_ZIP="$(mktemp -t bun-download-XXXXXXXX)"
 
 # Extract into a temp directory, NEVER next to $EXECUTABLE_PATH. Extracting into the project directory made
 # the search below find the binary it was about to replace, so the move was skipped as a no-op and a stale

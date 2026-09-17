@@ -130,6 +130,12 @@ select_runtime_package_from_rid() {
         linux-x64)
             echo "Scarlet.Bun.Runtime.linux-x64-baseline"
             ;;
+        linux-musl-arm64)
+            echo "Scarlet.Bun.Runtime.linux-aarch64-musl"
+            ;;
+        linux-musl-x64)
+            echo "Scarlet.Bun.Runtime.linux-x64-musl-baseline"
+            ;;
         osx-arm64)
             echo "Scarlet.Bun.Runtime.darwin-aarch64"
             ;;

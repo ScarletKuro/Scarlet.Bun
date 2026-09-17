@@ -57,6 +57,20 @@ public static class BunRuntimeResolver
                 downloadName: "bun-darwin-aarch64",
                 packageName: "Scarlet.Bun.Runtime.darwin-aarch64",
                 executableName: "bun"
+            ),
+            [Platform.LinuxMuslX64] = new(
+                rid: "linux-musl-x64",
+                directoryName: "bun-linux-x64-musl-baseline",
+                downloadName: "bun-linux-x64-musl-baseline",
+                packageName: "Scarlet.Bun.Runtime.linux-x64-musl-baseline",
+                executableName: "bun"
+            ),
+            [Platform.LinuxMuslArm64] = new(
+                rid: "linux-musl-arm64",
+                directoryName: "bun-linux-aarch64-musl",
+                downloadName: "bun-linux-aarch64-musl",
+                packageName: "Scarlet.Bun.Runtime.linux-aarch64-musl",
+                executableName: "bun"
             )
         };
 
@@ -117,14 +131,9 @@ public static class BunRuntimeResolver
 
         if (osPlatform == OSPlatform.Linux)
         {
-            // The packaged Bun builds link against glibc. On musl they would fail to start with an error
-            // that says nothing about libc, so this is reported up front instead.
             if (isMuslLibc)
             {
-                throw new PlatformNotSupportedException(
-                    $"Scarlet.Bun does not provide a Bun build for musl-based Linux ({osDescription}). "
-                    + "The packaged builds link against glibc. Install Bun through its own installer and "
-                    + "point at it with the SCARLET_BUN_PATH environment variable, or set BunRuntimeDirectory.");
+                return isArm64 ? Platform.LinuxMuslArm64 : Platform.LinuxMuslX64;
             }
 
             return isArm64 ? Platform.LinuxArm64 : Platform.LinuxX64;

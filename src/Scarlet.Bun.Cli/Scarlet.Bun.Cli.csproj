@@ -20,11 +20,10 @@
 
     <!-- One `dotnet pack` produces a package per RID plus a top-level pointer package. 'any' adds a
          framework-dependent, platform-agnostic fallback that downloads Bun on first use instead of
-         embedding it. It covers hosts these six RIDs miss but that Bun still supports - it is not a
-         universal fallback: musl and any architecture other than x64/arm64 are rejected with an
-         explanatory error by BunRuntimeResolver.GetPlatform, because Bun publishes no build we could
-         download for them. -->
-    <RuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64;osx-x64;osx-arm64;any</RuntimeIdentifiers>
+         embedding it. It covers hosts these eight RIDs miss but that Bun still supports - it is not a
+         universal fallback: any architecture other than x64/arm64 is rejected with an explanatory error
+         by BunRuntimeResolver.GetPlatform, because Bun publishes no build we could download for it. -->
+    <RuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64;linux-musl-x64;linux-musl-arm64;osx-x64;osx-arm64;any</RuntimeIdentifiers>
     <ToolPackageRuntimeIdentifiers>$(RuntimeIdentifiers)</ToolPackageRuntimeIdentifiers>
 
     <!-- Framework-dependent, platform-specific. Since .NET 8 a RuntimeIdentifier no longer implies
@@ -76,6 +75,8 @@
     <BunRuntimeProject Condition="'$(RuntimeIdentifier)' == 'win-arm64'">windows-aarch64</BunRuntimeProject>
     <BunRuntimeProject Condition="'$(RuntimeIdentifier)' == 'linux-x64'">linux-x64-baseline</BunRuntimeProject>
     <BunRuntimeProject Condition="'$(RuntimeIdentifier)' == 'linux-arm64'">linux-aarch64</BunRuntimeProject>
+    <BunRuntimeProject Condition="'$(RuntimeIdentifier)' == 'linux-musl-x64'">linux-x64-musl-baseline</BunRuntimeProject>
+    <BunRuntimeProject Condition="'$(RuntimeIdentifier)' == 'linux-musl-arm64'">linux-aarch64-musl</BunRuntimeProject>
     <BunRuntimeProject Condition="'$(RuntimeIdentifier)' == 'osx-x64'">darwin-x64-baseline</BunRuntimeProject>
     <BunRuntimeProject Condition="'$(RuntimeIdentifier)' == 'osx-arm64'">darwin-aarch64</BunRuntimeProject>
 

@@ -6,7 +6,7 @@ namespace Scarlet.Bun.MSBuild.Tests;
 /// Checks that every runtime package's props file declares the pack the resolver expects.
 /// </summary>
 /// <remarks>
-/// The six props files are near-identical copies, and five of them describe a platform this test run can never
+/// The props files are near-identical copies, and most of them describe a platform this test run can never
 /// execute on. A swapped RID would otherwise only surface on somebody else's CI leg.
 /// </remarks>
 public class RuntimePackagePropsTests
@@ -16,6 +16,8 @@ public class RuntimePackagePropsTests
     [InlineData(Platform.WindowsArm64)]
     [InlineData(Platform.LinuxX64)]
     [InlineData(Platform.LinuxArm64)]
+    [InlineData(Platform.LinuxMuslX64)]
+    [InlineData(Platform.LinuxMuslArm64)]
     [InlineData(Platform.MacOsX64)]
     [InlineData(Platform.MacOsArm64)]
     public void RuntimePackageProps_ShouldDeclareThePackTheResolverLooksFor(Platform platform)
@@ -74,11 +76,12 @@ public class RuntimePackagePropsTests
     [Fact]
     public void RuntimePackageProps_ShouldHaveNoStragglersInSrc()
     {
-        // Arrange - a seventh runtime package the resolver knows nothing about would go unnoticed otherwise
+        // Arrange - an extra runtime package the resolver knows nothing about would go unnoticed otherwise
         var expected = new[]
         {
             Platform.WindowsX64, Platform.WindowsArm64, Platform.LinuxX64,
-            Platform.LinuxArm64, Platform.MacOsX64, Platform.MacOsArm64
+            Platform.LinuxArm64, Platform.LinuxMuslX64, Platform.LinuxMuslArm64,
+            Platform.MacOsX64, Platform.MacOsArm64
         }.Select(BunRuntimeResolver.GetRuntimePackageName).OrderBy(name => name, StringComparer.Ordinal);
 
         // Act

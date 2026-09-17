@@ -63,6 +63,8 @@ environment variables.
 | [Scarlet.Bun.Runtime.windows-aarch64](https://www.nuget.org/packages/Scarlet.Bun.Runtime.windows-aarch64/) | Bun for Windows ARM64 |
 | [Scarlet.Bun.Runtime.linux-x64-baseline](https://www.nuget.org/packages/Scarlet.Bun.Runtime.linux-x64-baseline/) | Bun for Linux x64 |
 | [Scarlet.Bun.Runtime.linux-aarch64](https://www.nuget.org/packages/Scarlet.Bun.Runtime.linux-aarch64/) | Bun for Linux ARM64 |
+| [Scarlet.Bun.Runtime.linux-x64-musl-baseline](https://www.nuget.org/packages/Scarlet.Bun.Runtime.linux-x64-musl-baseline/) | Bun for Linux x64, musl (Alpine) |
+| [Scarlet.Bun.Runtime.linux-aarch64-musl](https://www.nuget.org/packages/Scarlet.Bun.Runtime.linux-aarch64-musl/) | Bun for Linux ARM64, musl (Alpine) |
 | [Scarlet.Bun.Runtime.darwin-x64-baseline](https://www.nuget.org/packages/Scarlet.Bun.Runtime.darwin-x64-baseline/) | Bun for macOS x64 |
 | [Scarlet.Bun.Runtime.darwin-aarch64](https://www.nuget.org/packages/Scarlet.Bun.Runtime.darwin-aarch64/) | Bun for macOS ARM64 |
 
@@ -71,10 +73,9 @@ does not use them. Their package version is the Bun version they contain.
 
 ## Supported Platforms
 
-Windows, Linux and macOS on **x64 or arm64**. The packaged Bun builds link against glibc, so musl-based
-distributions such as Alpine are not supported, and neither is any other architecture — those hosts get an
-explanatory error rather than a mismatched binary. Point at your own Bun with `SCARLET_BUN_PATH` (CLI) or
-`BunRuntimeDirectory` (MSBuild) if you need one of them.
+Windows, Linux and macOS on **x64 or arm64**, including musl-based Linux distributions such as Alpine. Any
+other architecture gets an explanatory error rather than a mismatched binary — point at your own Bun with
+`SCARLET_BUN_PATH` (CLI) or `BunRuntimeDirectory` (MSBuild) if you need one of them.
 
 ## Development
 
@@ -119,7 +120,7 @@ tests/e2e/cli-tool/verify.sh            "$PWD" 1.0.0-local 1.4.2
 dotnet pack src/Scarlet.Bun.MSBuild/Scarlet.Bun.MSBuild.csproj
 ```
 
-The CLI packs into eight packages at once — one per runtime identifier, a portable fallback and a
+The CLI packs into ten packages at once — one per runtime identifier, a portable fallback and a
 top-level pointer package:
 ```bash
 dotnet pack src/Scarlet.Bun.Cli/Scarlet.Bun.Cli.csproj

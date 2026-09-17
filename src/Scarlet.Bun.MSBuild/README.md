@@ -93,6 +93,12 @@ dotnet add package Scarlet.Bun.Runtime.linux-x64-baseline
 # For Linux ARM64
 dotnet add package Scarlet.Bun.Runtime.linux-aarch64
 
+# For Linux x64, musl (Alpine)
+dotnet add package Scarlet.Bun.Runtime.linux-x64-musl-baseline
+
+# For Linux ARM64, musl (Alpine)
+dotnet add package Scarlet.Bun.Runtime.linux-aarch64-musl
+
 # For macOS x64
 dotnet add package Scarlet.Bun.Runtime.darwin-x64-baseline
 
@@ -118,6 +124,8 @@ dotnet add package Scarlet.Bun.Runtime.darwin-aarch64
 | Windows ARM64 | bun-windows-aarch64       | Scarlet.Bun.Runtime.windows-aarch64              | [![NuGet](https://img.shields.io/nuget/v/Scarlet.Bun.Runtime.windows-aarch64?color=ff4081&logo=nuget&style=flat-square)](https://www.nuget.org/packages/Scarlet.Bun.Runtime.windows-aarch64/) |
 | Linux x64    | bun-linux-x64-baseline     | Scarlet.Bun.Runtime.linux-x64-baseline           | [![NuGet](https://img.shields.io/nuget/v/Scarlet.Bun.Runtime.linux-x64-baseline?color=ff4081&logo=nuget&style=flat-square)](https://www.nuget.org/packages/Scarlet.Bun.Runtime.linux-x64-baseline/) |
 | Linux ARM64  | bun-linux-aarch64          | Scarlet.Bun.Runtime.linux-aarch64                | [![NuGet](https://img.shields.io/nuget/v/Scarlet.Bun.Runtime.linux-aarch64?color=ff4081&logo=nuget&style=flat-square)](https://www.nuget.org/packages/Scarlet.Bun.Runtime.linux-aarch64/) |
+| Linux x64, musl (Alpine)   | bun-linux-x64-musl-baseline | Scarlet.Bun.Runtime.linux-x64-musl-baseline | [![NuGet](https://img.shields.io/nuget/v/Scarlet.Bun.Runtime.linux-x64-musl-baseline?color=ff4081&logo=nuget&style=flat-square)](https://www.nuget.org/packages/Scarlet.Bun.Runtime.linux-x64-musl-baseline/) |
+| Linux ARM64, musl (Alpine) | bun-linux-aarch64-musl      | Scarlet.Bun.Runtime.linux-aarch64-musl      | [![NuGet](https://img.shields.io/nuget/v/Scarlet.Bun.Runtime.linux-aarch64-musl?color=ff4081&logo=nuget&style=flat-square)](https://www.nuget.org/packages/Scarlet.Bun.Runtime.linux-aarch64-musl/) |
 | macOS x64    | bun-darwin-x64-baseline    | Scarlet.Bun.Runtime.darwin-x64-baseline          | [![NuGet](https://img.shields.io/nuget/v/Scarlet.Bun.Runtime.darwin-x64-baseline?color=ff4081&logo=nuget&style=flat-square)](https://www.nuget.org/packages/Scarlet.Bun.Runtime.darwin-x64-baseline/) |
 | macOS ARM64  | bun-darwin-aarch64         | Scarlet.Bun.Runtime.darwin-aarch64               | [![NuGet](https://img.shields.io/nuget/v/Scarlet.Bun.Runtime.darwin-aarch64?color=ff4081&logo=nuget&style=flat-square)](https://www.nuget.org/packages/Scarlet.Bun.Runtime.darwin-aarch64/) |
 
@@ -142,6 +150,7 @@ Use MSBuild conditions to reference only the runtime package matching the curren
     <IsWindows Condition="'$(OS)' == 'Windows_NT'">true</IsWindows>
     <IsLinux Condition="Exists('/proc')">true</IsLinux>
     <IsMacOS Condition="Exists('/System/Library/CoreServices/SystemVersion.plist')">true</IsMacOS>
+    <IsMusl Condition="Exists('/lib/ld-musl-x86_64.so.1') OR Exists('/lib/ld-musl-aarch64.so.1')">true</IsMusl>
   </PropertyGroup>
 
   <!-- Detect architecture -->
@@ -159,12 +168,20 @@ Use MSBuild conditions to reference only the runtime package matching the curren
     <PackageReference Include="Scarlet.Bun.Runtime.windows-aarch64" Version="*" PrivateAssets="all" IncludeAssets="runtime; build; native; contentfiles; analyzers; buildtransitive" />
   </ItemGroup>
 
-  <ItemGroup Condition="'$(IsLinux)' == 'true' AND '$(IsX64)' == 'true'">
+  <ItemGroup Condition="'$(IsLinux)' == 'true' AND '$(IsX64)' == 'true' AND '$(IsMusl)' != 'true'">
     <PackageReference Include="Scarlet.Bun.Runtime.linux-x64-baseline" Version="*" PrivateAssets="all" IncludeAssets="runtime; build; native; contentfiles; analyzers; buildtransitive" />
   </ItemGroup>
 
-  <ItemGroup Condition="'$(IsLinux)' == 'true' AND '$(IsARM64)' == 'true'">
+  <ItemGroup Condition="'$(IsLinux)' == 'true' AND '$(IsARM64)' == 'true' AND '$(IsMusl)' != 'true'">
     <PackageReference Include="Scarlet.Bun.Runtime.linux-aarch64" Version="*" PrivateAssets="all" IncludeAssets="runtime; build; native; contentfiles; analyzers; buildtransitive" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(IsLinux)' == 'true' AND '$(IsX64)' == 'true' AND '$(IsMusl)' == 'true'">
+    <PackageReference Include="Scarlet.Bun.Runtime.linux-x64-musl-baseline" Version="*" PrivateAssets="all" IncludeAssets="runtime; build; native; contentfiles; analyzers; buildtransitive" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(IsLinux)' == 'true' AND '$(IsARM64)' == 'true' AND '$(IsMusl)' == 'true'">
+    <PackageReference Include="Scarlet.Bun.Runtime.linux-aarch64-musl" Version="*" PrivateAssets="all" IncludeAssets="runtime; build; native; contentfiles; analyzers; buildtransitive" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(IsMacOS)' == 'true' AND '$(IsX64)' == 'true'">
@@ -219,11 +236,12 @@ picks the one matching the build host:
 ```
 
 You normally never write one of these. You would if you want the build to use a Bun you supply yourself —
-a musl build, a non-baseline build, or a locally compiled one — without waiting for a runtime package:
+a non-baseline build, a pre-release build, or a locally compiled one — without waiting for a runtime
+package:
 
 ```xml
 <ItemGroup>
-  <BunRuntimePack Include="MyCompany.Bun.linux-x64-musl">
+  <BunRuntimePack Include="MyCompany.Bun.linux-x64-custom">
     <Rid>linux-x64</Rid>
     <RuntimesPath>$(MSBuildProjectDirectory)/bun/runtimes</RuntimesPath>
     <Priority>100</Priority>
@@ -433,10 +451,9 @@ Don't forget to add dependencies in `package.json`:
 
 ## Supported Platforms
 
-Windows, Linux and macOS on **x64 or arm64**. The packaged Bun builds link against glibc, so musl-based
-distributions such as Alpine are not supported, and neither is any other architecture — those hosts get an
-explanatory error rather than a mismatched binary. Point `BunRuntimeDirectory` at your own Bun if you need
-one of them.
+Windows, Linux and macOS on **x64 or arm64**, including musl-based Linux distributions such as Alpine. Any
+other architecture gets an explanatory error rather than a mismatched binary — point `BunRuntimeDirectory`
+at your own Bun if you need one.
 
 Requires the .NET SDK. The task itself targets `netstandard2.0`, so it loads in both `dotnet build` and
 Visual Studio's MSBuild.

@@ -94,7 +94,7 @@ The complete MSBuild documentation for LLMs is available at `.github/agents/msbu
 │   │   └── build/
 │   │       ├── Scarlet.Bun.MSBuild.props      # MSBuild properties
 │   │       └── Scarlet.Bun.MSBuild.targets    # MSBuild targets
-│   └── Scarlet.Bun.Runtime.{platform}/  # Platform-specific runtime packages (6 packages)
+│   └── Scarlet.Bun.Runtime.{platform}/  # Platform-specific runtime packages (8 packages)
 │       ├── build/                         # MSBuild integration for each runtime
 │       │   └── Scarlet.Bun.Runtime.{platform}.props
 │       └── {platform}.csproj              # Downloads/packages Bun binary for platform
@@ -164,7 +164,7 @@ milliseconds; the `package-installation` e2e catches it for real.
 - Validates runtime availability before download
 
 ### 4. Platform-Specific Runtime Packages (`Scarlet.Bun.Runtime.{platform}`)
-- Six separate NuGet packages, one for each supported platform
+- Eight separate NuGet packages, one for each supported platform
 - Downloads platform-specific Bun binaries during build
 - Packages binaries for distribution via NuGet (asset-only: no `lib/` assembly is shipped)
 - Each package includes MSBuild integration via `.props` files
@@ -187,7 +187,9 @@ and `BunRuntimeResolver.SelectPacks` picks the best match for the host. Conseque
 
 The older `BunRuntime_<rid>` properties are still set by the runtime packages and still read by the task.
 That is deliberate: it keeps new runtime packages working with old task versions and vice versa. Do not
-add new RIDs to that property set - it is frozen at the six original platforms.
+add new RIDs to that property set - it is frozen at the six original platforms. (The two musl runtime
+packages added later do not set it at all: no released `Scarlet.Bun.MSBuild` predates them, so there is no
+old task version for the property to protect.)
 
 #### Retiring the legacy property contract
 
@@ -227,7 +229,7 @@ Removal checklist: the six task parameters and `CreateLegacyPacks()`/`ReportDepr
 ### 6. Command Line Tool (`Scarlet.Bun.Cli`)
 
 A .NET tool (`ToolCommandName=dotnet-bun`, invoked as `dotnet bun ...`) that forwards every argument to
-Bun verbatim. Packaged with `RuntimeIdentifiers`, so one `dotnet pack` produces **eight** packages: six
+Bun verbatim. Packaged with `RuntimeIdentifiers`, so one `dotnet pack` produces **ten** packages: eight
 RID-specific ones with the Bun binary embedded, a portable `any` one that downloads Bun on first use, and
 a top-level pointer package.
 
@@ -376,12 +378,12 @@ If all three commands succeed, the project is in good shape.
   - Content is minified/bundled correctly
 - [ ] **Package creation succeeds** - `dotnet pack` creates .nupkg file
 - [ ] **No unexpected files in source control** - Check `git status`
-- [ ] **Runtime packages build correctly** - All 6 platform-specific runtime packages compile
+- [ ] **Runtime packages build correctly** - All 8 platform-specific runtime packages compile
 - [ ] **Task dependencies are packed** - `tools/netstandard2.0/` in the packed `Scarlet.Bun.MSBuild` nupkg
       contains `Scarlet.Bun.Core.dll` alongside the task and the System.IO.Abstractions assemblies
 - [ ] **The staged Bun is the pinned Bun** - `BunBinaryVersionTests` runs the host platform's binary and
       compares `--version` to `$(BunVersion)`
-- [ ] **CLI packs to 8 packages** - `dotnet pack src/Scarlet.Bun.Cli` yields six RID packages, an `any`
+- [ ] **CLI packs to 10 packages** - `dotnet pack src/Scarlet.Bun.Cli` yields eight RID packages, an `any`
       package with no Bun in it, and a pointer package containing only `DotnetToolSettings.xml`
 
 ### Common Issues and Solutions

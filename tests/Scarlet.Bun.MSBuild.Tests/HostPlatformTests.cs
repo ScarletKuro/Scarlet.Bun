@@ -8,7 +8,7 @@ namespace Scarlet.Bun.MSBuild.Tests;
 /// <remarks>
 /// These used to fail silently: any non-arm64 Linux mapped to <see cref="Platform.LinuxX64"/>, so a 32-bit
 /// ARM or riscv64 host would download an x64 Bun and fail at exec with a message that says nothing about
-/// architecture, and Alpine would get a glibc build for the same reason.
+/// architecture.
 /// </remarks>
 public class HostPlatformTests
 {
@@ -77,17 +77,15 @@ public class HostPlatformTests
     }
 
     [Theory]
-    [InlineData(Architecture.X64)]
-    [InlineData(Architecture.Arm64)]
-    public void GetPlatform_OnMuslLinux_ShouldSaySoRatherThanShipAGlibcBuild(Architecture architecture)
+    [InlineData(Architecture.X64, Platform.LinuxMuslX64)]
+    [InlineData(Architecture.Arm64, Platform.LinuxMuslArm64)]
+    public void GetPlatform_OnMuslLinux_ShouldMapArchitecture(Architecture architecture, Platform expected)
     {
         // Act
-        var exception = Assert.Throws<PlatformNotSupportedException>(() =>
-            BunRuntimeResolver.GetPlatform(OSPlatform.Linux, architecture, isMuslLibc: true, "Alpine Linux"));
+        var platform = BunRuntimeResolver.GetPlatform(OSPlatform.Linux, architecture, isMuslLibc: true, "Alpine Linux");
 
         // Assert
-        Assert.Contains("musl", exception.Message);
-        Assert.Contains("SCARLET_BUN_PATH", exception.Message);
+        Assert.Equal(expected, platform);
     }
 
     [Fact]
@@ -111,6 +109,6 @@ public class HostPlatformTests
 
         // Assert
         Assert.True(Enum.IsDefined(current));
-        Assert.Equal(RuntimeInformation.ProcessArchitecture == Architecture.Arm64, current is Platform.WindowsArm64 or Platform.LinuxArm64 or Platform.MacOsArm64);
+        Assert.Equal(RuntimeInformation.ProcessArchitecture == Architecture.Arm64, current is Platform.WindowsArm64 or Platform.LinuxArm64 or Platform.LinuxMuslArm64 or Platform.MacOsArm64);
     }
 }

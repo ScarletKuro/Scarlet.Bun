@@ -213,6 +213,15 @@ public class BunIntegrationTests
     [Fact]
     public void BunRunTask_WithoutRuntimeDirectory_UsesPlatformRuntimeProperty()
     {
+        // The legacy BunRuntime_<rid> contract is frozen at the six original platforms (see
+        // BunRuntimeResolver.PlatformMap and AGENTS.md) - musl was added afterwards and deliberately never
+        // got one, so this legacy-path test has nothing to exercise when it runs on a musl host.
+        var currentRid = BunRuntimeResolver.GetRuntimeIdentifier(BunRuntimeResolver.GetCurrentPlatform());
+        if (currentRid is "linux-musl-x64" or "linux-musl-arm64")
+        {
+            return;
+        }
+
         var runtimePackagePath = Directory.GetCurrentDirectory();
         var task = new BunRunTask
         {
