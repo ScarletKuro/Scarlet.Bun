@@ -27,13 +27,12 @@
     <SelfContained>false</SelfContained>
     <PublishSelfContained>false</PublishSelfContained>
 
-    <!-- Package identity. The version tracks the embedded Bun, exactly like Scarlet.Bun.Runtime.*, so
-         pinning the tool version in .config/dotnet-tools.json pins the Bun version.
-         BunCliVersionSuffix exists so a CLI-only fix can ship as 1.4.2.1 without waiting for a Bun bump.
-         Without it, a re-release at the same version is silently dropped by the deploy push, which skips
-         duplicates. -->
+    <!-- Package identity. The version tracks the embedded Bun, exactly like Scarlet.Bun.Runtime.*, so the
+         version in .config/dotnet-tools.json names the Bun this repository builds with.
+         $(BunCliRevision) is the escape hatch for a CLI-only fix; see Directory.Build.props. NuGet drops a
+         trailing zero, so the usual case publishes as plain 1.4.2. -->
     <PackageId>Scarlet.Bun.Cli</PackageId>
-    <Version>$(BunVersion)$(BunCliVersionSuffix)</Version>
+    <Version>$(BunVersion).$(BunCliRevision)</Version>
     <Title>Scarlet.Bun.Cli - Bun as a .NET tool</Title>
     <Description>Run Bun, the fast all-in-one JavaScript runtime and bundler, as a .NET tool: `dotnet bun install`, `dotnet bun run build.mjs`. Platform-specific packages embed the matching Bun binary, so `dotnet tool restore` works offline and pins Bun through .config/dotnet-tools.json - no download, no network, hash-verified by NuGet. Every argument is forwarded to Bun verbatim.</Description>
     <PackageTags>bun;bunjs;dotnet-tool;global-tool;cli;javascript;typescript;bundler;npm;node;sass;scss;frontend</PackageTags>

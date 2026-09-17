@@ -221,7 +221,9 @@ Recommended version strategy:
   makes every install fail until the rest land. `deploy.yml` pushes file-by-file for this reason rather
   than using a `*.nupkg` glob
 - A CLI-only fix cannot be released at an unchanged `BunVersion`: `--skip-duplicate` would drop it
-  silently. Set `$(BunCliVersionSuffix)` (for example `.1`, giving `1.4.2.1`) to ship one
+  silently. Bump `<BunCliRevision>` in `Directory.Build.props` (0 → 1, giving `1.4.2.1`) to ship one, and
+  reset it to 0 the next time `BunVersion` changes. Revision 0 publishes as plain `1.4.2`, because NuGet
+  normalises a trailing zero away
 - Symbol packages (`.snupkg`) are uploaded for debugging support
 - The workflow uses `--skip-duplicate` to allow re-running failed deployments
 - Runtime binaries are downloaded on-demand during build if not present

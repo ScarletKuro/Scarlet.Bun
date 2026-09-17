@@ -26,13 +26,11 @@ fi
 WORKSPACE_PATH="$1"
 PACKAGE_VERSION="$2"
 RUNTIME_VERSION="$3"
-CLI_VERSION="$RUNTIME_VERSION"
 
 echo "=========================================="
 echo "E2E Test: Scarlet.Bun.Cli (dotnet tool)"
 echo "=========================================="
 echo "Workspace: $WORKSPACE_PATH"
-echo "Scarlet.Bun.Cli Version: $CLI_VERSION"
 echo "Expected Bun Version: $RUNTIME_VERSION"
 echo "=========================================="
 
@@ -86,9 +84,13 @@ echo "✓ Runtime detection: dotnet_rid=${DOTNET_RID:-<not detected>}"
 
 FAILED=0
 
+# Deliberately no --version: the local feed holds exactly the package that was just built, and the CLI
+# version is $(BunVersion).$(BunCliRevision) rather than the runtime version this script is handed. Asking
+# for "whatever we just packed" and then asserting the Bun it produces is both simpler and stricter than
+# guessing the version string here.
 dotnet new tool-manifest > /dev/null
-dotnet tool install Scarlet.Bun.Cli --version "$CLI_VERSION"
-echo "✓ Installed Scarlet.Bun.Cli $CLI_VERSION into a local tool manifest"
+dotnet tool install Scarlet.Bun.Cli
+echo "✓ Installed Scarlet.Bun.Cli into a local tool manifest"
 
 # --- 1. The RID-specific package was selected, not just the pointer ----------------------------------
 RID_PACKAGE_DIR="$NUGET_PACKAGES/scarlet.bun.cli.$DOTNET_RID"

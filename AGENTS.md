@@ -231,9 +231,11 @@ a top-level pointer package.
 
 Things that will bite you if changed carelessly:
 
-- **The version tracks `$(BunVersion)`**, like the runtime packages. `$(BunCliVersionSuffix)` exists so a
-  CLI-only fix can ship as `1.4.2.1`; without it a re-release at the same version is silently dropped by
-  the deploy push, which skips duplicates.
+- **The version is `$(BunVersion).$(BunCliRevision)`**, both in `Directory.Build.props`. NuGet drops a
+  trailing zero, so revision 0 publishes as plain `1.4.2`. Bump the revision to ship a CLI-only fix
+  (`1.4.2.1`) and reset it to 0 when `BunVersion` moves - a re-release at an unchanged version is silently
+  dropped by the deploy push, which skips duplicates. `deploy.yml` recomputes the same normalisation to
+  find the pointer package's filename.
 - **Push order is load-bearing.** Every RID package must reach the feed *before* the pointer package, or
   installs fail. A `*.nupkg` glob gets this backwards because `.` sorts before any letter, which is why
   `deploy.yml` pushes the pointer explicitly last.

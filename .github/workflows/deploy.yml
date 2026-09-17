@@ -77,6 +77,18 @@ jobs:
           echo "bun_version=$BUN_VERSION"
           echo "bun_version=$BUN_VERSION" >> $GITHUB_OUTPUT
 
+          # The CLI package version is $(BunVersion).$(BunCliRevision), and NuGet normalises a trailing
+          # zero away - so revision 0 produces Scarlet.Bun.Cli.1.4.2.nupkg, not 1.4.2.0. The push step
+          # needs the real filename to identify the pointer package, which must be published last.
+          BUN_CLI_REVISION=$(sed -n 's/.*<BunCliRevision>\([^<]*\)<\/BunCliRevision>.*/\1/p' Directory.Build.props)
+          if [ "$BUN_CLI_REVISION" = "0" ]; then
+            CLI_VERSION="$BUN_VERSION"
+          else
+            CLI_VERSION="$BUN_VERSION.$BUN_CLI_REVISION"
+          fi
+          echo "cli_version=$CLI_VERSION"
+          echo "cli_version=$CLI_VERSION" >> $GITHUB_OUTPUT
+
       - name: Pack NuGet packages
         run: |
           # Pack the main MSBuild package
@@ -144,7 +156,7 @@ jobs:
           # in lexicographic order, and '.' sorts before any letter, which puts
           # Scarlet.Bun.Cli.<version>.nupkg ahead of Scarlet.Bun.Cli.<rid>.<version>.nupkg - exactly the
           # wrong way round. Any install during that window fails.
-          CLI_POINTER="./packages/Scarlet.Bun.Cli.${{ steps.get_bun_version.outputs.bun_version }}.nupkg"
+          CLI_POINTER="./packages/Scarlet.Bun.Cli.${{ steps.get_bun_version.outputs.cli_version }}.nupkg"
 
           if [ ! -f "$CLI_POINTER" ]; then
             echo "Expected the Scarlet.Bun.Cli pointer package at $CLI_POINTER"
@@ -169,7 +181,7 @@ jobs:
         shell: bash
         run: |
           # Same ordering rule as above: every RID package first, the pointer last.
-          CLI_POINTER="./packages/Scarlet.Bun.Cli.${{ steps.get_bun_version.outputs.bun_version }}.nupkg"
+          CLI_POINTER="./packages/Scarlet.Bun.Cli.${{ steps.get_bun_version.outputs.cli_version }}.nupkg"
 
           for package in ./packages/*.nupkg; do
             [ "$package" = "$CLI_POINTER" ] && continue
