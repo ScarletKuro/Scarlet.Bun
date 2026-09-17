@@ -14,8 +14,14 @@ namespace Scarlet.Bun.Cli.Tests;
 /// </remarks>
 public class BunCliDownloadTests
 {
-    private const string ToolDirectory = "/tool";
-    private const string CacheRoot = "/cache";
+    // Rooted through GetFullPath so the paths are drive-qualified on Windows. A drive-less "/cache" is
+    // ambiguous: MockFileSystem resolves it against its own default drive, while Path.GetFullPath - which
+    // the resolver applies to the downloaded path - resolves it against the current directory's drive.
+    // Those agree on a machine whose working directory is on C:, and disagree on CI, where the checkout
+    // lives on D:.
+    private static readonly string TestRoot = Path.GetFullPath("scarlet-bun-download-tests");
+    private static readonly string ToolDirectory = Path.Combine(TestRoot, "tool");
+    private static readonly string CacheRoot = Path.Combine(TestRoot, "cache");
 
     [Fact]
     public void Resolve_WithNothingCached_ShouldDownloadAndReportItAsDownloaded()
@@ -33,7 +39,7 @@ public class BunCliDownloadTests
         // Assert
         Assert.Equal(BunSource.Downloaded, resolution.Source);
         Assert.Equal(
-            BunRuntimeResolver.GetExecutablePath("/cache/runtimes/1.4.2", Platform.LinuxX64),
+            BunRuntimeResolver.GetExecutablePath(Path.Combine(CacheRoot, "runtimes", "1.4.2"), Platform.LinuxX64),
             resolution.ExecutablePath);
         Assert.True(fileSystem.File.Exists(resolution.ExecutablePath!));
     }
