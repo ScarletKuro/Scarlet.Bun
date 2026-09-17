@@ -13,12 +13,17 @@ Every argument is forwarded to Bun verbatim, so anything valid after `bun` is va
 
 ## Why not just install Bun?
 
-Because this pins it. The Bun version lives in `.config/dotnet-tools.json` next to the rest of your
-tooling, `dotnet tool restore` brings it down with the repository, and NuGet hash-verifies the binary.
+You still can — nothing here stops you, and for a solo project with no CI this buys you little. It earns
+its keep once a repository has more than one contributor or a CI pipeline, because it makes Bun pinned and
+installed the same way as the rest of your .NET tooling, instead of a separate step with its own installer:
 
-The platform-specific package **contains the Bun binary**, so it needs no network at run time — no
-download on first use, no dependency on github.com being reachable, and no chance of a CI agent quietly
-picking up a different Bun than your laptop did.
+- **Pinned like everything else.** The Bun version lives in `.config/dotnet-tools.json` next to
+  `dotnet-ef`, `dotnet-format`, and friends. `dotnet tool restore` brings it down with the repository —
+  no "works on my machine because I have Bun 1.5 and CI has 1.3."
+- **Hash-verified.** NuGet checks the binary against what it published, unlike a `curl | sh` installer.
+- **No network at run time**, for the platform-specific package — it **contains the Bun binary**, so
+  there's no download on first use, no dependency on github.com being reachable, and no chance of a CI
+  agent quietly picking up a different Bun than your laptop did.
 
 ## Install
 
