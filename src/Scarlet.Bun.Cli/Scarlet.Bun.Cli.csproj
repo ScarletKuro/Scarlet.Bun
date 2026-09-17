@@ -168,8 +168,15 @@
     </ItemGroup>
   </Target>
 
+  <!--
+    Two READMEs: the pointer package (RuntimeIdentifier empty) ships the full docs; every RID-specific
+    sub-package - including 'any' - ships a short redirect to Scarlet.Bun.Cli instead, since NuGet.org
+    renders whichever one is packed as that package's own page and a first-time visitor has no way to know
+    these RID packages are restore-time details, not something to install directly.
+  -->
   <ItemGroup>
-    <None Update="README.md" Pack="true" PackagePath="\" />
+    <None Update="README.md" Condition="'$(RuntimeIdentifier)' == ''" Pack="true" PackagePath="\" />
+    <None Update="README.rid.md" Condition="'$(RuntimeIdentifier)' != ''" Pack="true" PackagePath="README.md" />
     <None Include="..\..\icon.png" Pack="true" PackagePath="\" />
   </ItemGroup>
 
