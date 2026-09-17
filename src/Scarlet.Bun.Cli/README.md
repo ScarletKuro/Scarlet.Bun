@@ -53,6 +53,13 @@ dnx Scarlet.Bun.Cli -- run build.mjs
 > **The package version is the Bun version.** `Scarlet.Bun.Cli` 1.4.2 contains Bun 1.4.2, the same as the
 > `Scarlet.Bun.Runtime.*` packages.
 
+To move to a newer Bun, update the package like any other .NET tool — no separate upgrade command needed:
+
+```bash
+dotnet tool update Scarlet.Bun.Cli      # local: also bumps .config/dotnet-tools.json
+dotnet tool update -g Scarlet.Bun.Cli   # global
+```
+
 ## How it finds Bun
 
 `Scarlet.Bun.Cli` is a pointer package: it owns the `dotnet-bun` command but carries no Bun binary itself.
