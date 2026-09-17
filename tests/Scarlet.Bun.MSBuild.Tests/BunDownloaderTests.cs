@@ -16,7 +16,7 @@ public class BunDownloaderTests
         var mockHttp = new MockHttpMessageHandler();
         var httpClient = mockHttp.ToHttpClient();
         var mockFileSystem = new MockFileSystem();
-        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeZipArchiveProvider(mockFileSystem), new NoOpChmodProvider(), BunRuntimeResolver.GetCurrentPlatform(), new NoOpBunLogger());
+        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeZipArchiveProvider(mockFileSystem), NoOpChmodProvider.Instance, BunRuntimeResolver.GetCurrentPlatform(), new NoOpBunLogger());
 
         // Act & Assert
         await Assert.ThrowsAsync<ArgumentException>(() =>
@@ -30,7 +30,7 @@ public class BunDownloaderTests
         var mockHttp = new MockHttpMessageHandler();
         var httpClient = mockHttp.ToHttpClient();
         var mockFileSystem = new MockFileSystem();
-        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeZipArchiveProvider(mockFileSystem), new NoOpChmodProvider(), BunRuntimeResolver.GetCurrentPlatform(), new NoOpBunLogger());
+        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeZipArchiveProvider(mockFileSystem), NoOpChmodProvider.Instance, BunRuntimeResolver.GetCurrentPlatform(), new NoOpBunLogger());
 
         // Act & Assert
         await Assert.ThrowsAsync<ArgumentException>(() =>
@@ -44,7 +44,7 @@ public class BunDownloaderTests
         var mockHttp = new MockHttpMessageHandler();
         var httpClient = mockHttp.ToHttpClient();
         var mockFileSystem = new MockFileSystem();
-        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeZipArchiveProvider(mockFileSystem), new NoOpChmodProvider(), BunRuntimeResolver.GetCurrentPlatform(), new NoOpBunLogger());
+        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeZipArchiveProvider(mockFileSystem), NoOpChmodProvider.Instance, BunRuntimeResolver.GetCurrentPlatform(), new NoOpBunLogger());
 
         // Act & Assert
         await Assert.ThrowsAsync<ArgumentException>(() =>
@@ -70,7 +70,7 @@ public class BunDownloaderTests
                 .Respond("application/zip", zipContent);
 
         var httpClient = mockHttp.ToHttpClient();
-        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeZipArchiveProvider(mockFileSystem), new NoOpChmodProvider(), platform, new NoOpBunLogger());
+        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeZipArchiveProvider(mockFileSystem), NoOpChmodProvider.Instance, platform, new NoOpBunLogger());
 
         // Act
         var result = await downloader.DownloadRuntimeAsync(tempDir);
@@ -103,7 +103,7 @@ public class BunDownloaderTests
                 .Respond("application/zip", zipContent);
 
         var httpClient = mockHttp.ToHttpClient();
-        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeZipArchiveProvider(mockFileSystem), new NoOpChmodProvider(), platform, new NoOpBunLogger());
+        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeZipArchiveProvider(mockFileSystem), NoOpChmodProvider.Instance, platform, new NoOpBunLogger());
 
         // Act
         var result = await downloader.DownloadRuntimeAsync(tempDir, version);
@@ -143,7 +143,7 @@ public class BunDownloaderTests
                 });
 
         var httpClient = mockHttp.ToHttpClient();
-        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeZipArchiveProvider(mockFileSystem), new NoOpChmodProvider(), platform, new NoOpBunLogger());
+        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeZipArchiveProvider(mockFileSystem), NoOpChmodProvider.Instance, platform, new NoOpBunLogger());
 
         // Act - first download
         var result1 = await downloader.DownloadRuntimeAsync(tempDir, version);
@@ -219,7 +219,7 @@ public class BunDownloaderTests
                 .Respond(System.Net.HttpStatusCode.NotFound);
 
         var httpClient = mockHttp.ToHttpClient();
-        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeZipArchiveProvider(mockFileSystem), new NoOpChmodProvider(), platform, new NoOpBunLogger());
+        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeZipArchiveProvider(mockFileSystem), NoOpChmodProvider.Instance, platform, new NoOpBunLogger());
 
         // Act & Assert
         await Assert.ThrowsAsync<HttpRequestException>(() =>
@@ -242,7 +242,7 @@ public class BunDownloaderTests
                 .Respond("application/zip", zipContent);
 
         var httpClient = mockHttp.ToHttpClient();
-        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeMissingExecutableZipArchiveProvider(), new NoOpChmodProvider(), platform, new NoOpBunLogger());
+        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeMissingExecutableZipArchiveProvider(), NoOpChmodProvider.Instance, platform, new NoOpBunLogger());
 
         // Act & Assert
         var ex = await Assert.ThrowsAsync<InvalidDataException>(() =>
@@ -270,7 +270,7 @@ public class BunDownloaderTests
                 .Respond("application/zip", zipContent);
 
         var httpClient = mockHttp.ToHttpClient();
-        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeNoWriteZipArchiveProvider(), new NoOpChmodProvider(), platform, new NoOpBunLogger());
+        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeNoWriteZipArchiveProvider(), NoOpChmodProvider.Instance, platform, new NoOpBunLogger());
 
         // Act & Assert
         var ex = await Assert.ThrowsAsync<FileNotFoundException>(() =>
@@ -331,7 +331,7 @@ public class BunDownloaderTests
                 .Respond("application/zip", zipContent);
 
         var httpClient = mockHttp.ToHttpClient();
-        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeZipArchiveProvider(mockFileSystem), new NoOpChmodProvider(), platform, new NoOpBunLogger());
+        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeZipArchiveProvider(mockFileSystem), NoOpChmodProvider.Instance, platform, new NoOpBunLogger());
 
         // Act
         var result = await downloader.DownloadRuntimeAsync(tempDir);
@@ -350,7 +350,7 @@ public class BunDownloaderTests
         var mockHttp = new MockHttpMessageHandler();
         var httpClient = mockHttp.ToHttpClient();
         var mockFileSystem = new MockFileSystem();
-        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeZipArchiveProvider(mockFileSystem), new NoOpChmodProvider(), BunRuntimeResolver.GetCurrentPlatform(), new NoOpBunLogger());
+        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeZipArchiveProvider(mockFileSystem), NoOpChmodProvider.Instance, BunRuntimeResolver.GetCurrentPlatform(), new NoOpBunLogger());
 
         Assert.Throws<ArgumentException>(() =>
             downloader.DownloadRuntime(null!));
@@ -362,7 +362,7 @@ public class BunDownloaderTests
         var mockHttp = new MockHttpMessageHandler();
         var httpClient = mockHttp.ToHttpClient();
         var mockFileSystem = new MockFileSystem();
-        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeZipArchiveProvider(mockFileSystem), new NoOpChmodProvider(), BunRuntimeResolver.GetCurrentPlatform(), new NoOpBunLogger());
+        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeZipArchiveProvider(mockFileSystem), NoOpChmodProvider.Instance, BunRuntimeResolver.GetCurrentPlatform(), new NoOpBunLogger());
 
         Assert.Throws<ArgumentException>(() =>
             downloader.DownloadRuntime(string.Empty));
@@ -374,7 +374,7 @@ public class BunDownloaderTests
         var mockHttp = new MockHttpMessageHandler();
         var httpClient = mockHttp.ToHttpClient();
         var mockFileSystem = new MockFileSystem();
-        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeZipArchiveProvider(mockFileSystem), new NoOpChmodProvider(), BunRuntimeResolver.GetCurrentPlatform(), new NoOpBunLogger());
+        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeZipArchiveProvider(mockFileSystem), NoOpChmodProvider.Instance, BunRuntimeResolver.GetCurrentPlatform(), new NoOpBunLogger());
 
         Assert.Throws<ArgumentException>(() =>
             downloader.DownloadRuntime("   "));
@@ -397,7 +397,7 @@ public class BunDownloaderTests
                 .Respond("application/zip", zipContent);
 
         var httpClient = mockHttp.ToHttpClient();
-        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeZipArchiveProvider(mockFileSystem), new NoOpChmodProvider(), platform, new NoOpBunLogger());
+        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeZipArchiveProvider(mockFileSystem), NoOpChmodProvider.Instance, platform, new NoOpBunLogger());
 
         var result = downloader.DownloadRuntime(tempDir);
 
@@ -426,7 +426,7 @@ public class BunDownloaderTests
                 .Respond("application/zip", zipContent);
 
         var httpClient = mockHttp.ToHttpClient();
-        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeZipArchiveProvider(mockFileSystem), new NoOpChmodProvider(), platform, new NoOpBunLogger());
+        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeZipArchiveProvider(mockFileSystem), NoOpChmodProvider.Instance, platform, new NoOpBunLogger());
 
         var result = downloader.DownloadRuntime(tempDir, version);
 
@@ -461,7 +461,7 @@ public class BunDownloaderTests
                 });
 
         var httpClient = mockHttp.ToHttpClient();
-        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeZipArchiveProvider(mockFileSystem), new NoOpChmodProvider(), platform, new NoOpBunLogger());
+        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeZipArchiveProvider(mockFileSystem), NoOpChmodProvider.Instance, platform, new NoOpBunLogger());
 
         var result1 = downloader.DownloadRuntime(tempDir, version);
         Assert.True(mockFileSystem.File.Exists(result1));
@@ -486,7 +486,7 @@ public class BunDownloaderTests
                 .Respond("application/zip", zipContent);
 
         var httpClient = mockHttp.ToHttpClient();
-        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeMissingExecutableZipArchiveProvider(), new NoOpChmodProvider(), platform, new NoOpBunLogger());
+        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeMissingExecutableZipArchiveProvider(), NoOpChmodProvider.Instance, platform, new NoOpBunLogger());
 
         var ex = Assert.Throws<InvalidDataException>(() =>
             downloader.DownloadRuntime(tempDir));
@@ -511,7 +511,7 @@ public class BunDownloaderTests
                 .Respond("application/zip", zipContent);
 
         var httpClient = mockHttp.ToHttpClient();
-        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeNoWriteZipArchiveProvider(), new NoOpChmodProvider(), platform, new NoOpBunLogger());
+        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeNoWriteZipArchiveProvider(), NoOpChmodProvider.Instance, platform, new NoOpBunLogger());
 
         var ex = Assert.Throws<FileNotFoundException>(() =>
             downloader.DownloadRuntime(tempDir));
@@ -543,7 +543,7 @@ public class BunDownloaderTests
                 .Respond("application/zip", zipContent);
 
         var httpClient = mockHttp.ToHttpClient();
-        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeZipArchiveProvider(mockFileSystem), new NoOpChmodProvider(), platform, new NoOpBunLogger());
+        var downloader = new BunDownloader(httpClient, mockFileSystem, new FakeZipArchiveProvider(mockFileSystem), NoOpChmodProvider.Instance, platform, new NoOpBunLogger());
 
         var result = downloader.DownloadRuntime(tempDir);
 

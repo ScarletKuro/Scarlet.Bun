@@ -7,6 +7,12 @@
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <DevelopmentDependency>True</DevelopmentDependency>
 
+    <!-- Asset-only package: it ships runtimes/ and build/, never a managed assembly.
+         Without this, consumers get a compile reference to an empty Scarlet.Bun.Runtime.*.dll. -->
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <SuppressDependenciesWhenPacking>true</SuppressDependenciesWhenPacking>
+    <NoWarn>$(NoWarn);NU5128</NoWarn>
+
     <!-- RID-specific settings -->
     <RuntimeRid>osx-x64</RuntimeRid>
     <BunFileName>bun</BunFileName>

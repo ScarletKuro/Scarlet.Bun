@@ -7,9 +7,10 @@
 	
     <!-- NuGet package metadata -->
     <PackageId>Scarlet.Bun.MSBuild</PackageId>
+    <Title>Scarlet.Bun.MSBuild - Run Bun in your .NET build</Title>
     <Authors>ScarletKuro</Authors>
-    <Description>MSBuild task for integrating Bun (a fast JavaScript runtime) into .NET build processes. Downloads Bun runtimes on-demand for all supported platforms (Windows, Linux, macOS - x64 and ARM64).</Description>
-    <PackageTags>bun;msbuild;javascript;build;bundler;minifier;sass;scss;typescript</PackageTags>
+    <Description>Run Bun, the fast all-in-one JavaScript runtime and bundler, from your .NET build. Bundle and minify JavaScript and TypeScript, compile Sass/SCSS, and install npm dependencies during dotnet build on Windows, Linux and macOS (x64 and ARM64) - no Node.js required. Works with ASP.NET Core, Blazor and Razor Class Library static web assets. Supply the Bun binary with a platform-specific Scarlet.Bun.Runtime package, or let the build download it on demand.</Description>
+    <PackageTags>bun;bunjs;msbuild;dotnet;javascript;typescript;bundler;bundling;minifier;sass;scss;node;npm;blazor;razor;aspnetcore;frontend;staticwebassets</PackageTags>
     <RepositoryUrl>https://github.com/ScarletKuro/Scarlet.Bun</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
@@ -75,6 +76,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Scarlet.Bun.MSBuild.Tests" />
+    <InternalsVisibleTo Include="Scarlet.Bun.MSBuild.IntegrationTests" />
   </ItemGroup>
 
   <ItemGroup>

@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.IO.Abstractions;
 using Microsoft.Build.Framework;
 using Microsoft.Build.Utilities;
@@ -39,7 +41,7 @@ public class BunRunTask : Task
     public bool ContinueOnError { get; set; } = false;
 
     /// <summary>
-    /// Optional path to the runtime directory. If not specified, uses the default NuGet package structure.
+    /// Optional path to the runtime directory. When set it overrides <see cref="RuntimePacks"/>.
     /// Required when BunRuntimeDownload is true.
     /// </summary>
     public string? RuntimeDirectory { get; set; }
@@ -63,33 +65,50 @@ public class BunRunTask : Task
     public int DownloadMutexTimeoutSeconds { get; set; } = 300;
 
     /// <summary>
+    /// The Bun runtimes available to this build, normally <c>@(BunRuntimePack)</c>.
+    /// </summary>
+    /// <remarks>
+    /// Each referenced <c>Scarlet.Bun.Runtime.*</c> package contributes one item; see <see cref="BunRuntimePack"/>
+    /// for the metadata contract. This is the supported way to make a Bun build discoverable - a new runtime
+    /// identifier needs no change here.
+    /// </remarks>
+    public ITaskItem[]? RuntimePacks { get; set; }
+
+    /// <summary>
     /// Runtime package path for win-x64 (set by Scarlet.Bun.Runtime.windows-x64-baseline package).
     /// </summary>
+    /// <remarks>Legacy contract, superseded by <see cref="RuntimePacks"/>. Kept so that runtime packages
+    /// published before the item contract existed keep working with this task.</remarks>
     public string? BunRuntime_win_x64 { get; set; }
 
     /// <summary>
     /// Runtime package path for win-arm64 (set by Scarlet.Bun.Runtime.windows-aarch64 package).
     /// </summary>
+    /// <remarks>Legacy contract, superseded by <see cref="RuntimePacks"/>.</remarks>
     public string? BunRuntime_win_arm64 { get; set; }
 
     /// <summary>
     /// Runtime package path for linux-x64 (set by Scarlet.Bun.Runtime.linux-x64-baseline package).
     /// </summary>
+    /// <remarks>Legacy contract, superseded by <see cref="RuntimePacks"/>.</remarks>
     public string? BunRuntime_linux_x64 { get; set; }
 
     /// <summary>
     /// Runtime package path for linux-arm64 (set by Scarlet.Bun.Runtime.linux-aarch64 package).
     /// </summary>
+    /// <remarks>Legacy contract, superseded by <see cref="RuntimePacks"/>.</remarks>
     public string? BunRuntime_linux_arm64 { get; set; }
 
     /// <summary>
     /// Runtime package path for osx-x64 (set by Scarlet.Bun.Runtime.darwin-x64-baseline package).
     /// </summary>
+    /// <remarks>Legacy contract, superseded by <see cref="RuntimePacks"/>.</remarks>
     public string? BunRuntime_osx_x64 { get; set; }
 
     /// <summary>
     /// Runtime package path for osx-arm64 (set by Scarlet.Bun.Runtime.darwin-aarch64 package).
     /// </summary>
+    /// <remarks>Legacy contract, superseded by <see cref="RuntimePacks"/>.</remarks>
     public string? BunRuntime_osx_arm64 { get; set; }
 
     /// <summary>
@@ -114,20 +133,6 @@ public class BunRunTask : Task
     {
         try
         {
-            // Uncomment for debugging purposes
-            //Log.LogWarning($"Command: {Command}");
-            //Log.LogWarning($"Arguments: {Arguments}");
-            //Log.LogWarning($"WorkingDirectory: {WorkingDirectory}");
-            //Log.LogWarning($"TimeoutMilliseconds: {TimeoutMilliseconds}");
-            //Log.LogWarning($"ContinueOnError: {ContinueOnError}");
-            //Log.LogWarning($"RuntimeDirectory: {RuntimeDirectory}");
-            //Log.LogWarning($"BunRuntimeDownload: {BunRuntimeDownload}");
-            //Log.LogWarning($"BunVersionDownload: {BunVersionDownload}");
-            //Log.LogWarning($"BunRuntime_win_x64: {BunRuntime_win_x64}");
-            //Log.LogWarning($"BunRuntime_linux_x64: {BunRuntime_linux_x64}");
-            //Log.LogWarning($"BunRuntime_linux_arm64: {BunRuntime_linux_arm64}");
-            //Log.LogWarning($"BunRuntime_osx_x64: {BunRuntime_osx_x64}");
-            //Log.LogWarning($"BunRuntime_osx_arm64: {BunRuntime_osx_arm64}");
             if (string.IsNullOrWhiteSpace(Command))
             {
                 Log.LogError("Command parameter is required");
@@ -149,9 +154,9 @@ public class BunRunTask : Task
                 }
 
                 Log.LogMessage(MessageImportance.High, "BunRuntimeDownload mode enabled");
-                
+
                 var platform = BunRuntimeResolver.GetCurrentPlatform();
-                
+
                 if (!string.IsNullOrWhiteSpace(BunVersionDownload))
                 {
                     Log.LogMessage(MessageImportance.High, $"Downloading Bun runtime version {BunVersionDownload} for {platform}...");
@@ -160,14 +165,14 @@ public class BunRunTask : Task
                 {
                     Log.LogMessage(MessageImportance.High, $"Downloading latest Bun runtime for {platform}...");
                 }
-                
+
                 try
                 {
                     // Download runtime asynchronously (RuntimeDirectory is already validated above)
                     using var httpClient = BunDownloader.CreateHttpClient();
                     var downloader = new BunDownloader(httpClient, fileSystem, ZipArchiveProvider.Instance, chmodProvider, platform, new MsBuildBunLogger(Log));
                     bunPath = downloader.DownloadRuntime(RuntimeDirectory!, BunVersionDownload, DownloadMutexTimeoutSeconds);
-                    
+
                     Log.LogMessage(MessageImportance.High, $"Bun runtime ready at: {bunPath}");
                 }
                 catch (Exception ex)
@@ -182,25 +187,21 @@ public class BunRunTask : Task
             }
             else
             {
-                // Determine runtime directory from MSBuild properties if not explicitly set
-                if (string.IsNullOrEmpty(RuntimeDirectory))
-                {
-                    var platform = BunRuntimeResolver.GetCurrentPlatform();
-                    var runtimeId = BunRuntimeResolver.GetRuntimeIdentifier(platform);
-                    
-                    // Get the runtime package path based on current platform
-                    var runtimePackagePath = GetRuntimePath(runtimeId);
+                var packs = CollectRuntimePacks();
 
-                    if (!string.IsNullOrEmpty(runtimePackagePath))
-                    {
-                        RuntimeDirectory = System.IO.Path.Combine(runtimePackagePath, "runtimes");
-                    }
-                }
-                
-                bunPath = BunRuntimeResolver.ResolveBunExecutable(fileSystem, chmodProvider, runtimeDirectory: RuntimeDirectory);
+                Log.LogMessage(MessageImportance.Low, $"Runtime packs: {(packs.Count == 0 ? "(none)" : string.Join(", ", packs))}");
+
+                bunPath = BunRuntimeResolver.ResolveBunExecutable(
+                    fileSystem,
+                    chmodProvider,
+                    platform: null,
+                    runtimeDirectory: RuntimeDirectory,
+                    runtimePacks: packs,
+                    log: message => Log.LogMessage(MessageImportance.Normal, message));
+
                 Log.LogMessage(MessageImportance.High, $"Platform: {BunRuntimeResolver.GetCurrentPlatform()}");
             }
-            
+
             Log.LogMessage(MessageImportance.High, $"Using Bun at: {bunPath}");
 
             // Build the full command line
@@ -301,6 +302,13 @@ public class BunRunTask : Task
             Log.LogMessage(MessageImportance.High, "Bun command completed successfully");
             return true;
         }
+        catch (FileNotFoundException ex)
+        {
+            // The resolver already explains what is missing and how to fix it; a stack trace only buries that.
+            Log.LogError(ex.Message);
+            ExitCode = -1; // Set non-zero exit code to indicate failure
+            return ContinueOnError;
+        }
         catch (Exception ex)
         {
             Log.LogErrorFromException(ex, true);
@@ -309,19 +317,100 @@ public class BunRunTask : Task
         }
     }
 
-    private string? GetRuntimePath(string runtimeId)
+    /// <summary>
+    /// Gathers every runtime pack the build knows about, from both the item and the legacy property contract.
+    /// </summary>
+    /// <returns>The distinct packs available to this build.</returns>
+    internal IReadOnlyList<BunRuntimePack> CollectRuntimePacks()
     {
-        var runtimePackagePath = runtimeId switch
+        var packs = new List<BunRuntimePack>(BunRuntimePack.FromTaskItems(RuntimePacks, warning => Log.LogWarning(warning)));
+        packs.AddRange(CreateLegacyPacks());
+
+        // A runtime package sets both contracts, so the same pack usually arrives twice. Items are added first
+        // and Deduplicate keeps the first occurrence, so anything still marked LegacyProperty afterwards came
+        // from a runtime package too old to declare the item.
+        var distinct = BunRuntimePack.Deduplicate(packs);
+
+        ReportDeprecatedPacks(distinct);
+
+        return distinct;
+    }
+
+    /// <summary>
+    /// First <c>Scarlet.Bun.Runtime.*</c> version that declares a <see cref="BunRuntimePack"/> item.
+    /// </summary>
+    /// <remarks>
+    /// A fixed historical fact rather than a moving target - every release from this one on carries the item, so
+    /// "update to this or later" stays correct indefinitely. Remove it with the rest of the legacy contract.
+    /// </remarks>
+    internal const string FirstItemAwareRuntimeVersion = "1.4.2";
+
+    /// <summary>
+    /// Reports packs that only the deprecated property contract knows about.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately a message rather than a warning: pinning an older runtime package is how you pin a Bun
+    /// version, so this must not break builds that set TreatWarningsAsErrors. Promote it to
+    /// <c>Log.LogWarning</c> one release before the property contract is removed.
+    /// </remarks>
+    /// <param name="packs">The de-duplicated packs available to this build.</param>
+    private void ReportDeprecatedPacks(IReadOnlyList<BunRuntimePack> packs)
+    {
+        foreach (var pack in packs)
         {
-            "win-x64" => BunRuntime_win_x64,
-            "win-arm64" => BunRuntime_win_arm64,
-            "linux-x64" => BunRuntime_linux_x64,
-            "linux-arm64" => BunRuntime_linux_arm64,
-            "osx-x64" => BunRuntime_osx_x64,
-            "osx-arm64" => BunRuntime_osx_arm64,
-            _ => null
+            if (pack.Source != BunRuntimePackSource.LegacyProperty)
+            {
+                continue;
+            }
+
+            Log.LogMessage(
+                MessageImportance.Normal,
+                $"Bun runtime pack {pack} was discovered through the deprecated {GetLegacyPropertyName(pack.Rid)} property. " +
+                $"Update that runtime package to {FirstItemAwareRuntimeVersion} or later, which declares a {BunRuntimePack.ItemName} item instead. " +
+                "The property contract will be removed in a future major version of Scarlet.Bun.MSBuild.");
+        }
+    }
+
+    /// <summary>
+    /// Maps a runtime identifier back to its legacy property name.
+    /// </summary>
+    /// <remarks>Only valid for the six RIDs the legacy contract ever covered; it is frozen at those.</remarks>
+    /// <param name="rid">The runtime identifier, for example <c>osx-arm64</c>.</param>
+    /// <returns>The property name, for example <c>BunRuntime_osx_arm64</c>.</returns>
+    private static string GetLegacyPropertyName(string rid) => "BunRuntime_" + rid.Replace('-', '_');
+
+    /// <summary>
+    /// Translates the legacy <c>BunRuntime_&lt;rid&gt;</c> properties into packs.
+    /// </summary>
+    /// <remarks>
+    /// Runtime packages published before the <c>BunRuntimePack</c> item existed only set these properties, and they
+    /// point at the package root rather than at its runtimes folder.
+    /// </remarks>
+    /// <returns>A pack for every legacy property that carries a value.</returns>
+    private IEnumerable<BunRuntimePack> CreateLegacyPacks()
+    {
+        var legacyProperties = new[]
+        {
+            (Platform: Platform.WindowsX64, PackageRoot: BunRuntime_win_x64),
+            (Platform: Platform.WindowsArm64, PackageRoot: BunRuntime_win_arm64),
+            (Platform: Platform.LinuxX64, PackageRoot: BunRuntime_linux_x64),
+            (Platform: Platform.LinuxArm64, PackageRoot: BunRuntime_linux_arm64),
+            (Platform: Platform.MacOsX64, PackageRoot: BunRuntime_osx_x64),
+            (Platform: Platform.MacOsArm64, PackageRoot: BunRuntime_osx_arm64)
         };
 
-        return runtimePackagePath;
+        foreach (var (platform, packageRoot) in legacyProperties)
+        {
+            if (string.IsNullOrWhiteSpace(packageRoot))
+            {
+                continue;
+            }
+
+            yield return new BunRuntimePack(
+                BunRuntimeResolver.GetRuntimePackageName(platform),
+                BunRuntimeResolver.GetRuntimeIdentifier(platform),
+                Path.Combine(packageRoot!.Trim(), "runtimes"),
+                source: BunRuntimePackSource.LegacyProperty);
+        }
     }
 }

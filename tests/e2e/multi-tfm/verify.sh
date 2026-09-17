@@ -309,7 +309,14 @@ echo "✓ Updated project file with multi-target frameworks (net8.0, net9.0, net
 echo ""
 echo "Building Razor Class Library (multi-TFM)..."
 echo "=========================================="
-dotnet build --verbosity minimal
+# Normal verbosity so the runtime discovery messages are visible; they are logged at normal importance.
+dotnet build --verbosity normal 2>&1 | tee build.log
+BUILD_STATUS=${PIPESTATUS[0]}
+
+if [ "$BUILD_STATUS" -ne 0 ]; then
+    echo "✗ Build failed with exit code $BUILD_STATUS"
+    exit 1
+fi
 echo ""
 echo "=========================================="
 echo "Build completed"
@@ -322,6 +329,25 @@ echo "Verifying multi-TFM RCL build..."
 echo "=========================================="
 
 FAILED=0
+
+# The Bun target runs in the outer build, so this also proves buildMultiTargeting/*.props contributes
+# @(BunRuntimePack) - the inner builds import build/*.props instead and never reach the task.
+# As in the package-installation test, the two checks only carry the claim together: the resolver logs the
+# same line whichever contract supplied the pack.
+if grep -qE "(Using|Selected) Bun runtime pack $RUNTIME_PACKAGE" build.log; then
+    echo "✓ Bun was resolved from runtime pack $RUNTIME_PACKAGE (outer build)"
+else
+    echo "✗ Expected the build log to report resolving Bun from pack $RUNTIME_PACKAGE"
+    grep -E "Bun runtime pack|Using Bun at|Runtime packs" build.log || echo "  (no runtime-related log lines)"
+    FAILED=1
+fi
+
+if grep -q "deprecated BunRuntime_" build.log; then
+    echo "✗ That pack came from the deprecated BunRuntime_<rid> property, not the @(BunRuntimePack) item"
+    FAILED=1
+else
+    echo "✓ That pack came from the @(BunRuntimePack) item, not the deprecated property"
+fi
 
 # Check that Bun created the bundled assets
 if [ -f "wwwroot/js/bundle.min.js" ]; then
