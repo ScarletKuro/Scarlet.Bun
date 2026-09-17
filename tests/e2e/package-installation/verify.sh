@@ -345,6 +345,76 @@ fi
 
 echo ""
 echo "=========================================="
+echo "Verifying a project-authored pack override..."
+echo "=========================================="
+
+# The README documents declaring your own BunRuntimePack to point the build at a Bun you supply. That path is
+# evaluated differently from the package one - the package's props are imported before the project body - so
+# only a real build proves a project-authored item merges with the package-provided pack and that Priority
+# decides between them. The copy is what makes the two packs distinct: same RID and same directory would be
+# de-duplicated, and the package pack (declared first) would win.
+RESOLVED_BUN="$(grep -m1 'Using Bun at:' build.log | sed 's/.*Using Bun at: //' | tr -d '\r' | tr '\\' '/')"
+
+if [ -z "$RESOLVED_BUN" ] || [ ! -f "$RESOLVED_BUN" ]; then
+    echo "✗ Could not determine the Bun executable resolved by the first build"
+    CONTRACT_OK=false
+else
+    BUN_EXE="$(basename "$RESOLVED_BUN")"
+    BUN_RID="$(basename "$(dirname "$(dirname "$RESOLVED_BUN")")")"
+    CUSTOM_RUNTIMES="$TEST_DIR/custom-bun/runtimes"
+
+    mkdir -p "$CUSTOM_RUNTIMES/$BUN_RID/native"
+    cp "$RESOLVED_BUN" "$CUSTOM_RUNTIMES/$BUN_RID/native/$BUN_EXE"
+    chmod +x "$CUSTOM_RUNTIMES/$BUN_RID/native/$BUN_EXE" 2>/dev/null || true
+
+    # MSBuild needs a native path; /tmp/... would resolve to C:\tmp\... on Windows
+    if command -v cygpath >/dev/null 2>&1; then
+        CUSTOM_RUNTIMES_MSBUILD="$(cygpath -m "$CUSTOM_RUNTIMES")"
+    else
+        CUSTOM_RUNTIMES_MSBUILD="$CUSTOM_RUNTIMES"
+    fi
+
+    echo "✓ Staged a custom Bun at $CUSTOM_RUNTIMES_MSBUILD"
+
+    # Declare the override in the project file, exactly as the README shows. The pack id deliberately sorts
+    # after "Scarlet.*" because at equal priority the alphabetically first id wins - so Priority is the only
+    # thing that can explain this pack being chosen.
+    {
+        sed 's|</Project>||' TestBunPackage.csproj
+        cat <<EOF
+  <ItemGroup>
+    <BunRuntimePack Include="Zephyr.Bun.Custom">
+      <Rid>$BUN_RID</Rid>
+      <RuntimesPath>$CUSTOM_RUNTIMES_MSBUILD</RuntimesPath>
+      <Priority>100</Priority>
+    </BunRuntimePack>
+  </ItemGroup>
+</Project>
+EOF
+    } > TestBunPackage.csproj.new && mv TestBunPackage.csproj.new TestBunPackage.csproj
+
+    dotnet build --target:Rebuild --verbosity normal 2>&1 | tee override.log
+    OVERRIDE_STATUS=${PIPESTATUS[0]}
+
+    if [ "$OVERRIDE_STATUS" -ne 0 ]; then
+        echo "✗ Build with a project-authored pack failed with exit code $OVERRIDE_STATUS"
+        CONTRACT_OK=false
+    elif ! grep -qE "Selected Bun runtime pack Zephyr\.Bun\.Custom .* out of 2 candidates" override.log; then
+        echo "✗ The project-authored pack did not win over $RUNTIME_PACKAGE"
+        grep -E "Bun runtime pack|Using Bun at" override.log || echo "  (no runtime-related log lines)"
+        CONTRACT_OK=false
+    elif ! grep -q "Using Bun at: .*custom-bun" override.log; then
+        echo "✗ The winning pack was reported but a different Bun was executed"
+        grep -E "Using Bun at" override.log || echo "  (none)"
+        CONTRACT_OK=false
+    else
+        echo "✓ A project-authored BunRuntimePack with a higher Priority overrode the package-provided pack"
+        echo "✓ The custom Bun is the one that actually ran"
+    fi
+fi
+
+echo ""
+echo "=========================================="
 
 # Cleanup function
 cleanup() {
