@@ -1,0 +1,4 @@
+import { writeFileSync } from "node:fs";
+
+writeFileSync("output.txt", `bun ${Bun.version} ran via the dotnet tool\n`);
+console.log(`bun ${Bun.version}`);

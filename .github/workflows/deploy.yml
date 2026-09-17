@@ -37,11 +37,102 @@ jobs:
       - name: Run tests with coverage
         run: dotnet test --no-build --configuration Release --collect:"XPlat Code Coverage" --results-directory ./coverage
 
+  # No GitHub-hosted runner offers musl/Alpine natively, unlike every other platform above which runs on
+  # its own native OS. This runs inside a musl-based .NET SDK container on top of a regular Linux runner
+  # instead, so the musl runtime packages get proven against a real musl libc before a release ships.
+  test-musl:
+    name: Test on Linux musl / Alpine (${{ matrix.arch }})
+    runs-on: ${{ matrix.os }}
+    container:
+      image: mcr.microsoft.com/dotnet/sdk:10.0-alpine
+    permissions:
+      contents: read
+    strategy:
+      matrix:
+        include:
+          - arch: x64
+            os: ubuntu-latest
+          - arch: arm64
+            os: ubuntu-24.04-arm
+      fail-fast: false
+
+    steps:
+      - name: Install build prerequisites
+        run: apk add --no-cache bash curl unzip icu-libs git
+
+      # actions/checkout is a JS action, and the runner's bundled Node build for Alpine containers only
+      # covers x64 - on the arm64 leg it fails with "JavaScript Actions in Alpine containers are only
+      # supported on x64 Linux runners". git is a native binary, so it works on both legs regardless.
+      - name: Checkout code
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git init .
+          git remote add origin "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git"
+          git fetch --depth 1 origin "${{ github.sha }}"
+          git checkout FETCH_HEAD
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Run tests
+        run: dotnet test --no-build --configuration Release
+
+      - name: Pack NuGet packages
+        shell: bash
+        run: |
+          VERSION="0.0.1-ci.${{ github.run_number }}"
+          BUN_VERSION=$(sed -n 's/.*<BunVersion>\([^<]*\)<\/BunVersion>.*/\1/p' Directory.Build.props)
+
+          # Needed by the package-installation E2E test below, which references it by name/version.
+          dotnet pack src/Scarlet.Bun.MSBuild/Scarlet.Bun.MSBuild.csproj \
+            --no-build \
+            --configuration Release \
+            --output ./packages -p:Version=$VERSION
+
+          dotnet pack src/Scarlet.Bun.Runtime.linux-x64-musl-baseline/Scarlet.Bun.Runtime.linux-x64-musl-baseline.csproj \
+            --configuration Release \
+            --output ./packages
+
+          dotnet pack src/Scarlet.Bun.Runtime.linux-aarch64-musl/Scarlet.Bun.Runtime.linux-aarch64-musl.csproj \
+            --configuration Release \
+            --output ./packages
+
+          dotnet pack src/Scarlet.Bun.Cli/Scarlet.Bun.Cli.csproj \
+            --configuration Release \
+            --output ./packages
+
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "BUN_VERSION=$BUN_VERSION" >> $GITHUB_ENV
+
+      # Proves Scarlet.Bun.MSBuild itself resolves and runs a musl Bun via the BunRuntimePack contract,
+      # not just that the CLI tool does.
+      #
+      # $GITHUB_WORKSPACE (the env var), not ${{ github.workspace }} (the expression): inside a job-level
+      # container the expression resolves to the HOST path (/home/runner/work/...), which does not exist
+      # inside the container's filesystem, while the env var correctly reports the container-side mount
+      # (/__w/...) that dotnet pack actually wrote ./packages under.
+      - name: E2E Test - Package installation
+        shell: bash
+        run: |
+          chmod +x tests/e2e/package-installation/verify.sh
+          tests/e2e/package-installation/verify.sh "$GITHUB_WORKSPACE" "${{ env.VERSION }}" "${{ env.BUN_VERSION }}"
+
+      # This is what actually proves the musl binaries execute on real musl libc before a release is
+      # published, not just that the zip unpacked correctly.
+      - name: E2E Test - CLI tool
+        shell: bash
+        run: |
+          chmod +x tests/e2e/cli-tool/verify.sh
+          tests/e2e/cli-tool/verify.sh "$GITHUB_WORKSPACE" "${{ env.VERSION }}" "${{ env.BUN_VERSION }}"
+
   deploy:
     name: Build and Deploy to NuGet
     runs-on: ubuntu-latest
-    # Only run deploy if all tests pass
-    needs: test
+    # Only run deploy if all tests pass, including musl
+    needs: [test, test-musl]
     permissions:
       contents: read
       packages: write
@@ -77,6 +168,18 @@ jobs:
           echo "bun_version=$BUN_VERSION"
           echo "bun_version=$BUN_VERSION" >> $GITHUB_OUTPUT
 
+          # The CLI package version is $(BunVersion).$(BunCliRevision), and NuGet normalises a trailing
+          # zero away - so revision 0 produces Scarlet.Bun.Cli.1.4.2.nupkg, not 1.4.2.0. The push step
+          # needs the real filename to identify the pointer package, which must be published last.
+          BUN_CLI_REVISION=$(sed -n 's/.*<BunCliRevision>\([^<]*\)<\/BunCliRevision>.*/\1/p' Directory.Build.props)
+          if [ "$BUN_CLI_REVISION" = "0" ]; then
+            CLI_VERSION="$BUN_VERSION"
+          else
+            CLI_VERSION="$BUN_VERSION.$BUN_CLI_REVISION"
+          fi
+          echo "cli_version=$CLI_VERSION"
+          echo "cli_version=$CLI_VERSION" >> $GITHUB_OUTPUT
+
       - name: Pack NuGet packages
         run: |
           # Pack the main MSBuild package
@@ -100,6 +203,14 @@ jobs:
             --configuration Release \
             --output ./packages
 
+          dotnet pack src/Scarlet.Bun.Runtime.linux-x64-musl-baseline/Scarlet.Bun.Runtime.linux-x64-musl-baseline.csproj \
+            --configuration Release \
+            --output ./packages
+
+          dotnet pack src/Scarlet.Bun.Runtime.linux-aarch64-musl/Scarlet.Bun.Runtime.linux-aarch64-musl.csproj \
+            --configuration Release \
+            --output ./packages
+
           dotnet pack src/Scarlet.Bun.Runtime.darwin-x64-baseline/Scarlet.Bun.Runtime.darwin-x64-baseline.csproj \
             --configuration Release \
             --output ./packages
@@ -112,16 +223,36 @@ jobs:
             --configuration Release \
             --output ./packages
 
+          # Pack the dotnet tool. Like the runtime packages it versions from BunVersion, so no /p:Version;
+          # and no --no-build, because one pack fans out into a build per runtime identifier. This produces
+          # the eight RID packages, the portable 'any' package and the top-level pointer package.
+          dotnet pack src/Scarlet.Bun.Cli/Scarlet.Bun.Cli.csproj \
+            --configuration Release \
+            --output ./packages
+
       - name: List generated packages
         run: ls -lh ./packages/
 
       - name: Upload packages
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: packages-${{ steps.get_version.outputs.version }}
           path: |
             ./packages/*.nupkg
             ./packages/*.snupkg
+
+      # Validation runs against the local ./packages folder, BEFORE anything is published. NuGet packages
+      # are immutable and cannot be unpublished, so discovering a packaging or tool-install failure after
+      # the push would leave a broken release permanently public.
+      - name: E2E Test - Package installation and verification
+        run: |
+          chmod +x tests/e2e/package-installation/verify.sh
+          tests/e2e/package-installation/verify.sh "${{ github.workspace }}" "${{ steps.get_version.outputs.version }}" "${{ steps.get_bun_version.outputs.bun_version }}"
+
+      - name: E2E Test - CLI tool
+        run: |
+          chmod +x tests/e2e/cli-tool/verify.sh
+          tests/e2e/cli-tool/verify.sh "${{ github.workspace }}" "${{ steps.get_version.outputs.version }}" "${{ steps.get_bun_version.outputs.bun_version }}"
 
       - name: NuGet login
         id: login
@@ -130,8 +261,30 @@ jobs:
           user: ${{ secrets.NUGET_USER }}
 
       - name: Push packages to NuGet
+        shell: bash
         run: |
-          dotnet nuget push "./packages/*.nupkg" \
+          # The .NET CLI picks a tool's RID-specific package using the version of the top-level pointer
+          # package, so the pointer has to be the LAST thing to appear on the feed. A "*.nupkg" glob pushes
+          # in lexicographic order, and '.' sorts before any letter, which puts
+          # Scarlet.Bun.Cli.<version>.nupkg ahead of Scarlet.Bun.Cli.<rid>.<version>.nupkg - exactly the
+          # wrong way round. Any install during that window fails.
+          CLI_POINTER="./packages/Scarlet.Bun.Cli.${{ steps.get_bun_version.outputs.cli_version }}.nupkg"
+
+          if [ ! -f "$CLI_POINTER" ]; then
+            echo "Expected the Scarlet.Bun.Cli pointer package at $CLI_POINTER"
+            ls -1 ./packages/
+            exit 1
+          fi
+
+          for package in ./packages/*.nupkg; do
+            [ "$package" = "$CLI_POINTER" ] && continue
+            dotnet nuget push "$package" \
+              --api-key "${{ steps.login.outputs.NUGET_API_KEY }}" \
+              --source "https://api.nuget.org/v3/index.json" \
+              --skip-duplicate
+          done
+
+          dotnet nuget push "$CLI_POINTER" \
             --api-key "${{ steps.login.outputs.NUGET_API_KEY }}" \
             --source "https://api.nuget.org/v3/index.json" \
             --skip-duplicate
@@ -139,12 +292,19 @@ jobs:
       - name: Publish to GitHub Packages
         shell: bash
         run: |
-          dotnet nuget push "./packages/*.nupkg" \
+          # Same ordering rule as above: every RID package first, the pointer last.
+          CLI_POINTER="./packages/Scarlet.Bun.Cli.${{ steps.get_bun_version.outputs.cli_version }}.nupkg"
+
+          for package in ./packages/*.nupkg; do
+            [ "$package" = "$CLI_POINTER" ] && continue
+            dotnet nuget push "$package" \
+              --source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json" \
+              --api-key "${{ secrets.GITHUB_TOKEN }}" \
+              --skip-duplicate
+          done
+
+          dotnet nuget push "$CLI_POINTER" \
             --source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json" \
             --api-key "${{ secrets.GITHUB_TOKEN }}" \
             --skip-duplicate
 
-      - name: E2E Test - Package installation and verification
-        run: |
-          chmod +x tests/e2e/package-installation/verify.sh
-          tests/e2e/package-installation/verify.sh "${{ github.workspace }}" "${{ steps.get_version.outputs.version }}" "${{ steps.get_bun_version.outputs.bun_version }}"

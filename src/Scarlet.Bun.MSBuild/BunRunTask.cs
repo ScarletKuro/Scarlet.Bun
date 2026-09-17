@@ -5,7 +5,8 @@ using System.IO;
 using System.IO.Abstractions;
 using Microsoft.Build.Framework;
 using Microsoft.Build.Utilities;
-using Scarlet.Bun.MSBuild.Providers;
+using Scarlet.Bun.Core;
+using Scarlet.Bun.Core.Providers;
 
 namespace Scarlet.Bun.MSBuild;
 
@@ -323,7 +324,7 @@ public class BunRunTask : Task
     /// <returns>The distinct packs available to this build.</returns>
     internal IReadOnlyList<BunRuntimePack> CollectRuntimePacks()
     {
-        var packs = new List<BunRuntimePack>(BunRuntimePack.FromTaskItems(RuntimePacks, warning => Log.LogWarning(warning)));
+        var packs = new List<BunRuntimePack>(BunRuntimePackFactory.FromTaskItems(RuntimePacks, warning => Log.LogWarning(warning)));
         packs.AddRange(CreateLegacyPacks());
 
         // A runtime package sets both contracts, so the same pack usually arrives twice. Items are added first

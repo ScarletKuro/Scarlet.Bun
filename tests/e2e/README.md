@@ -15,6 +15,9 @@ tests/e2e/
 ├── multi-tfm/
 │   ├── verify.sh                    # Multi-target framework E2E test script
 │   └── templates/                   # Template files for the multi-TFM test
+├── cli-tool/
+│   ├── verify.sh                    # dotnet-bun .NET tool E2E test script
+│   └── templates/                   # Template files for the CLI tool test
 └── README.md                        # This file
 ```
 
@@ -26,6 +29,7 @@ The E2E tests verify that:
 3. The MSBuild task executes correctly when referenced as a package
 4. Bun runtime executes successfully through the MSBuild integration
 5. Multi-target framework projects (net8.0, net9.0, net10.0) build and execute correctly
+6. The `dotnet bun` tool installs from a feed and runs Bun from its embedded binary, with no download
 
 ## Test Scripts
 
@@ -61,6 +65,8 @@ The runtime package is selected from the `dotnet --info` RID first, which keeps 
 - Windows x64 uses `Scarlet.Bun.Runtime.windows-x64-baseline`
 - Linux ARM64 uses `Scarlet.Bun.Runtime.linux-aarch64`
 - Linux x64 uses `Scarlet.Bun.Runtime.linux-x64-baseline`
+- Linux ARM64, musl (Alpine) uses `Scarlet.Bun.Runtime.linux-aarch64-musl`
+- Linux x64, musl (Alpine) uses `Scarlet.Bun.Runtime.linux-x64-musl-baseline`
 - macOS ARM64 uses `Scarlet.Bun.Runtime.darwin-aarch64`
 - macOS x64 uses `Scarlet.Bun.Runtime.darwin-x64-baseline`
 
@@ -120,6 +126,37 @@ Template files are processed during execution using `sed` to replace placeholder
 ./tests/e2e/package-installation/verify.sh /path/to/repo "1.0.0-local" "1.3.6"
 ```
 
+### cli-tool/verify.sh
+
+**Purpose**: Proves the claim that justifies `Scarlet.Bun.Cli` existing - the platform-specific tool
+package carries its own Bun, so the tool runs with no network access at all.
+
+**What it does**:
+1. Creates a `nuget.config` that `<clear />`s every source and adds only the local `packages` folder, so
+   anything the tool needed from nuget.org would fail the test
+2. Points `NUGET_PACKAGES` at a private cache, so nothing can be served from a warm machine-wide cache
+3. `dotnet new tool-manifest` and `dotnet tool install Scarlet.Bun.Cli`
+4. Asserts the **RID-specific** sub-package was restored, not just the pointer package
+5. Asserts that package actually contains a `bun`/`bun.exe`
+6. Runs `dotnet bun --version` and asserts it prints *Bun's* version - which is both a passthrough check
+   and a check that the embedded binary is the pinned one
+7. Asserts `dotnet bun --scarlet-info` reports `Source ... embedded`
+8. Asserts the download cache directory (`SCARLET_BUN_CACHE`, pointed at an empty temp path) was never
+   created - the proof that nothing was fetched
+9. Runs a real script through `dotnet bun run`, and a failing one to check the exit code propagates
+
+Checks 5, 7 and 8 only carry the "no network" claim together: the package contains a Bun, the tool says it
+used that one, and the only directory it could have downloaded into does not exist.
+
+**Contract it depends on**: `--scarlet-info` printing a `Source` line containing `embedded`, and
+`SCARLET_BUN_DIAGNOSTICS=1` printing `Scarlet.Bun: using Bun at <path>` to stderr. Changing either wording
+means changing this script in the same commit.
+
+**Example**:
+```bash
+./tests/e2e/cli-tool/verify.sh "$GITHUB_WORKSPACE" "0.0.1-ci.26" "1.4.2"
+```
+
 ## Running in CI
 
 The E2E tests are integrated into the CI workflow (`.github/workflows/ci.yml`):
@@ -141,6 +178,13 @@ The E2E tests are integrated into the CI workflow (`.github/workflows/ci.yml`):
    - Configures `BunRuntimeDownload=true`
    - Relies on task-side platform detection instead of selecting a runtime package in bash
    - Logs the `dotnet` RID and downloaded runtime path(s) for inspection
+6. **E2E Test - CLI tool** - Runs `tests/e2e/cli-tool/verify.sh` which:
+   - Installs `Scarlet.Bun.Cli` into a local tool manifest from the local feed only
+   - Verifies the RID-specific sub-package was selected and carries a Bun binary
+   - Runs `dotnet bun` and verifies nothing was downloaded
+   - This step matters on every matrix leg: it is the only thing that proves RID sub-package selection
+     works on `win-arm64` and `linux-arm64`, and that the embedded Bun is executable after NuGet
+     extraction drops the Unix permission bits
 
 The test runs on all platforms (Linux, Windows, macOS) to ensure cross-platform compatibility.
 

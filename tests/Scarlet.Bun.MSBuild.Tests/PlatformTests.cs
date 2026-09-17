@@ -17,6 +17,8 @@ public class PlatformTests
     [InlineData(Platform.WindowsArm64, "win-arm64")]
     [InlineData(Platform.LinuxX64, "linux-x64")]
     [InlineData(Platform.LinuxArm64, "linux-arm64")]
+    [InlineData(Platform.LinuxMuslX64, "linux-musl-x64")]
+    [InlineData(Platform.LinuxMuslArm64, "linux-musl-arm64")]
     [InlineData(Platform.MacOsX64, "osx-x64")]
     [InlineData(Platform.MacOsArm64, "osx-arm64")]
     public void GetRuntimeIdentifier_ShouldReturnCorrectIdentifier(Platform platform, string expected)
@@ -46,6 +48,8 @@ public class PlatformTests
     [InlineData(Platform.WindowsArm64, "bun-windows-aarch64")]
     [InlineData(Platform.LinuxX64, "bun-linux-x64-baseline")]
     [InlineData(Platform.LinuxArm64, "bun-linux-aarch64")]
+    [InlineData(Platform.LinuxMuslX64, "bun-linux-x64-musl-baseline")]
+    [InlineData(Platform.LinuxMuslArm64, "bun-linux-aarch64-musl")]
     [InlineData(Platform.MacOsX64, "bun-darwin-x64-baseline")]
     [InlineData(Platform.MacOsArm64, "bun-darwin-aarch64")]
     public void GetRuntimeDirectoryName_ShouldReturnCorrectName(Platform platform, string expected)
@@ -75,6 +79,8 @@ public class PlatformTests
     [InlineData(Platform.WindowsArm64, "Scarlet.Bun.Runtime.windows-aarch64")]
     [InlineData(Platform.LinuxX64, "Scarlet.Bun.Runtime.linux-x64-baseline")]
     [InlineData(Platform.LinuxArm64, "Scarlet.Bun.Runtime.linux-aarch64")]
+    [InlineData(Platform.LinuxMuslX64, "Scarlet.Bun.Runtime.linux-x64-musl-baseline")]
+    [InlineData(Platform.LinuxMuslArm64, "Scarlet.Bun.Runtime.linux-aarch64-musl")]
     [InlineData(Platform.MacOsX64, "Scarlet.Bun.Runtime.darwin-x64-baseline")]
     [InlineData(Platform.MacOsArm64, "Scarlet.Bun.Runtime.darwin-aarch64")]
     public void GetRuntimePackageName_ShouldReturnCorrectName(Platform platform, string expected)
@@ -104,6 +110,8 @@ public class PlatformTests
     [InlineData(Platform.WindowsArm64, "bun.exe")]
     [InlineData(Platform.LinuxX64, "bun")]
     [InlineData(Platform.LinuxArm64, "bun")]
+    [InlineData(Platform.LinuxMuslX64, "bun")]
+    [InlineData(Platform.LinuxMuslArm64, "bun")]
     [InlineData(Platform.MacOsX64, "bun")]
     [InlineData(Platform.MacOsArm64, "bun")]
     public void GetExecutableName_ShouldReturnCorrectName(Platform platform, string expected)

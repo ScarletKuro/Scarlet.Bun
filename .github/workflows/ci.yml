@@ -111,6 +111,14 @@ jobs:
             --configuration Release \
             --output ./packages
 
+          dotnet pack src/Scarlet.Bun.Runtime.linux-x64-musl-baseline/Scarlet.Bun.Runtime.linux-x64-musl-baseline.csproj \
+            --configuration Release \
+            --output ./packages
+
+          dotnet pack src/Scarlet.Bun.Runtime.linux-aarch64-musl/Scarlet.Bun.Runtime.linux-aarch64-musl.csproj \
+            --configuration Release \
+            --output ./packages
+
           dotnet pack src/Scarlet.Bun.Runtime.darwin-x64-baseline/Scarlet.Bun.Runtime.darwin-x64-baseline.csproj \
             --configuration Release \
             --output ./packages
@@ -123,6 +131,13 @@ jobs:
             --configuration Release \
             --output ./packages
 
+          # Pack the dotnet tool. Like the runtime packages it versions from BunVersion, so no -p:Version;
+          # and no --no-build, because one pack fans out into a build per runtime identifier. This produces
+          # the eight RID packages, the portable 'any' package and the top-level pointer package.
+          dotnet pack src/Scarlet.Bun.Cli/Scarlet.Bun.Cli.csproj \
+            --configuration Release \
+            --output ./packages
+
           echo "VERSION=$VERSION" >> $GITHUB_ENV
           echo "BUN_VERSION=$BUN_VERSION" >> $GITHUB_ENV
 
@@ -130,13 +145,21 @@ jobs:
         shell: bash
         run: ls -lh ./packages/
 
+      # Only the Scarlet.Bun.Cli *RID* packages are excluded: each embeds a 60-90 MB Bun, so uploading all
+      # eight from every matrix leg would cost gigabytes per push for no diagnostic value - the CLI E2E step
+      # consumes them straight off disk instead. The pointer and 'any' packages are kept: they are a few
+      # hundred KB each and are exactly what you want to inspect when tool resolution misbehaves.
+      # (linux-musl-* RID packages match the linux-* exclusion below too.)
       - name: Upload packages
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: packages-${{ matrix.os }}
           path: |
             ./packages/*.nupkg
             ./packages/*.snupkg
+            !./packages/Scarlet.Bun.Cli.win-*.nupkg
+            !./packages/Scarlet.Bun.Cli.linux-*.nupkg
+            !./packages/Scarlet.Bun.Cli.osx-*.nupkg
 
       - name: E2E Test - Package installation
         shell: bash
@@ -156,11 +179,123 @@ jobs:
           chmod +x tests/e2e/multi-tfm/verify.sh
           tests/e2e/multi-tfm/verify.sh "${{ github.workspace }}" "${{ env.VERSION }}" "${{ env.BUN_VERSION }}"
 
+      # Runs on every matrix leg deliberately: this is the only thing that proves the correct RID
+      # sub-package is selected on win-arm64 and linux-arm64, and that the embedded Bun is executable
+      # after NuGet extraction strips the Unix permission bits.
+      - name: E2E Test - CLI tool
+        shell: bash
+        run: |
+          chmod +x tests/e2e/cli-tool/verify.sh
+          tests/e2e/cli-tool/verify.sh "${{ github.workspace }}" "${{ env.VERSION }}" "${{ env.BUN_VERSION }}"
+
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           directory: ./coverage
           fail_ci_if_error: false
           flags: ${{ matrix.os }}
           name: codecov-${{ matrix.os }}
+
+  # No GitHub-hosted runner offers musl/Alpine natively, unlike every other platform above which runs on
+  # its own native OS. This runs inside a musl-based .NET SDK container on top of a regular Linux runner
+  # instead, so the musl runtime packages get proven against a real musl libc rather than just unzipped.
+  test-musl:
+    name: Test on Linux musl / Alpine (${{ matrix.arch }})
+    runs-on: ${{ matrix.os }}
+    container:
+      image: mcr.microsoft.com/dotnet/sdk:10.0-alpine
+    permissions:
+      contents: read
+    strategy:
+      matrix:
+        include:
+          - arch: x64
+            os: ubuntu-latest
+          - arch: arm64
+            os: ubuntu-24.04-arm
+      fail-fast: false
+
+    steps:
+      - name: Install build prerequisites
+        run: apk add --no-cache bash curl unzip icu-libs git
+
+      # actions/checkout is a JS action, and the runner's bundled Node build for Alpine containers only
+      # covers x64 - on the arm64 leg it fails with "JavaScript Actions in Alpine containers are only
+      # supported on x64 Linux runners". git is a native binary, so it works on both legs regardless.
+      - name: Checkout code
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git init .
+          git remote add origin "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git"
+          git fetch --depth 1 origin "${{ github.sha }}"
+          git checkout FETCH_HEAD
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Run tests
+        run: dotnet test --no-build --configuration Release
+
+      - name: Pack NuGet packages
+        shell: bash
+        run: |
+          # Use 0.0.1-ci for testing
+          VERSION="0.0.1-ci.${{ github.run_number }}"
+          echo "Packing with version: $VERSION"
+
+          # Extract BunVersion from Directory.Build.props
+          BUN_VERSION=$(sed -n 's/.*<BunVersion>\([^<]*\)<\/BunVersion>.*/\1/p' Directory.Build.props)
+          echo "Runtime package version (BunVersion): $BUN_VERSION"
+
+          # Needed by the package-installation E2E test below, which references it by name/version.
+          dotnet pack src/Scarlet.Bun.MSBuild/Scarlet.Bun.MSBuild.csproj \
+            --no-build \
+            --configuration Release \
+            --output ./packages -p:Version=$VERSION
+
+          dotnet pack src/Scarlet.Bun.Runtime.linux-x64-musl-baseline/Scarlet.Bun.Runtime.linux-x64-musl-baseline.csproj \
+            --configuration Release \
+            --output ./packages
+
+          dotnet pack src/Scarlet.Bun.Runtime.linux-aarch64-musl/Scarlet.Bun.Runtime.linux-aarch64-musl.csproj \
+            --configuration Release \
+            --output ./packages
+
+          # Fans out into a build per runtime identifier, same as on the native-OS legs; only the two musl
+          # RID packages, the portable 'any' package and the pointer package are of interest here.
+          dotnet pack src/Scarlet.Bun.Cli/Scarlet.Bun.Cli.csproj \
+            --configuration Release \
+            --output ./packages
+
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "BUN_VERSION=$BUN_VERSION" >> $GITHUB_ENV
+
+      - name: List generated packages
+        run: ls -lh ./packages/
+
+      # Proves Scarlet.Bun.MSBuild itself resolves and runs a musl Bun via the BunRuntimePack contract,
+      # not just that the CLI tool does.
+      #
+      # $GITHUB_WORKSPACE (the env var), not ${{ github.workspace }} (the expression): inside a job-level
+      # container the expression resolves to the HOST path (/home/runner/work/...), which does not exist
+      # inside the container's filesystem, while the env var correctly reports the container-side mount
+      # (/__w/...) that dotnet pack actually wrote ./packages under.
+      - name: E2E Test - Package installation
+        shell: bash
+        run: |
+          chmod +x tests/e2e/package-installation/verify.sh
+          tests/e2e/package-installation/verify.sh "$GITHUB_WORKSPACE" "${{ env.VERSION }}" "${{ env.BUN_VERSION }}"
+
+      # This is what actually proves the musl binaries execute on real musl libc, not just that the zip
+      # unpacked correctly: it installs the tool, and dotnet --info inside this container reports a
+      # linux-musl-* RID, so the CLI's generic RID detection (tests/e2e/cli-tool/verify.sh) picks the
+      # musl-specific package and runs the embedded Bun for real.
+      - name: E2E Test - CLI tool
+        shell: bash
+        run: |
+          chmod +x tests/e2e/cli-tool/verify.sh
+          tests/e2e/cli-tool/verify.sh "$GITHUB_WORKSPACE" "${{ env.VERSION }}" "${{ env.BUN_VERSION }}"

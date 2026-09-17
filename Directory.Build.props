@@ -2,5 +2,15 @@
   <PropertyGroup>
     <!-- Bun runtime version used across all runtime packages -->
     <BunVersion>1.4.2</BunVersion>
+
+    <!-- Revision of Scarlet.Bun.Cli within a single BunVersion. The CLI package version is
+         $(BunVersion).$(BunCliRevision), and NuGet normalises a trailing zero away, so revision 0
+         publishes as plain 1.4.2.
+
+         Bump this to ship a CLI-only fix without waiting for a new Bun: 1.4.2 -> 1.4.2.1. Reset it to 0
+         whenever BunVersion changes. It lives here, next to BunVersion, because the alternative is
+         discovering at release time that the deploy silently dropped your fix - the push skips duplicates,
+         so a rebuilt package at an unchanged version never reaches the feed. -->
+    <BunCliRevision>0</BunCliRevision>
   </PropertyGroup>
 </Project>

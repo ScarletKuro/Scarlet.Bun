@@ -24,9 +24,14 @@
 
   <ItemGroup>
     <Using Include="Xunit" />
+    <!-- The shared implementation lives in Scarlet.Bun.Core; before it was extracted these types
+         resolved implicitly through the Scarlet.Bun.MSBuild.Tests namespace nesting. -->
+    <Using Include="Scarlet.Bun.Core" />
+    <Using Include="Scarlet.Bun.Core.Providers" />
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\Scarlet.Bun.Core\Scarlet.Bun.Core.csproj" />
     <ProjectReference Include="..\..\src\Scarlet.Bun.MSBuild\Scarlet.Bun.MSBuild.csproj" />
   </ItemGroup>
 

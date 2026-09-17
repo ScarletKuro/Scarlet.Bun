@@ -1,0 +1,188 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>Scarlet.Bun.Cli</RootNamespace>
+    <InvariantGlobalization>true</InvariantGlobalization>
+
+    <!-- Required by LibraryImport in PosixInterop: the source generator emits unsafe marshalling stubs
+         (SYSLIB1062). The only unsafe code in this project is that generated interop. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+
+    <!-- Tool packaging. ToolCommandName starts with "dotnet-" so the SDK lets callers drop the prefix:
+         `dotnet bun install` works for local tools as well as global ones. -->
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>dotnet-bun</ToolCommandName>
+
+    <!-- One `dotnet pack` produces a package per RID plus a top-level pointer package. 'any' adds a
+         framework-dependent, platform-agnostic fallback that downloads Bun on first use instead of
+         embedding it. It covers hosts these eight RIDs miss but that Bun still supports - it is not a
+         universal fallback: any architecture other than x64/arm64 is rejected with an explanatory error
+         by BunRuntimeResolver.GetPlatform, because Bun publishes no build we could download for it. -->
+    <RuntimeIdentifiers>win-x64;win-arm64;linux-x64;linux-arm64;linux-musl-x64;linux-musl-arm64;osx-x64;osx-arm64;any</RuntimeIdentifiers>
+    <ToolPackageRuntimeIdentifiers>$(RuntimeIdentifiers)</ToolPackageRuntimeIdentifiers>
+
+    <!-- Framework-dependent, platform-specific. Since .NET 8 a RuntimeIdentifier no longer implies
+         SelfContained, but PublishTrimmed / PublishSingleFile / PublishAot each still flip it on - and
+         self-contained would add ~70 MB of .NET runtime on top of a 61-94 MB Bun in every RID package.
+         A dotnet tool already requires a .NET install to be invoked, so it would buy nothing. -->
+    <SelfContained>false</SelfContained>
+    <PublishSelfContained>false</PublishSelfContained>
+
+    <!-- Package identity. The version tracks the embedded Bun, exactly like Scarlet.Bun.Runtime.*, so the
+         version in .config/dotnet-tools.json names the Bun this repository builds with.
+         $(BunCliRevision) is the escape hatch for a CLI-only fix; see Directory.Build.props. NuGet drops a
+         trailing zero, so the usual case publishes as plain 1.4.2. -->
+    <PackageId>Scarlet.Bun.Cli</PackageId>
+    <Version>$(BunVersion).$(BunCliRevision)</Version>
+    <Title>Scarlet.Bun.Cli - Bun as a .NET tool</Title>
+    <Description>Run Bun, the fast all-in-one JavaScript runtime and bundler, as a .NET tool: `dotnet bun install`, `dotnet bun run build.mjs`. Platform-specific packages embed the matching Bun binary, so `dotnet tool restore` works offline and pins Bun through .config/dotnet-tools.json - no download, no network, hash-verified by NuGet. Every argument is forwarded to Bun verbatim.</Description>
+    <PackageTags>bun;bunjs;dotnet-tool;global-tool;cli;javascript;typescript;bundler;npm;node;sass;scss;frontend</PackageTags>
+    <Authors>ScarletKuro</Authors>
+    <RepositoryUrl>https://github.com/ScarletKuro/Scarlet.Bun</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageIcon>icon.png</PackageIcon>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+
+    <Deterministic>true</Deterministic>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <DebugType>portable</DebugType>
+
+    <!-- Deliberate deviation from the other packable projects: a DotnetTool package has no lib/ or ref/,
+         so a .snupkg would carry PDBs nuget.org cannot map to any assembly. The PDBs already ship inside
+         tools/<tfm>/<rid>/ through the publish glob, so nothing is lost. -->
+    <IncludeSymbols>false</IncludeSymbols>
+    <NoWarn>$(NoWarn);NU5128</NoWarn>
+
+    <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
+  </PropertyGroup>
+
+  <!--
+    RID -> runtime package mapping. Deliberately mirrors BunRuntimeResolver.PlatformMap; BunRidMapTests
+    asserts the two stay in step.
+
+    RuntimeIdentifier arrives as a global property from the SDK tool-packaging target, so plain
+    evaluation-time conditions are enough.
+  -->
+  <PropertyGroup>
+    <BunRuntimeProject Condition="'$(RuntimeIdentifier)' == 'win-x64'">windows-x64-baseline</BunRuntimeProject>
+    <BunRuntimeProject Condition="'$(RuntimeIdentifier)' == 'win-arm64'">windows-aarch64</BunRuntimeProject>
+    <BunRuntimeProject Condition="'$(RuntimeIdentifier)' == 'linux-x64'">linux-x64-baseline</BunRuntimeProject>
+    <BunRuntimeProject Condition="'$(RuntimeIdentifier)' == 'linux-arm64'">linux-aarch64</BunRuntimeProject>
+    <BunRuntimeProject Condition="'$(RuntimeIdentifier)' == 'linux-musl-x64'">linux-x64-musl-baseline</BunRuntimeProject>
+    <BunRuntimeProject Condition="'$(RuntimeIdentifier)' == 'linux-musl-arm64'">linux-aarch64-musl</BunRuntimeProject>
+    <BunRuntimeProject Condition="'$(RuntimeIdentifier)' == 'osx-x64'">darwin-x64-baseline</BunRuntimeProject>
+    <BunRuntimeProject Condition="'$(RuntimeIdentifier)' == 'osx-arm64'">darwin-aarch64</BunRuntimeProject>
+
+    <BunExecutableName Condition="'$(RuntimeIdentifier)' == 'win-x64' or '$(RuntimeIdentifier)' == 'win-arm64'">bun.exe</BunExecutableName>
+    <BunExecutableName Condition="'$(BunRuntimeProject)' != '' and '$(BunExecutableName)' == ''">bun</BunExecutableName>
+
+    <!-- Empty for the pointer build, for the 'any' build, and for a plain RID-less `dotnet build` during
+         development. That single condition is all that keeps Bun out of the 'any' package. -->
+    <EmbedBunBinary>false</EmbedBunBinary>
+    <EmbedBunBinary Condition="'$(BunRuntimeProject)' != ''">true</EmbedBunBinary>
+
+    <BunRuntimeProjectDir Condition="'$(EmbedBunBinary)' == 'true'">$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)', '..', 'Scarlet.Bun.Runtime.$(BunRuntimeProject)'))</BunRuntimeProjectDir>
+    <BunBinaryPath Condition="'$(EmbedBunBinary)' == 'true'">$(BunRuntimeProjectDir)$(BunExecutableName)</BunBinaryPath>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(EmbedBunBinary)' == 'true'">
+    <!--
+      The CLI embeds the very same binary the matching runtime package ships, rather than downloading its
+      own copy: identical bytes by construction, and it halves the download volume of a cold build.
+
+      ReferenceOutputAssembly=false because only the binary is wanted, not an assembly reference.
+
+      UndefineProperties is required, not cosmetic: this project builds once per RID, and those global
+      properties would otherwise flow into a netstandard2.0 project that declares no RIDs and cannot
+      restore for one. Target-framework negotiation is deliberately left on so the reference resolves to
+      netstandard2.0 rather than inheriting net10.0 from here.
+    -->
+    <ProjectReference Include="$(BunRuntimeProjectDir)Scarlet.Bun.Runtime.$(BunRuntimeProject).csproj"
+                      ReferenceOutputAssembly="false"
+                      UndefineProperties="RuntimeIdentifier;RuntimeIdentifiers;SelfContained;PublishSelfContained" />
+  </ItemGroup>
+
+  <!--
+    Put the binary next to the app in bin/ and, crucially, in publish/ - the SDK's tool packaging globs the
+    publish directory into tools/<tfm>/<rid>/, which is what puts it beside the executable at runtime.
+    Injected before AssignTargetPaths because that is when None items get their output paths assigned.
+  -->
+  <Target Name="AddBunBinaryToOutputs"
+          Condition="'$(EmbedBunBinary)' == 'true'"
+          BeforeTargets="AssignTargetPaths">
+
+    <Error Condition="!Exists('$(BunBinaryPath)')"
+           Text="Scarlet.Bun.Cli: no Bun binary for $(RuntimeIdentifier) at '$(BunBinaryPath)'. It is produced by Scarlet.Bun.Runtime.$(BunRuntimeProject), whose download target tolerates failure - check network access to github.com and that pwsh (Windows) or bash+curl+unzip (Unix) are available, then rebuild. Packing a RID package without its Bun binary would ship a broken tool." />
+
+    <ItemGroup>
+      <None Include="$(BunBinaryPath)">
+        <Link>$(BunExecutableName)</Link>
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+        <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
+        <Pack>false</Pack>
+        <Visible>false</Visible>
+      </None>
+    </ItemGroup>
+  </Target>
+
+  <!--
+    Bake the pinned Bun version into the assembly. The 'any' package needs it to know what to download, and
+    diagnostics report it. Generated rather than read by reflection so it is a compile-time constant.
+  -->
+  <!--
+    The file path is computed inside the target on purpose. $(IntermediateOutputPath) is not yet defined
+    while the project body is being evaluated, so setting it in a top-level PropertyGroup silently produced
+    a project-relative path - one file shared by all seven inner builds, where the first writer won and the
+    rest were skipped as up to date. That is how a win-x64 package ended up reporting itself as 'any'.
+  -->
+  <Target Name="GenerateBunBuildInfo" BeforeTargets="BeforeCompile;CoreCompile">
+    <PropertyGroup>
+      <BunBuildInfoFile>$(IntermediateOutputPath)BunBuildInfo.g.cs</BunBuildInfoFile>
+    </PropertyGroup>
+
+    <ItemGroup>
+      <_BunBuildInfoLine Include="// &lt;auto-generated /&gt;" />
+      <_BunBuildInfoLine Include="namespace Scarlet.Bun.Cli%3B" />
+      <_BunBuildInfoLine Include="/// &lt;summary&gt;Build-time facts baked in from MSBuild.&lt;/summary&gt;" />
+      <_BunBuildInfoLine Include="internal static class BunBuildInfo" />
+      <_BunBuildInfoLine Include="{" />
+      <_BunBuildInfoLine Include="    /// &lt;summary&gt;The Bun version this package was built against.&lt;/summary&gt;" />
+      <_BunBuildInfoLine Include="    public const string PinnedBunVersion = &quot;$(BunVersion)&quot;%3B" />
+      <_BunBuildInfoLine Include="    /// &lt;summary&gt;The runtime identifier this package was built for, empty for the portable package.&lt;/summary&gt;" />
+      <_BunBuildInfoLine Include="    public const string PackagedRuntimeIdentifier = &quot;$(RuntimeIdentifier)&quot;%3B" />
+      <_BunBuildInfoLine Include="}" />
+    </ItemGroup>
+
+    <WriteLinesToFile File="$(BunBuildInfoFile)" Lines="@(_BunBuildInfoLine)" Overwrite="true" WriteOnlyWhenDifferent="true" />
+
+    <ItemGroup>
+      <Compile Include="$(BunBuildInfoFile)" />
+      <FileWrites Include="$(BunBuildInfoFile)" />
+    </ItemGroup>
+  </Target>
+
+  <ItemGroup>
+    <None Update="README.md" Pack="true" PackagePath="\" />
+    <None Include="..\..\icon.png" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.IO.Abstractions" Version="22.1.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Scarlet.Bun.Core\Scarlet.Bun.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Scarlet.Bun.Cli.Tests" />
+  </ItemGroup>
+
+</Project>

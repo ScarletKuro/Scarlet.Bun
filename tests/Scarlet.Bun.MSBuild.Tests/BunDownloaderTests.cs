@@ -2,7 +2,6 @@ using System.IO.Abstractions.TestingHelpers;
 using System.IO.Compression;
 using System.IO.Abstractions;
 using RichardSzalay.MockHttp;
-using Scarlet.Bun.MSBuild.Providers;
 using Scarlet.Bun.MSBuild.Tests.Mock;
 
 namespace Scarlet.Bun.MSBuild.Tests;

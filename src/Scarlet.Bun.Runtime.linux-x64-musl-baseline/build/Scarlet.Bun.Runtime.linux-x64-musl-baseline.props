@@ -1,0 +1,29 @@
+<Project>
+  <!--
+    Bun runtime pack for Linux x64, musl libc (e.g. Alpine).
+
+    BunRuntimePack is the contract Scarlet.Bun.MSBuild reads. It is an item rather than a
+    BunRuntime_<rid> property so that a new runtime identifier - a musl build, a non-baseline build,
+    or a locally built Bun - only needs a package that contributes one of these items; the task,
+    its parameters and its targets stay untouched.
+
+    Metadata:
+      Rid          - runtime identifier this pack serves. Required.
+      RuntimesPath - directory containing <rid>/native/<executable>. Required.
+      Variant      - Bun build variant, for diagnostics only.
+      Priority     - higher wins when several packs serve the same Rid. Defaults to 0.
+
+    No legacy BunRuntime_<rid> property here: that contract is a closed list of properties BunRunTask
+    already knows by name (win_x64, win_arm64, linux_x64, linux_arm64, osx_x64, osx_arm64), kept only for
+    packages that predate BunRuntimePack. This is a brand-new package, so no released Scarlet.Bun.MSBuild
+    version has ever looked for a musl property - setting one here would be dead weight.
+  -->
+  <ItemGroup>
+    <BunRuntimePack Include="Scarlet.Bun.Runtime.linux-x64-musl-baseline">
+      <Rid>linux-musl-x64</Rid>
+      <RuntimesPath>$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)..', 'runtimes'))</RuntimesPath>
+      <Variant>musl-baseline</Variant>
+      <Priority>0</Priority>
+    </BunRuntimePack>
+  </ItemGroup>
+</Project>
