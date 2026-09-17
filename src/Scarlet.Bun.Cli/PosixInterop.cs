@@ -7,10 +7,13 @@ namespace Scarlet.Bun.Cli;
 /// The few libc calls needed to forward signals to Bun correctly.
 /// </summary>
 /// <remarks>
-/// Uses the same <c>DllImport("libc")</c> style as <c>UnixChmodProvider</c> in Scarlet.Bun.Core.
+/// Uses <c>LibraryImport</c> rather than <c>DllImport</c>: the marshalling stubs are source-generated at
+/// compile time instead of emitted by the runtime, which is both faster to start and AOT-safe should the
+/// tool ever be published with PublishAot. <c>UnixChmodProvider</c> in Scarlet.Bun.Core still uses
+/// <c>DllImport</c> because it targets netstandard2.0, where neither the attribute nor the generator exists.
 /// </remarks>
 [ExcludeFromCodeCoverage]
-internal static class PosixInterop
+internal static partial class PosixInterop
 {
     /// <summary>Hangup.</summary>
     public const int SIGHUP = 1;
@@ -75,9 +78,9 @@ internal static class PosixInterop
         }
     }
 
-    [DllImport("libc", SetLastError = true)]
-    private static extern int kill(int pid, int sig);
+    [LibraryImport("libc", SetLastError = true)]
+    private static partial int kill(int pid, int sig);
 
-    [DllImport("libc", SetLastError = true)]
-    private static extern int getpgid(int pid);
+    [LibraryImport("libc", SetLastError = true)]
+    private static partial int getpgid(int pid);
 }

@@ -9,6 +9,10 @@
     <RootNamespace>Scarlet.Bun.Cli</RootNamespace>
     <InvariantGlobalization>true</InvariantGlobalization>
 
+    <!-- Required by LibraryImport in PosixInterop: the source generator emits unsafe marshalling stubs
+         (SYSLIB1062). The only unsafe code in this project is that generated interop. -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+
     <!-- Tool packaging. ToolCommandName starts with "dotnet-" so the SDK lets callers drop the prefix:
          `dotnet bun install` works for local tools as well as global ones. -->
     <PackAsTool>true</PackAsTool>
