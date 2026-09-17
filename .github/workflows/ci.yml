@@ -142,7 +142,7 @@ jobs:
       # consumes them straight off disk instead. The pointer and 'any' packages are kept: they are a few
       # hundred KB each and are exactly what you want to inspect when tool resolution misbehaves.
       - name: Upload packages
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: packages-${{ matrix.os }}
           path: |
@@ -180,7 +180,7 @@ jobs:
           tests/e2e/cli-tool/verify.sh "${{ github.workspace }}" "${{ env.VERSION }}" "${{ env.BUN_VERSION }}"
 
       - name: Upload coverage to Codecov
-        uses: codecov/codecov-action@v5
+        uses: codecov/codecov-action@v7
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           directory: ./coverage

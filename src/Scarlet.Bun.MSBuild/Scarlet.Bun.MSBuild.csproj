@@ -21,8 +21,13 @@
     <IsPackable>true</IsPackable>
     <DevelopmentDependency>True</DevelopmentDependency>
     <Deterministic>true</Deterministic>
-	<BuildOutputTargetFolder>tools</BuildOutputTargetFolder>
+    <BuildOutputTargetFolder>tools</BuildOutputTargetFolder>
     <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+
+    <!-- The assembly is packed under tools/netstandard2.0/ (see BuildOutputTargetFolder above), not
+         lib/netstandard2.0/, so NuGet can't see it there and warns that netstandard2.0 has no lib/ref
+         assets - a false positive for this MSBuild-task packaging pattern. -->
+    <NoWarn>$(NoWarn);NU5128</NoWarn>
 	
     <!-- Symbols -->
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
