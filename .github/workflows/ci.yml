@@ -137,9 +137,10 @@ jobs:
         shell: bash
         run: ls -lh ./packages/
 
-      # The Scarlet.Bun.Cli RID packages are excluded: each embeds a 60-90 MB Bun, so uploading all six
-      # from every matrix leg would cost gigabytes per push for no diagnostic value. The CLI E2E step
-      # below consumes them straight off disk instead.
+      # Only the Scarlet.Bun.Cli *RID* packages are excluded: each embeds a 60-90 MB Bun, so uploading all
+      # six from every matrix leg would cost gigabytes per push for no diagnostic value - the CLI E2E step
+      # consumes them straight off disk instead. The pointer and 'any' packages are kept: they are a few
+      # hundred KB each and are exactly what you want to inspect when tool resolution misbehaves.
       - name: Upload packages
         uses: actions/upload-artifact@v4
         with:
@@ -147,7 +148,9 @@ jobs:
           path: |
             ./packages/*.nupkg
             ./packages/*.snupkg
-            !./packages/Scarlet.Bun.Cli.*.nupkg
+            !./packages/Scarlet.Bun.Cli.win-*.nupkg
+            !./packages/Scarlet.Bun.Cli.linux-*.nupkg
+            !./packages/Scarlet.Bun.Cli.osx-*.nupkg
 
       - name: E2E Test - Package installation
         shell: bash

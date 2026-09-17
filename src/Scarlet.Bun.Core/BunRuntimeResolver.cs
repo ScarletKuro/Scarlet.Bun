@@ -66,28 +66,103 @@ public static class BunRuntimeResolver
     /// </summary>
     public static Platform GetCurrentPlatform()
     {
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+        var osPlatform = RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? OSPlatform.Windows
+            : RuntimeInformation.IsOSPlatform(OSPlatform.Linux) ? OSPlatform.Linux
+            : RuntimeInformation.IsOSPlatform(OSPlatform.OSX) ? OSPlatform.OSX
+            : default;
+
+        return GetPlatform(
+            osPlatform,
+            RuntimeInformation.ProcessArchitecture,
+            IsMuslLibc(),
+            RuntimeInformation.OSDescription);
+    }
+
+    /// <summary>
+    /// Maps a host description to the Bun build that serves it.
+    /// </summary>
+    /// <param name="osPlatform">The host operating system.</param>
+    /// <param name="architecture">The process architecture.</param>
+    /// <param name="isMuslLibc">Whether the host uses musl rather than glibc.</param>
+    /// <param name="osDescription">Description of the host, used only in error messages.</param>
+    /// <returns>The platform to resolve a Bun build for.</returns>
+    /// <exception cref="PlatformNotSupportedException">No Bun build covers this host.</exception>
+    /// <remarks>
+    /// Split out from <see cref="GetCurrentPlatform"/> so the unsupported combinations can be tested: they
+    /// are the ones nobody can reproduce on a normal development machine, and they used to fail silently.
+    /// </remarks>
+    internal static Platform GetPlatform(
+        OSPlatform osPlatform,
+        Architecture architecture,
+        bool isMuslLibc,
+        string osDescription)
+    {
+        // x86 is folded into x64 rather than rejected. Bun ships no 32-bit build, but a 32-bit *host
+        // process* on a 64-bit OS - an older MSBuild, for instance - can happily start the x64 binary,
+        // and that has always worked.
+        var isX64 = architecture is Architecture.X64 or Architecture.X86;
+        var isArm64 = architecture == Architecture.Arm64;
+
+        if (!isX64 && !isArm64)
         {
-            return RuntimeInformation.ProcessArchitecture == Architecture.Arm64
-                ? Platform.WindowsArm64
-                : Platform.WindowsX64;
+            throw new PlatformNotSupportedException(
+                $"Bun does not publish a build for {architecture} ({osDescription}). "
+                + "Supported architectures are x64 and arm64.");
         }
 
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+        if (osPlatform == OSPlatform.Windows)
         {
-            return RuntimeInformation.ProcessArchitecture == Architecture.Arm64
-                ? Platform.LinuxArm64
-                : Platform.LinuxX64;
+            return isArm64 ? Platform.WindowsArm64 : Platform.WindowsX64;
         }
 
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+        if (osPlatform == OSPlatform.Linux)
         {
-            return RuntimeInformation.ProcessArchitecture == Architecture.Arm64
-                ? Platform.MacOsArm64
-                : Platform.MacOsX64;
+            // The packaged Bun builds link against glibc. On musl they would fail to start with an error
+            // that says nothing about libc, so this is reported up front instead.
+            if (isMuslLibc)
+            {
+                throw new PlatformNotSupportedException(
+                    $"Scarlet.Bun does not provide a Bun build for musl-based Linux ({osDescription}). "
+                    + "The packaged builds link against glibc. Install Bun through its own installer and "
+                    + "point at it with the SCARLET_BUN_PATH environment variable, or set BunRuntimeDirectory.");
+            }
+
+            return isArm64 ? Platform.LinuxArm64 : Platform.LinuxX64;
         }
 
-        throw new PlatformNotSupportedException($"Unsupported platform: {RuntimeInformation.OSDescription}");
+        if (osPlatform == OSPlatform.OSX)
+        {
+            return isArm64 ? Platform.MacOsArm64 : Platform.MacOsX64;
+        }
+
+        throw new PlatformNotSupportedException($"Unsupported platform: {osDescription}");
+    }
+
+    /// <summary>
+    /// Detects a musl-based Linux distribution, such as Alpine.
+    /// </summary>
+    /// <returns><see langword="true"/> when the musl dynamic loader is present.</returns>
+    /// <remarks>
+    /// Probing for the loader keeps this working on netstandard2.0, where
+    /// <c>RuntimeInformation.RuntimeIdentifier</c> is unavailable.
+    /// </remarks>
+    private static bool IsMuslLibc()
+    {
+        if (!RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
+        {
+            return false;
+        }
+
+        try
+        {
+            return Directory.Exists("/lib")
+                   && Directory.GetFiles("/lib", "ld-musl-*.so.1").Length > 0;
+        }
+        catch (Exception)
+        {
+            // An unreadable /lib is not a reason to fail; assume glibc and let the binary speak for itself.
+            return false;
+        }
     }
 
     /// <summary>

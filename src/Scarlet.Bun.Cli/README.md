@@ -51,8 +51,13 @@ dnx Scarlet.Bun.Cli -- run build.mjs
 ## How it finds Bun
 
 Installing pulls one package for your platform, and that package carries the matching Bun binary.
-Platforms without a published Bun build (Alpine/musl, `linux-arm`, riscv64) fall back to a small portable
-package that downloads Bun on first use and caches it per user.
+A small portable package is also published as a fallback; it downloads Bun on first use and caches it
+per user.
+
+**Supported platforms are Windows, Linux and macOS on x64 or arm64.** The packaged Bun builds link
+against glibc, so musl-based distributions such as Alpine are not supported, and neither is any other
+architecture. Those hosts get an explanatory error rather than a mismatched binary — install Bun through
+its own installer and point at it with `SCARLET_BUN_PATH` if you need one of them.
 
 Resolution order:
 

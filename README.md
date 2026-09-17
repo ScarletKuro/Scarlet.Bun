@@ -487,8 +487,13 @@ dnx Scarlet.Bun.Cli -- run build.mjs
 platform, and that package **contains the Bun binary** - so `dotnet tool restore` works on a machine with
 no access to github.com, and the Bun you get is byte-identical to the one the MSBuild task uses.
 
-Platforms without a published binary (Alpine/musl, `linux-arm`, riscv64) fall back to a small portable
-package that downloads Bun on first use and caches it per user.
+A small portable package is also published as a fallback; it downloads Bun on first use and caches it per
+user.
+
+Supported platforms are Windows, Linux and macOS on **x64 or arm64**. The packaged Bun builds link against
+glibc, so musl-based distributions such as Alpine are not supported, and neither is any other
+architecture — those hosts get an explanatory error rather than a mismatched binary. Point at your own Bun
+with `SCARLET_BUN_PATH` (CLI) or `BunRuntimeDirectory` (MSBuild) if you need one of them.
 
 Resolution order:
 

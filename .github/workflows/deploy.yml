@@ -142,6 +142,19 @@ jobs:
             ./packages/*.nupkg
             ./packages/*.snupkg
 
+      # Validation runs against the local ./packages folder, BEFORE anything is published. NuGet packages
+      # are immutable and cannot be unpublished, so discovering a packaging or tool-install failure after
+      # the push would leave a broken release permanently public.
+      - name: E2E Test - Package installation and verification
+        run: |
+          chmod +x tests/e2e/package-installation/verify.sh
+          tests/e2e/package-installation/verify.sh "${{ github.workspace }}" "${{ steps.get_version.outputs.version }}" "${{ steps.get_bun_version.outputs.bun_version }}"
+
+      - name: E2E Test - CLI tool
+        run: |
+          chmod +x tests/e2e/cli-tool/verify.sh
+          tests/e2e/cli-tool/verify.sh "${{ github.workspace }}" "${{ steps.get_version.outputs.version }}" "${{ steps.get_bun_version.outputs.bun_version }}"
+
       - name: NuGet login
         id: login
         uses: NuGet/login@v1
@@ -196,12 +209,3 @@ jobs:
             --api-key "${{ secrets.GITHUB_TOKEN }}" \
             --skip-duplicate
 
-      - name: E2E Test - Package installation and verification
-        run: |
-          chmod +x tests/e2e/package-installation/verify.sh
-          tests/e2e/package-installation/verify.sh "${{ github.workspace }}" "${{ steps.get_version.outputs.version }}" "${{ steps.get_bun_version.outputs.bun_version }}"
-
-      - name: E2E Test - CLI tool
-        run: |
-          chmod +x tests/e2e/cli-tool/verify.sh
-          tests/e2e/cli-tool/verify.sh "${{ github.workspace }}" "${{ steps.get_version.outputs.version }}" "${{ steps.get_bun_version.outputs.bun_version }}"
