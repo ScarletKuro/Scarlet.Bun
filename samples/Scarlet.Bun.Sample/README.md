@@ -80,6 +80,18 @@ dotnet run --project samples/Scarlet.Bun.Sample/Scarlet.Bun.Sample.csproj
 
 Then open your browser to `http://localhost:5000` to see the application running with the bundled assets.
 
+### Watching for Changes
+
+```bash
+# From the repository root
+dotnet watch --project samples/Scarlet.Bun.Sample/Scarlet.Bun.Sample.csproj run
+```
+
+The `.csproj` includes a `Watch` item pointing at `assets/**/*.js` and `assets/**/*.scss`, so editing a file
+under `assets/` triggers `dotnet watch` to rebuild — which re-runs the Bun targets and refreshes the
+browser. See [dotnet watch Integration](../../src/Scarlet.Bun.MSBuild/README.md#dotnet-watch-integration)
+for the general pattern.
+
 ## What Gets Built
 
 - **JavaScript Bundle** (`wwwroot/js/bundle.min.js`): All JavaScript files from `assets/scripts/` are concatenated and minified

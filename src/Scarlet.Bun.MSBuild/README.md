@@ -30,6 +30,7 @@ Works with ASP.NET Core, Blazor and Razor Class Library static web assets.
   - [Basic Example](#basic-example)
   - [Using Runtime Download](#using-runtime-download)
   - [Multi-Target Framework Projects](#multi-target-framework-projects)
+  - [dotnet watch Integration](#dotnet-watch-integration)
   - [Task Parameters](#task-parameters)
   - [Output Parameters](#output-parameters)
 - [Example: JavaScript/SCSS Build Script](#example-javascriptscss-build-script)
@@ -352,6 +353,38 @@ The condition works because:
 - **Single-TFM build**: `TargetFrameworks` is empty — target runs
 
 > **Note:** This pattern also works for single-TFM projects, so you can use it as the default regardless of whether you multi-target.
+
+### dotnet watch Integration
+
+`dotnet watch` only reloads on changes to files it already knows about (`.cs`, `.razor`, `.cshtml`, and a
+few others) — it has no idea your JS/TS/SCSS sources exist, so editing them does nothing until you rebuild
+manually. Tell it about them with a `Watch` item, and it will trigger a normal build (including your Bun
+target) whenever they change:
+
+```xml
+<ItemGroup>
+  <Watch Include="assets\**\*.js;assets\**\*.ts;assets\**\*.scss" Exclude="node_modules\**" />
+</ItemGroup>
+```
+
+Point the globs at your source directory, not `wwwroot` — watching the Bun output would make every rebuild
+trigger another rebuild.
+
+`Watch` has no idea Bun exists — it is only a trip-wire that tells `dotnet watch` "treat a change to this
+file like a change to a `.cs` file." When it fires, `dotnet watch` just runs a normal build, the same as
+`dotnet build`. Your existing `BunInstall`/`BunBuildAssets` targets (`BeforeTargets="Build"` /
+`AfterTargets="BunInstall"`) already run on *every* build regardless of what triggered it, so they run here
+too — the `Watch` item doesn't invoke Bun itself, it just causes the build that was always going to invoke
+Bun to happen more often.
+
+Run `dotnet watch build` (or `dotnet watch run` for a Blazor/ASP.NET Core app, which also gets browser
+refresh for the resulting static assets) and saving a `.js`/`.scss` file re-runs Bun like any other source
+change.
+
+This rides entirely on `dotnet watch`'s existing file-watching — no code in this repo — so it triggers a
+full MSBuild build per save rather than an instant incremental rebuild. That's fine for most JS/CSS bundling
+setups; if the rebuild latency becomes the bottleneck, running Bun's own `--watch` mode as a separate
+long-lived process is a further option, at the cost of managing that process's lifecycle yourself.
 
 ### Task Parameters
 

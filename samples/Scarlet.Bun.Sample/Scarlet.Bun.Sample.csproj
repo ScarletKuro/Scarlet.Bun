@@ -14,6 +14,11 @@
     <None Include="build.mjs" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
+  <!-- Let `dotnet watch` rebuild (and re-run the Bun targets below) when JS/SCSS sources change -->
+  <ItemGroup>
+    <Watch Include="assets\**\*.js;assets\**\*.scss" Exclude="node_modules\**" />
+  </ItemGroup>
+
   <!-- Import the BunRunTask from the referenced project (development scenario) -->
   <Import Project="..\..\src\Scarlet.Bun.MSBuild\Scarlet.Bun.MSBuild.targets" />
   
