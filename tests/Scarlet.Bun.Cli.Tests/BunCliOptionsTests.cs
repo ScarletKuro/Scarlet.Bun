@@ -12,12 +12,66 @@ public class BunCliOptionsTests
 
         // Assert
         Assert.Equal("1.4.2", options.RequestedVersion);
+        Assert.Null(options.RequestedVersionOverride);
         Assert.False(options.UseLatest);
         Assert.Equal("1.4.2", options.DownloadVersion);
         Assert.Null(options.ExplicitBunPath);
         Assert.False(options.IgnoreEmbedded);
         Assert.False(options.PurePassthrough);
+        Assert.Null(options.CacheRootOverride);
         Assert.Equal(300, options.DownloadTimeoutSeconds);
+        Assert.Null(options.DownloadTimeoutOverride);
+    }
+
+    [Fact]
+    public void FromEnvironment_WithVersionSet_ShouldExposeTheRawOverride()
+    {
+        // Arrange
+        var environment = new FakeEnvironmentProvider(new Dictionary<string, string>
+        {
+            [BunCliOptions.VersionVariable] = "1.2.3"
+        });
+
+        // Act
+        var options = BunCliOptions.FromEnvironment(environment, "1.4.2");
+
+        // Assert
+        Assert.Equal("1.2.3", options.RequestedVersion);
+        Assert.Equal("1.2.3", options.RequestedVersionOverride);
+    }
+
+    [Fact]
+    public void FromEnvironment_WithCacheSet_ShouldExposeTheRawOverride()
+    {
+        // Arrange
+        var environment = new FakeEnvironmentProvider(new Dictionary<string, string>
+        {
+            [BunCliOptions.CacheVariable] = "/cache"
+        });
+
+        // Act
+        var options = BunCliOptions.FromEnvironment(environment, "1.4.2");
+
+        // Assert
+        Assert.Equal("/cache", options.CacheRoot);
+        Assert.Equal("/cache", options.CacheRootOverride);
+    }
+
+    [Fact]
+    public void FromEnvironment_WithTimeoutSet_ShouldExposeTheRawOverride()
+    {
+        // Arrange
+        var environment = new FakeEnvironmentProvider(new Dictionary<string, string>
+        {
+            [BunCliOptions.DownloadTimeoutVariable] = "42"
+        });
+
+        // Act
+        var options = BunCliOptions.FromEnvironment(environment, "1.4.2");
+
+        // Assert
+        Assert.Equal(42, options.DownloadTimeoutSeconds);
+        Assert.Equal("42", options.DownloadTimeoutOverride);
     }
 
     [Theory]

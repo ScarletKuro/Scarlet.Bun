@@ -41,27 +41,47 @@ internal sealed class BunCliOptions
 
     private BunCliOptions(
         string? explicitBunPath,
+        string? requestedVersionOverride,
         string requestedVersion,
+        string? cacheRootOverride,
         string cacheRoot,
         bool ignoreEmbedded,
         bool purePassthrough,
         bool diagnostics,
+        string? downloadTimeoutOverride,
         int downloadTimeoutSeconds)
     {
         ExplicitBunPath = explicitBunPath;
+        RequestedVersionOverride = requestedVersionOverride;
         RequestedVersion = requestedVersion;
+        CacheRootOverride = cacheRootOverride;
         CacheRoot = cacheRoot;
         IgnoreEmbedded = ignoreEmbedded;
         PurePassthrough = purePassthrough;
         Diagnostics = diagnostics;
+        DownloadTimeoutOverride = downloadTimeoutOverride;
         DownloadTimeoutSeconds = downloadTimeoutSeconds;
     }
 
     /// <summary>An explicit Bun executable supplied by the user, or <see langword="null"/>.</summary>
     public string? ExplicitBunPath { get; }
 
+    /// <summary>
+    /// The raw value of <see cref="VersionVariable"/> as set in the environment, or <see langword="null"/>
+    /// if it was not set. Unlike <see cref="RequestedVersion"/>, this does not fall back to the pinned
+    /// version, so diagnostics can tell an explicit override apart from the default.
+    /// </summary>
+    public string? RequestedVersionOverride { get; }
+
     /// <summary>The Bun version to resolve. Either a concrete version or <see cref="LatestVersion"/>.</summary>
     public string RequestedVersion { get; }
+
+    /// <summary>
+    /// The raw value of <see cref="CacheVariable"/> as set in the environment, or <see langword="null"/>
+    /// if it was not set. Unlike <see cref="CacheRoot"/>, this does not fall back to the OS default, so
+    /// diagnostics can tell an explicit override apart from the default.
+    /// </summary>
+    public string? CacheRootOverride { get; }
 
     /// <summary>Root directory for downloaded Bun runtimes.</summary>
     public string CacheRoot { get; }
@@ -74,6 +94,13 @@ internal sealed class BunCliOptions
 
     /// <summary>Whether to report the resolved Bun on stderr before running it.</summary>
     public bool Diagnostics { get; }
+
+    /// <summary>
+    /// The raw value of <see cref="DownloadTimeoutVariable"/> as set in the environment, or
+    /// <see langword="null"/> if it was not set. Unlike <see cref="DownloadTimeoutSeconds"/>, this does not
+    /// fall back to the default, so diagnostics can tell an explicit override apart from the default.
+    /// </summary>
+    public string? DownloadTimeoutOverride { get; }
 
     /// <summary>How long to wait for another process that is already downloading Bun.</summary>
     public int DownloadTimeoutSeconds { get; }
@@ -106,15 +133,25 @@ internal sealed class BunCliOptions
     public static BunCliOptions FromEnvironment(IEnvironmentProvider environment, string pinnedVersion)
     {
         var requestedVersion = environment.GetVariable(VersionVariable)?.Trim();
+        var requestedVersionOverride = string.IsNullOrEmpty(requestedVersion) ? null : requestedVersion;
+
+        var cacheRootOverride = environment.GetVariable(CacheVariable)?.Trim();
+        cacheRootOverride = string.IsNullOrEmpty(cacheRootOverride) ? null : cacheRootOverride;
+
+        var downloadTimeoutOverride = environment.GetVariable(DownloadTimeoutVariable)?.Trim();
+        downloadTimeoutOverride = string.IsNullOrEmpty(downloadTimeoutOverride) ? null : downloadTimeoutOverride;
 
         return new BunCliOptions(
             explicitBunPath: environment.GetVariable(PathVariable)?.Trim(),
-            requestedVersion: string.IsNullOrEmpty(requestedVersion) ? pinnedVersion : requestedVersion!,
+            requestedVersionOverride: requestedVersionOverride,
+            requestedVersion: requestedVersionOverride ?? pinnedVersion,
+            cacheRootOverride: cacheRootOverride,
             cacheRoot: ResolveCacheRoot(environment),
             ignoreEmbedded: IsEnabled(environment.GetVariable(NoEmbeddedVariable)),
             purePassthrough: IsEnabled(environment.GetVariable(PassthroughVariable)),
             diagnostics: IsEnabled(environment.GetVariable(DiagnosticsVariable)),
-            downloadTimeoutSeconds: ReadTimeout(environment.GetVariable(DownloadTimeoutVariable)));
+            downloadTimeoutOverride: downloadTimeoutOverride,
+            downloadTimeoutSeconds: ReadTimeout(downloadTimeoutOverride));
     }
 
     /// <summary>

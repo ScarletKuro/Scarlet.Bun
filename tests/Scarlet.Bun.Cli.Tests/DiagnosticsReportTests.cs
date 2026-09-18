@@ -73,9 +73,11 @@ public class DiagnosticsReportTests
     [Fact]
     public void ToText_ShouldReportWhichEnvironmentVariablesAreSet()
     {
-        // Arrange
+        // Arrange - the pinned version is 1.4.2, so setting it here proves the line echoes the override
+        // rather than falling back to the pin
         var options = CreateOptions(new Dictionary<string, string>
         {
+            [BunCliOptions.VersionVariable] = "1.2.3",
             [BunCliOptions.CacheVariable] = "/cache",
             [BunCliOptions.NoEmbeddedVariable] = "1",
             [BunCliOptions.PassthroughVariable] = "1",
@@ -87,21 +89,30 @@ public class DiagnosticsReportTests
         var report = DiagnosticsReport.ToText(CreateResolution(BunSource.Embedded), options);
 
         // Assert
+        Assert.Contains($"{BunCliOptions.VersionVariable,-28}1.2.3", report);
         Assert.Contains($"{BunCliOptions.NoEmbeddedVariable,-28}enabled", report);
         Assert.Contains($"{BunCliOptions.PassthroughVariable,-28}enabled", report);
         Assert.Contains($"{BunCliOptions.DiagnosticsVariable,-28}enabled", report);
-        Assert.Contains("42", report);
+        Assert.Contains($"{BunCliOptions.CacheVariable,-28}/cache", report);
+        Assert.Contains($"{BunCliOptions.DownloadTimeoutVariable,-28}42", report);
     }
 
     [Fact]
     public void ToText_WithNothingSet_ShouldSayUnset()
     {
+        // Arrange - a genuinely empty environment, rather than CreateOptions()'s default, which pins
+        // SCARLET_BUN_CACHE so unrelated tests don't depend on the host's filesystem layout
+        var options = BunCliOptions.FromEnvironment(new FakeEnvironmentProvider(), "1.4.2");
+
         // Act
-        var report = DiagnosticsReport.ToText(CreateResolution(BunSource.Embedded), CreateOptions());
+        var report = DiagnosticsReport.ToText(CreateResolution(BunSource.Embedded), options);
 
         // Assert
         Assert.Contains($"{BunCliOptions.NoEmbeddedVariable,-28}(unset)", report);
         Assert.Contains($"{BunCliOptions.PathVariable,-28}(unset)", report);
+        Assert.Contains($"{BunCliOptions.VersionVariable,-28}(unset)", report);
+        Assert.Contains($"{BunCliOptions.CacheVariable,-28}(unset)", report);
+        Assert.Contains($"{BunCliOptions.DownloadTimeoutVariable,-28}(unset)", report);
     }
 
     [Theory]

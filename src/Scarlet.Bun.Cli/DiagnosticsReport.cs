@@ -119,12 +119,12 @@ internal static class DiagnosticsReport
     private static IEnumerable<(string Name, string Value)> DescribeEnvironment(BunCliOptions options)
     {
         yield return (BunCliOptions.PathVariable, options.ExplicitBunPath ?? "(unset)");
-        yield return (BunCliOptions.VersionVariable, options.RequestedVersion);
-        yield return (BunCliOptions.CacheVariable, options.CacheRoot);
+        yield return (BunCliOptions.VersionVariable, options.RequestedVersionOverride ?? "(unset)");
+        yield return (BunCliOptions.CacheVariable, options.CacheRootOverride ?? "(unset)");
         yield return (BunCliOptions.NoEmbeddedVariable, options.IgnoreEmbedded ? "enabled" : "(unset)");
         yield return (BunCliOptions.PassthroughVariable, options.PurePassthrough ? "enabled" : "(unset)");
         yield return (BunCliOptions.DiagnosticsVariable, options.Diagnostics ? "enabled" : "(unset)");
-        yield return (BunCliOptions.DownloadTimeoutVariable, options.DownloadTimeoutSeconds.ToString());
+        yield return (BunCliOptions.DownloadTimeoutVariable, options.DownloadTimeoutOverride ?? "(unset)");
     }
 
     private static void Append(StringBuilder report, string label, string value) =>
