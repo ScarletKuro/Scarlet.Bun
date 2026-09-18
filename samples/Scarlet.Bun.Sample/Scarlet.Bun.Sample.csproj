@@ -34,7 +34,7 @@
   </ItemGroup>
 
   <!-- Verify output files exist after build -->
-  <Target Name="VerifyBunOutput" AfterTargets="_RunBunBeforeStaticWebAssets">
+  <Target Name="VerifyBunOutput" AfterTargets="RunBunBeforeStaticWebAssets">
     <Error Text="JavaScript bundle was not created!" Condition="!Exists('$(MSBuildProjectDirectory)\wwwroot\js\bundle.min.js')" />
     <Error Text="CSS bundle was not created!" Condition="!Exists('$(MSBuildProjectDirectory)\wwwroot\css\style.min.css')" />
     <Message Text="✓ Bun build completed successfully!" Importance="high" />

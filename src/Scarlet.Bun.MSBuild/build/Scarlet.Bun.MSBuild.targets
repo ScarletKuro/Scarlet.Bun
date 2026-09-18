@@ -93,17 +93,14 @@
     Include is the Bun command. Optional metadata: Arguments, WorkingDirectory,
     TimeoutMilliseconds, ContinueOnError.
   -->
-  <Target Name="_RunBunBeforeStaticWebAssets"
+  <Target Name="RunBunBeforeStaticWebAssets"
           BeforeTargets="DispatchToInnerBuilds;ResolveProjectStaticWebAssets;PreBuildEvent"
           Condition="'@(BunBeforeStaticWebAssets)' != '' AND ('$(TargetFrameworks)' == '' OR '$(TargetFramework)' == '')">
     <ItemGroup>
       <_BunBeforeStaticWebAssetsStep Include="@(BunBeforeStaticWebAssets)">
         <WorkingDirectory Condition="'%(BunBeforeStaticWebAssets.WorkingDirectory)' == ''">$(MSBuildProjectDirectory)</WorkingDirectory>
-        <WorkingDirectory Condition="'%(BunBeforeStaticWebAssets.WorkingDirectory)' != ''">%(BunBeforeStaticWebAssets.WorkingDirectory)</WorkingDirectory>
         <TimeoutMilliseconds Condition="'%(BunBeforeStaticWebAssets.TimeoutMilliseconds)' == ''">$(BunTimeoutMilliseconds)</TimeoutMilliseconds>
-        <TimeoutMilliseconds Condition="'%(BunBeforeStaticWebAssets.TimeoutMilliseconds)' != ''">%(BunBeforeStaticWebAssets.TimeoutMilliseconds)</TimeoutMilliseconds>
         <ContinueOnError Condition="'%(BunBeforeStaticWebAssets.ContinueOnError)' == ''">$(BunContinueOnError)</ContinueOnError>
-        <ContinueOnError Condition="'%(BunBeforeStaticWebAssets.ContinueOnError)' != ''">%(BunBeforeStaticWebAssets.ContinueOnError)</ContinueOnError>
       </_BunBeforeStaticWebAssetsStep>
     </ItemGroup>
 
@@ -125,7 +122,7 @@
                 BunRuntime_osx_arm64="$(BunRuntime_osx_arm64)" />
 
     <ItemGroup>
-      <Content Include="$(MSBuildProjectDirectory)\wwwroot\**\*"
+      <Content Include="wwwroot\**\*"
                Exclude="@(Content)"
                ExcludeFromSingleFile="true"
                CopyToPublishDirectory="PreserveNewest" />

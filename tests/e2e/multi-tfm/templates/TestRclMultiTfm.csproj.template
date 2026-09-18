@@ -35,7 +35,7 @@
     </BunBeforeStaticWebAssets>
   </ItemGroup>
 
-  <Target Name="VerifyBunOutput" AfterTargets="_RunBunBeforeStaticWebAssets"
+  <Target Name="VerifyBunOutput" AfterTargets="RunBunBeforeStaticWebAssets"
           Condition="'$(TargetFrameworks)' == '' OR '$(TargetFramework)' == ''">
     <Error Text="JavaScript bundle was not created!" Condition="!Exists('$(MSBuildProjectDirectory)/wwwroot/js/bundle.min.js')" />
     <Error Text="CSS bundle was not created!" Condition="!Exists('$(MSBuildProjectDirectory)/wwwroot/css/style.min.css')" />

@@ -298,6 +298,8 @@ These steps run once before the .NET static web assets SDK discovers files in `w
 are added back to the build as `Content`, so clean builds, fingerprinting, publish and NuGet packing see
 the assets without a custom target.
 
+If you need to sequence another target after these steps, use `AfterTargets="RunBunBeforeStaticWebAssets"`.
+
 ### Basic Example
 
 For non-static-web-asset scenarios, you can call the reusable `Bun` target from your own targets:
@@ -401,9 +403,9 @@ long-lived process is a further option, at the cost of managing that process's l
 
 ### BunBeforeStaticWebAssets Metadata
 
-| Metadata | Required | Description | Default |
-|----------|----------|-------------|---------|
-| `Include` | Yes | The Bun command to execute, for example `install`, `run` or `test` | - |
+| Item value or metadata | Required | Description | Default |
+|------------------------|----------|-------------|---------|
+| `Include` | Yes | Item identity; the Bun command to execute, for example `install`, `run` or `test` | - |
 | `Arguments` | No | Arguments to pass after the command | "" |
 | `WorkingDirectory` | No | Working directory for command execution | `$(MSBuildProjectDirectory)` |
 | `TimeoutMilliseconds` | No | Timeout in milliseconds (`0` = no timeout) | `$(BunTimeoutMilliseconds)` |
