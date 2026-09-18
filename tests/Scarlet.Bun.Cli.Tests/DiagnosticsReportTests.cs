@@ -129,8 +129,19 @@ public class DiagnosticsReportTests
     [Fact]
     public void ToJson_ShouldEmitTheSameFactsAsParseableJson()
     {
+        // Arrange
+        var options = CreateOptions(new Dictionary<string, string>
+        {
+            [BunCliOptions.VersionVariable] = "1.2.3",
+            [BunCliOptions.CacheVariable] = "/cache",
+            [BunCliOptions.NoEmbeddedVariable] = "1",
+            [BunCliOptions.PassthroughVariable] = "1",
+            [BunCliOptions.DiagnosticsVariable] = "1",
+            [BunCliOptions.DownloadTimeoutVariable] = "42"
+        });
+
         // Act
-        var json = DiagnosticsReport.ToJson(CreateResolution(BunSource.Embedded), CreateOptions());
+        var json = DiagnosticsReport.ToJson(CreateResolution(BunSource.Embedded), options);
 
         // Assert
         using var document = JsonDocument.Parse(json);
@@ -140,6 +151,14 @@ public class DiagnosticsReportTests
         Assert.Equal("linux-x64", root.GetProperty("runtimeIdentifier").GetString());
         Assert.Equal("/tool/bun", root.GetProperty("bunExecutable").GetString());
         Assert.Equal(JsonValueKind.Null, root.GetProperty("downloadUrl").ValueKind);
+
+        var environment = root.GetProperty("environment");
+        Assert.Equal("1.2.3", environment.GetProperty(BunCliOptions.VersionVariable).GetString());
+        Assert.Equal("/cache", environment.GetProperty(BunCliOptions.CacheVariable).GetString());
+        Assert.True(environment.GetProperty(BunCliOptions.NoEmbeddedVariable).GetBoolean());
+        Assert.True(environment.GetProperty(BunCliOptions.PassthroughVariable).GetBoolean());
+        Assert.True(environment.GetProperty(BunCliOptions.DiagnosticsVariable).GetBoolean());
+        Assert.Equal("42", environment.GetProperty(BunCliOptions.DownloadTimeoutVariable).GetString());
     }
 
     [Fact]
@@ -158,6 +177,29 @@ public class DiagnosticsReportTests
         Assert.Equal(JsonValueKind.Null, root.GetProperty("bunExecutable").ValueKind);
         Assert.Contains("bun-v1.4.2", root.GetProperty("downloadUrl").GetString()!);
         Assert.Equal("nothing yet", root.GetProperty("failureReason").GetString());
+    }
+
+    [Fact]
+    public void ToJson_WithNothingSet_ShouldNullTheStringOverridesRatherThanTheResolvedDefault()
+    {
+        // Arrange - a genuinely empty environment, rather than CreateOptions()'s default, which pins
+        // SCARLET_BUN_CACHE so unrelated tests don't depend on the host's filesystem layout
+        var options = BunCliOptions.FromEnvironment(new FakeEnvironmentProvider(), "1.4.2");
+
+        // Act
+        var json = DiagnosticsReport.ToJson(CreateResolution(BunSource.Embedded), options);
+
+        // Assert
+        using var document = JsonDocument.Parse(json);
+        var environment = document.RootElement.GetProperty("environment");
+
+        Assert.Equal(JsonValueKind.Null, environment.GetProperty(BunCliOptions.PathVariable).ValueKind);
+        Assert.Equal(JsonValueKind.Null, environment.GetProperty(BunCliOptions.VersionVariable).ValueKind);
+        Assert.Equal(JsonValueKind.Null, environment.GetProperty(BunCliOptions.CacheVariable).ValueKind);
+        Assert.Equal(JsonValueKind.Null, environment.GetProperty(BunCliOptions.DownloadTimeoutVariable).ValueKind);
+        Assert.False(environment.GetProperty(BunCliOptions.NoEmbeddedVariable).GetBoolean());
+        Assert.False(environment.GetProperty(BunCliOptions.PassthroughVariable).GetBoolean());
+        Assert.False(environment.GetProperty(BunCliOptions.DiagnosticsVariable).GetBoolean());
     }
 
     private static BunResolution CreateResolution(

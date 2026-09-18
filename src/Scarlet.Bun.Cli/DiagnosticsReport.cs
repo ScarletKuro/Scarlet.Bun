@@ -66,7 +66,17 @@ internal static class DiagnosticsReport
             ["cacheRoot"] = resolution.CacheRoot,
             ["runtimeDirectory"] = resolution.RuntimeDirectory,
             ["downloadUrl"] = resolution.IsResolved ? null : BuildDownloadUrl(resolution),
-            ["failureReason"] = resolution.FailureReason
+            ["failureReason"] = resolution.FailureReason,
+            ["environment"] = new Dictionary<string, object?>
+            {
+                [BunCliOptions.PathVariable] = options.ExplicitBunPath,
+                [BunCliOptions.VersionVariable] = options.RequestedVersionOverride,
+                [BunCliOptions.CacheVariable] = options.CacheRootOverride,
+                [BunCliOptions.NoEmbeddedVariable] = options.IgnoreEmbedded,
+                [BunCliOptions.PassthroughVariable] = options.PurePassthrough,
+                [BunCliOptions.DiagnosticsVariable] = options.Diagnostics,
+                [BunCliOptions.DownloadTimeoutVariable] = options.DownloadTimeoutOverride
+            }
         };
 
         return JsonSerializer.Serialize(payload, new JsonSerializerOptions { WriteIndented = true }) + Environment.NewLine;
