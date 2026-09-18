@@ -1,4 +1,4 @@
-namespace Scarlet.Bun.MSBuild.Tests;
+namespace Scarlet.Bun.Testing;
 
 /// <summary>
 /// Locates the repository root so tests can assert against files that are not build outputs -

@@ -310,8 +310,8 @@ echo "✓ Created package.json, bun.lock, and build.mjs"
 process_template "$TEMPLATES_DIR/TestRclMultiTfm.csproj.template" "TestRclMultiTfm.csproj"
 echo "✓ Updated project file with multi-target frameworks (net8.0, net9.0, net10.0)"
 
-# Build the project. Bun install + asset build run once in the outer build
-# (before DispatchToInnerBuilds), then inner TFM builds compile without re-running Bun.
+# Build the project. BunBeforeStaticWebAssets runs install + asset build once
+# before DispatchToInnerBuilds, then inner TFM builds compile without re-running Bun.
 echo ""
 echo "Building Razor Class Library (multi-TFM)..."
 echo "=========================================="
@@ -370,6 +370,36 @@ else
     FAILED=1
 fi
 
+INSTALL_RUNS=$(grep -c "Executing: bun install --frozen-lockfile" build.log || true)
+BUILD_RUNS=$(grep -c "Executing: bun run build.mjs" build.log || true)
+
+if [ "$INSTALL_RUNS" -eq 1 ]; then
+    echo "✓ Bun install ran once before static web asset discovery"
+else
+    echo "✗ Expected Bun install to run once, but saw $INSTALL_RUNS executions"
+    FAILED=1
+fi
+
+if [ "$BUILD_RUNS" -eq 1 ]; then
+    echo "✓ Bun asset build ran once before static web asset discovery"
+else
+    echo "✗ Expected Bun asset build to run once, but saw $BUILD_RUNS executions"
+    FAILED=1
+fi
+
+# build.mjs needs the dependencies bun install pulls down, so the declaration order of the
+# BunBeforeStaticWebAssets items has to be the execution order. That falls out of MSBuild task batching
+# rather than anything explicit in the target, so pin it here.
+INSTALL_LINE=$(grep -n "Executing: bun install --frozen-lockfile" build.log | head -1 | cut -d: -f1)
+BUILD_LINE=$(grep -n "Executing: bun run build.mjs" build.log | head -1 | cut -d: -f1)
+
+if [ -n "$INSTALL_LINE" ] && [ -n "$BUILD_LINE" ] && [ "$INSTALL_LINE" -lt "$BUILD_LINE" ]; then
+    echo "✓ Bun install ran before the asset build"
+else
+    echo "✗ Expected Bun install to run before the asset build (install at line ${INSTALL_LINE:-none}, build at line ${BUILD_LINE:-none})"
+    FAILED=1
+fi
+
 # Check that each TFM produced build output
 for tfm in net8.0 net9.0 net10.0; do
     if [ -d "bin/Debug/$tfm" ]; then
@@ -417,10 +447,74 @@ else
         FAILED=1
     fi
 
+    # The assets have to land under staticwebassets/, which is what makes them reachable as
+    # _content/<PackageId>/... in a consuming app. Packing them anywhere else (content/, contentFiles/)
+    # still puts the files in the package, so grepping for the file names alone would pass while the
+    # package is useless to consumers.
+    if echo "$NUPKG_CONTENTS" | grep -q "staticwebassets/js/bundle\.min\.js"; then
+        echo "✓ JavaScript bundle packed as a static web asset"
+    else
+        echo "✗ JavaScript bundle is in the package but not under staticwebassets/"
+        FAILED=1
+    fi
+
+    if echo "$NUPKG_CONTENTS" | grep -q "staticwebassets/css/style\.min\.css"; then
+        echo "✓ CSS bundle packed as a static web asset"
+    else
+        echo "✗ CSS bundle is in the package but not under staticwebassets/"
+        FAILED=1
+    fi
+
     # Show the static web asset paths for inspection
     echo ""
     echo "Static web asset entries in package:"
     echo "$NUPKG_CONTENTS" | grep -E "bundle\.min\.js|style\.min\.css" || echo "(none found)"
+fi
+
+# Pack again without building. CI commonly builds once and packs separately, and that path skips
+# ResolveProjectStaticWebAssets entirely (it carries Condition="'$(NoBuild)' != 'true'"), so the package
+# has to come together from the manifest the earlier build already wrote.
+echo ""
+echo "=========================================="
+echo "Packing without building (--no-build)..."
+echo "=========================================="
+rm -rf ./nupkg-nobuild
+if dotnet pack --no-build --configuration Debug --output ./nupkg-nobuild --verbosity normal > pack-nobuild.log 2>&1; then
+    echo "✓ dotnet pack --no-build succeeded"
+
+    NOBUILD_NUPKG=$(find ./nupkg-nobuild -name "*.nupkg" -not -name "*.symbols.nupkg" | head -n 1)
+
+    if [ -z "$NOBUILD_NUPKG" ]; then
+        echo "✗ No .nupkg file produced by --no-build"
+        FAILED=1
+    else
+        NOBUILD_CONTENTS=$(unzip -l "$NOBUILD_NUPKG" 2>/dev/null || true)
+
+        if echo "$NOBUILD_CONTENTS" | grep -q "staticwebassets/js/bundle\.min\.js" &&
+           echo "$NOBUILD_CONTENTS" | grep -q "staticwebassets/css/style\.min\.css"; then
+            echo "✓ --no-build package still carries both bundles as static web assets"
+        else
+            echo "✗ --no-build package is missing the static web assets"
+            echo "$NOBUILD_CONTENTS" | grep -E "bundle\.min\.js|style\.min\.css" || echo "  (neither bundle is in the package)"
+            FAILED=1
+        fi
+    fi
+
+    # A BeforeTargets hook still fires when the target it hooks is skipped by its own condition, so
+    # without the NoBuild guard on RunBunBeforeStaticWebAssets every step re-runs here, rebuilding assets
+    # that nothing will discover. This measured 1 re-run before the guard was added.
+    NOBUILD_BUN_RUNS=$(grep -c "Executing: bun " pack-nobuild.log || true)
+
+    if [ "$NOBUILD_BUN_RUNS" -eq 0 ]; then
+        echo "✓ --no-build did not re-run any Bun steps"
+    else
+        echo "✗ --no-build re-ran $NOBUILD_BUN_RUNS Bun step(s); the build had already produced the assets"
+        FAILED=1
+    fi
+else
+    echo "✗ dotnet pack --no-build failed"
+    tail -n 30 pack-nobuild.log
+    FAILED=1
 fi
 
 echo ""

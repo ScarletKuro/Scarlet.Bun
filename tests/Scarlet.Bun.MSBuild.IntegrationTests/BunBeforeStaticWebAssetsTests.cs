@@ -1,0 +1,295 @@
+using System.IO.Compression;
+using System.Security;
+using System.Text.RegularExpressions;
+using Xunit.Abstractions;
+
+namespace Scarlet.Bun.MSBuild.IntegrationTests;
+
+/// <summary>
+/// Covers the <c>BunBeforeStaticWebAssets</c> item contract end to end, by running a real build and
+/// asserting on what it produces. The point of the target is that files Bun writes into <c>wwwroot</c>
+/// during the build - and so are absent when MSBuild evaluates the project - still reach the static web
+/// assets pipeline, which is only observable from the package or publish output.
+/// </summary>
+public class BunBeforeStaticWebAssetsTests
+{
+    private const string GeneratedAsset = "css/generated.css";
+
+    private readonly ITestOutputHelper _output;
+
+    public BunBeforeStaticWebAssetsTests(ITestOutputHelper output)
+    {
+        _output = output;
+    }
+
+    [Fact]
+    public async Task SingleTargetFrameworkPack_IncludesGeneratedWwwrootFilesAsStaticWebAssets()
+    {
+        using var workspace = CreateRazorClassLibrary(
+            """
+            <BunBeforeStaticWebAssets Include="run">
+              <Arguments>build.mjs</Arguments>
+            </BunBeforeStaticWebAssets>
+            """);
+
+        await Pack(workspace);
+
+        // staticwebassets/ is what makes the file reachable as _content/<PackageId>/css/generated.css in a
+        // consuming app. An absolute Content glob still packs the file, but under content/ and
+        // contentFiles/, where no consumer will ever serve it.
+        Assert.Equal(1, CountPackageEntries(workspace, $"staticwebassets/{GeneratedAsset}"));
+    }
+
+    [Fact]
+    public async Task RepeatedPack_DoesNotDuplicateGeneratedStaticWebAssets()
+    {
+        using var workspace = CreateRazorClassLibrary(
+            """
+            <BunBeforeStaticWebAssets Include="run">
+              <Arguments>build.mjs</Arguments>
+            </BunBeforeStaticWebAssets>
+            """);
+
+        await Pack(workspace);
+
+        // The second pack evaluates the project with wwwroot already populated, so the SDK's own glob has
+        // already claimed the generated file and the target re-adds it on top. Nothing about that path is
+        // exercised by a clean build, which is the only case the other tests cover.
+        await Pack(workspace);
+
+        Assert.Equal(1, CountPackageEntries(workspace, $"staticwebassets/{GeneratedAsset}"));
+    }
+
+    [Fact]
+    public async Task WebProjectPublish_FingerprintsGeneratedStaticWebAssets()
+    {
+        using var workspace = CreateWebApplication();
+
+        var result = await RunDotnet(workspace, $"publish --configuration {DotnetCli.Configuration} --output publish");
+        Assert.Equal(0, result.ExitCode);
+
+        var endpoints = Assert.Single(
+            Directory.GetFiles(workspace.PathTo("publish"), "*.staticwebassets.endpoints.json"));
+        var manifest = File.ReadAllText(endpoints);
+
+        // A fingerprinted route proves the file went through the static web assets pipeline rather than
+        // being copied to the publish directory as plain content, which is what the README promises.
+        Assert.Matches(new Regex("""
+            "Route"\s*:\s*"css/generated\.[a-z0-9]+\.css"
+            """.Trim()), manifest);
+    }
+
+    [Fact]
+    public async Task Steps_RunInDeclarationOrder()
+    {
+        // The whole feature rests on this: `bun install` has to finish before `bun run build.mjs` starts.
+        // Ordering falls out of MSBuild's task batching following item declaration order, which is an
+        // implementation detail worth pinning rather than assuming.
+        using var workspace = CreateRazorClassLibrary(
+            """
+            <BunBeforeStaticWebAssets Include="run">
+              <Arguments>first.mjs</Arguments>
+            </BunBeforeStaticWebAssets>
+            <BunBeforeStaticWebAssets Include="run">
+              <Arguments>second.mjs</Arguments>
+            </BunBeforeStaticWebAssets>
+            """);
+
+        workspace.WriteFile("first.mjs", AppendToOrderLog("first"));
+        workspace.WriteFile("second.mjs", AppendToOrderLog("second"));
+
+        await Pack(workspace);
+
+        // `dotnet pack` runs the steps in both its build and its pack pass, so assert the shape of the log
+        // rather than a single pair: what matters is that "second" never precedes "first".
+        Assert.Matches("^(first,second,)+$", File.ReadAllText(workspace.PathTo("order.log")));
+    }
+
+    [Fact]
+    public async Task WorkingDirectoryMetadata_RunsTheStepInThatDirectory()
+    {
+        using var workspace = CreateRazorClassLibrary(
+            """
+            <BunBeforeStaticWebAssets Include="run">
+              <Arguments>generate.mjs</Arguments>
+              <WorkingDirectory>$(MSBuildProjectDirectory)/tools</WorkingDirectory>
+            </BunBeforeStaticWebAssets>
+            """);
+
+        File.Delete(workspace.PathTo("build.mjs"));
+
+        // Both the script path and the path it writes to are resolved from the working directory, so the
+        // step only produces the asset in the right place if WorkingDirectory was honoured.
+        workspace.WriteFile("tools/generate.mjs", WriteGeneratedAsset("../wwwroot/css"));
+
+        await Pack(workspace);
+
+        Assert.Equal(1, CountPackageEntries(workspace, $"staticwebassets/{GeneratedAsset}"));
+    }
+
+    [Fact]
+    public async Task ContinueOnErrorMetadata_KeepsTheBuildGreenWhenAStepFails()
+    {
+        using var workspace = CreateRazorClassLibrary(
+            """
+            <BunBeforeStaticWebAssets Include="run">
+              <Arguments>build.mjs</Arguments>
+            </BunBeforeStaticWebAssets>
+            <BunBeforeStaticWebAssets Include="run">
+              <Arguments>fail.mjs</Arguments>
+              <ContinueOnError>true</ContinueOnError>
+            </BunBeforeStaticWebAssets>
+            """);
+
+        workspace.WriteFile("fail.mjs", "process.exit(3);");
+
+        await Pack(workspace);
+
+        // The failing step is downgraded to a warning, and the step before it still contributed its asset.
+        Assert.Equal(1, CountPackageEntries(workspace, $"staticwebassets/{GeneratedAsset}"));
+    }
+
+    [Fact]
+    public async Task FailingStep_FailsTheBuildByDefault()
+    {
+        using var workspace = CreateRazorClassLibrary(
+            """
+            <BunBeforeStaticWebAssets Include="run">
+              <Arguments>fail.mjs</Arguments>
+            </BunBeforeStaticWebAssets>
+            """);
+
+        workspace.WriteFile("fail.mjs", "process.exit(3);");
+
+        var result = await RunDotnet(workspace, $"pack --configuration {DotnetCli.Configuration} --output nupkg");
+
+        Assert.NotEqual(0, result.ExitCode);
+    }
+
+    private static string AppendToOrderLog(string step) =>
+        Script($"""fs.appendFileSync("order.log", "{step},");""", WriteGeneratedAssetTo("wwwroot/css"));
+
+    private static string WriteGeneratedAsset(string directory) =>
+        Script(WriteGeneratedAssetTo(directory));
+
+    private static string WriteGeneratedAssetTo(string directory) =>
+        // The existsSync guard is not defensive padding: bun's recursive mkdirSync throws EEXIST for a
+        // relative path that walks up through "..", and the steps run more than once per `dotnet pack`.
+        $$"""
+        if (!fs.existsSync("{{directory}}")) {
+            fs.mkdirSync("{{directory}}", { recursive: true });
+        }
+
+        fs.writeFileSync("{{directory}}/generated.css", "body{color:red}");
+        """;
+
+    /// <summary>
+    /// Wraps script bodies in a single <c>node:fs</c> import; importing it twice is a syntax error.
+    /// </summary>
+    private static string Script(params string[] bodies) =>
+        $"""
+        import fs from "node:fs";
+
+        {string.Join(Environment.NewLine, bodies)}
+        """;
+
+    /// <summary>
+    /// A Razor Class Library is the strictest case: its wwwroot files have to be packed under
+    /// staticwebassets/ for a consuming app to serve them.
+    /// </summary>
+    private TempWorkspace CreateRazorClassLibrary(string steps)
+    {
+        var workspace = TempWorkspace.Create("static-web-assets");
+
+        try
+        {
+            workspace.WriteFile("build.mjs", WriteGeneratedAsset("wwwroot/css"));
+            workspace.WriteFile("GeneratedAssetsRcl.csproj", Project("Microsoft.NET.Sdk.Razor", steps));
+
+            return workspace;
+        }
+        catch
+        {
+            workspace.Dispose();
+            throw;
+        }
+    }
+
+    private TempWorkspace CreateWebApplication()
+    {
+        var workspace = TempWorkspace.Create("static-web-assets-web");
+
+        try
+        {
+            workspace.WriteFile("build.mjs", WriteGeneratedAsset("wwwroot/css"));
+            workspace.WriteFile(
+                "Program.cs",
+                "WebApplication.CreateBuilder(args).Build().Run();");
+            workspace.WriteFile(
+                "GeneratedAssetsWeb.csproj",
+                Project(
+                    "Microsoft.NET.Sdk.Web",
+                    """
+                    <BunBeforeStaticWebAssets Include="run">
+                      <Arguments>build.mjs</Arguments>
+                    </BunBeforeStaticWebAssets>
+                    """,
+                    additionalProperties: "<ImplicitUsings>enable</ImplicitUsings>"));
+
+            return workspace;
+        }
+        catch
+        {
+            workspace.Dispose();
+            throw;
+        }
+    }
+
+    private static string Project(string sdk, string steps, string additionalProperties = "") =>
+        $"""
+        <Project Sdk="{sdk}">
+          <PropertyGroup>
+            <TargetFramework>net10.0</TargetFramework>
+            <IsPackable>true</IsPackable>
+            {additionalProperties}
+          </PropertyGroup>
+
+          <ItemGroup>
+            <FrameworkReference Include="Microsoft.AspNetCore.App" />
+          </ItemGroup>
+
+          <Import Project="{SecurityElement.Escape(DevelopmentTargetsPath)}" />
+
+          <ItemGroup>
+        {steps}
+          </ItemGroup>
+        </Project>
+        """;
+
+    private static string DevelopmentTargetsPath => Path.Combine(
+        RepositoryRoot.Path, "src", "Scarlet.Bun.MSBuild", "Scarlet.Bun.MSBuild.targets");
+
+    private async Task Pack(TempWorkspace workspace)
+    {
+        var result = await RunDotnet(workspace, $"pack --configuration {DotnetCli.Configuration} --output nupkg");
+
+        Assert.Equal(0, result.ExitCode);
+    }
+
+    private async Task<DotnetResult> RunDotnet(TempWorkspace workspace, string arguments)
+    {
+        var result = await DotnetCli.Run(workspace.RootDirectory, arguments);
+        _output.WriteLine(result.Output);
+
+        return result;
+    }
+
+    private static int CountPackageEntries(TempWorkspace workspace, string entryName)
+    {
+        var packagePath = Assert.Single(Directory.GetFiles(workspace.PathTo("nupkg"), "*.nupkg"));
+
+        using var package = ZipFile.OpenRead(packagePath);
+
+        return package.Entries.Count(entry => entry.FullName == entryName);
+    }
+}
