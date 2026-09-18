@@ -78,4 +78,57 @@
       <Output TaskParameter="StandardError" PropertyName="BunStandardError" />
     </BunRunTask>
   </Target>
+
+  <!--
+    Runs Bun steps before the Razor/static web assets SDK discovers wwwroot files.
+
+    Example:
+
+    <ItemGroup>
+      <BunBeforeStaticWebAssets Include="run">
+        <Arguments>build.mjs</Arguments>
+      </BunBeforeStaticWebAssets>
+    </ItemGroup>
+
+    Include is the Bun command. Optional metadata: Arguments, WorkingDirectory,
+    TimeoutMilliseconds, ContinueOnError.
+  -->
+  <Target Name="_RunBunBeforeStaticWebAssets"
+          BeforeTargets="DispatchToInnerBuilds;ResolveProjectStaticWebAssets;PreBuildEvent"
+          Condition="'@(BunBeforeStaticWebAssets)' != '' AND ('$(TargetFrameworks)' == '' OR '$(TargetFramework)' == '')">
+    <ItemGroup>
+      <_BunBeforeStaticWebAssetsStep Include="@(BunBeforeStaticWebAssets)">
+        <WorkingDirectory Condition="'%(BunBeforeStaticWebAssets.WorkingDirectory)' == ''">$(MSBuildProjectDirectory)</WorkingDirectory>
+        <WorkingDirectory Condition="'%(BunBeforeStaticWebAssets.WorkingDirectory)' != ''">%(BunBeforeStaticWebAssets.WorkingDirectory)</WorkingDirectory>
+        <TimeoutMilliseconds Condition="'%(BunBeforeStaticWebAssets.TimeoutMilliseconds)' == ''">$(BunTimeoutMilliseconds)</TimeoutMilliseconds>
+        <TimeoutMilliseconds Condition="'%(BunBeforeStaticWebAssets.TimeoutMilliseconds)' != ''">%(BunBeforeStaticWebAssets.TimeoutMilliseconds)</TimeoutMilliseconds>
+        <ContinueOnError Condition="'%(BunBeforeStaticWebAssets.ContinueOnError)' == ''">$(BunContinueOnError)</ContinueOnError>
+        <ContinueOnError Condition="'%(BunBeforeStaticWebAssets.ContinueOnError)' != ''">%(BunBeforeStaticWebAssets.ContinueOnError)</ContinueOnError>
+      </_BunBeforeStaticWebAssetsStep>
+    </ItemGroup>
+
+    <BunRunTask Command="%(_BunBeforeStaticWebAssetsStep.Identity)"
+                Arguments="%(_BunBeforeStaticWebAssetsStep.Arguments)"
+                WorkingDirectory="%(_BunBeforeStaticWebAssetsStep.WorkingDirectory)"
+                TimeoutMilliseconds="%(_BunBeforeStaticWebAssetsStep.TimeoutMilliseconds)"
+                ContinueOnError="%(_BunBeforeStaticWebAssetsStep.ContinueOnError)"
+                RuntimeDirectory="$(BunRuntimeDirectory)"
+                BunRuntimeDownload="$(BunRuntimeDownload)"
+                BunVersionDownload="$(BunVersionDownload)"
+                DownloadMutexTimeoutSeconds="$(BunDownloadMutexTimeoutSeconds)"
+                RuntimePacks="@(BunRuntimePack)"
+                BunRuntime_win_x64="$(BunRuntime_win_x64)"
+                BunRuntime_win_arm64="$(BunRuntime_win_arm64)"
+                BunRuntime_linux_x64="$(BunRuntime_linux_x64)"
+                BunRuntime_linux_arm64="$(BunRuntime_linux_arm64)"
+                BunRuntime_osx_x64="$(BunRuntime_osx_x64)"
+                BunRuntime_osx_arm64="$(BunRuntime_osx_arm64)" />
+
+    <ItemGroup>
+      <Content Include="$(MSBuildProjectDirectory)\wwwroot\**\*"
+               Exclude="@(Content)"
+               ExcludeFromSingleFile="true"
+               CopyToPublishDirectory="PreserveNewest" />
+    </ItemGroup>
+  </Target>
 </Project>

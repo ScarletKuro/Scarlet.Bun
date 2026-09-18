@@ -7,11 +7,11 @@ during `dotnet build`, on Windows, Linux and macOS (x64 and ARM64), with no Node
 Works with ASP.NET Core, Blazor and Razor Class Library static web assets.
 
 ```xml
-<Target Name="BunBuildAssets" BeforeTargets="Build">
-  <MSBuild Projects="$(MSBuildProjectFullPath)"
-           Targets="Bun"
-           Properties="BunCommand=run;BunArguments=build.mjs;BunWorkingDirectory=$(MSBuildProjectDirectory)" />
-</Target>
+<ItemGroup>
+  <BunBeforeStaticWebAssets Include="run">
+    <Arguments>build.mjs</Arguments>
+  </BunBeforeStaticWebAssets>
+</ItemGroup>
 ```
 
 > Looking for Bun on the **command line** instead of during a build? See
@@ -27,10 +27,12 @@ Works with ASP.NET Core, Blazor and Razor Class Library static web assets.
   - [Option 3: Conditional Package References](#option-3-conditional-package-references)
   - [How the Runtime Is Discovered](#how-the-runtime-is-discovered)
 - [Usage](#usage)
+  - [Blazor and Razor Static Web Assets](#blazor-and-razor-static-web-assets)
   - [Basic Example](#basic-example)
   - [Using Runtime Download](#using-runtime-download)
   - [Multi-Target Framework Projects](#multi-target-framework-projects)
   - [dotnet watch Integration](#dotnet-watch-integration)
+  - [BunBeforeStaticWebAssets Metadata](#bunbeforestaticwebassets-metadata)
   - [Task Parameters](#task-parameters)
   - [Output Parameters](#output-parameters)
 - [Example: JavaScript/SCSS Build Script](#example-javascriptscss-build-script)
@@ -275,9 +277,30 @@ pack resolution entirely. If a pack's `bun` is missing, the next candidate for t
 
 ## Usage
 
+### Blazor and Razor Static Web Assets
+
+For Blazor apps, ASP.NET Core apps and Razor Class Libraries that generate files into `wwwroot`, declare
+the Bun steps as `BunBeforeStaticWebAssets` items:
+
+```xml
+<ItemGroup>
+  <BunBeforeStaticWebAssets Include="install">
+    <Arguments>--frozen-lockfile</Arguments>
+  </BunBeforeStaticWebAssets>
+
+  <BunBeforeStaticWebAssets Include="run">
+    <Arguments>build.mjs</Arguments>
+  </BunBeforeStaticWebAssets>
+</ItemGroup>
+```
+
+These steps run once before the .NET static web assets SDK discovers files in `wwwroot`. Generated files
+are added back to the build as `Content`, so clean builds, fingerprinting, publish and NuGet packing see
+the assets without a custom target.
+
 ### Basic Example
 
-Add the following to your `.csproj` file to run a Bun script during build:
+For non-static-web-asset scenarios, you can call the reusable `Bun` target from your own targets:
 
 ```xml
 <!-- Install dependencies -->
@@ -324,35 +347,26 @@ When using `BunRuntimeDownload=true`:
 
 When your project targets multiple frameworks (`<TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>`), MSBuild dispatches parallel inner builds for each TFM. Bun commands like `install` must run **once** before the inner builds start, otherwise concurrent writes to `node_modules` will fail on Windows.
 
-Use `BeforeTargets="DispatchToInnerBuilds;PreBuildEvent"` to hook into the outer build (multi-TFM) or normal build (single-TFM), and add a condition to skip inner builds:
+`BunBeforeStaticWebAssets` handles this for static web asset builds:
 
 ```xml
-<!-- Install dependencies — runs once before inner TFM builds dispatch -->
-<Target Name="BunInstall"
-        BeforeTargets="DispatchToInnerBuilds;PreBuildEvent"
-        Condition="'$(TargetFrameworks)' == '' OR '$(TargetFramework)' == ''">
-  <MSBuild Projects="$(MSBuildProjectFullPath)"
-           Targets="Bun"
-           Properties="BunCommand=install;BunArguments=--frozen-lockfile;BunWorkingDirectory=$(MSBuildProjectDirectory)" />
-</Target>
+<ItemGroup>
+  <BunBeforeStaticWebAssets Include="install">
+    <Arguments>--frozen-lockfile</Arguments>
+  </BunBeforeStaticWebAssets>
 
-<!-- Build assets — runs once after install -->
-<Target Name="BunBuild"
-        AfterTargets="BunInstall"
-        BeforeTargets="DispatchToInnerBuilds;PreBuildEvent"
-        Condition="'$(TargetFrameworks)' == '' OR '$(TargetFramework)' == ''">
-  <MSBuild Projects="$(MSBuildProjectFullPath)"
-           Targets="Bun"
-           Properties="BunCommand=run;BunArguments=build.mjs;BunWorkingDirectory=$(MSBuildProjectDirectory)" />
-</Target>
+  <BunBeforeStaticWebAssets Include="run">
+    <Arguments>build.mjs</Arguments>
+  </BunBeforeStaticWebAssets>
+</ItemGroup>
 ```
 
-The condition works because:
+Internally, the target uses the usual outer-build condition:
 - **Outer build** (multi-TFM): `TargetFramework` is empty — target runs
 - **Inner builds** (per-TFM): both `TargetFrameworks` and `TargetFramework` are set — target skips
 - **Single-TFM build**: `TargetFrameworks` is empty — target runs
 
-> **Note:** This pattern also works for single-TFM projects, so you can use it as the default regardless of whether you multi-target.
+If you are not generating static web assets, keep using your own target and call `Bun` directly.
 
 ### dotnet watch Integration
 
@@ -372,10 +386,9 @@ trigger another rebuild.
 
 `Watch` has no idea Bun exists — it is only a trip-wire that tells `dotnet watch` "treat a change to this
 file like a change to a `.cs` file." When it fires, `dotnet watch` just runs a normal build, the same as
-`dotnet build`. Your existing `BunInstall`/`BunBuildAssets` targets (`BeforeTargets="Build"` /
-`AfterTargets="BunInstall"`) already run on *every* build regardless of what triggered it, so they run here
-too — the `Watch` item doesn't invoke Bun itself, it just causes the build that was always going to invoke
-Bun to happen more often.
+`dotnet build`. Your `BunBeforeStaticWebAssets` items or custom Bun targets already run on *every* build
+regardless of what triggered it, so they run here too — the `Watch` item doesn't invoke Bun itself, it just
+causes the build that was always going to invoke Bun to happen more often.
 
 Run `dotnet watch build` (or `dotnet watch run` for a Blazor/ASP.NET Core app, which also gets browser
 refresh for the resulting static assets) and saving a `.js`/`.scss` file re-runs Bun like any other source
@@ -385,6 +398,16 @@ This rides entirely on `dotnet watch`'s existing file-watching — no code in th
 full MSBuild build per save rather than an instant incremental rebuild. That's fine for most JS/CSS bundling
 setups; if the rebuild latency becomes the bottleneck, running Bun's own `--watch` mode as a separate
 long-lived process is a further option, at the cost of managing that process's lifecycle yourself.
+
+### BunBeforeStaticWebAssets Metadata
+
+| Metadata | Required | Description | Default |
+|----------|----------|-------------|---------|
+| `Include` | Yes | The Bun command to execute, for example `install`, `run` or `test` | - |
+| `Arguments` | No | Arguments to pass after the command | "" |
+| `WorkingDirectory` | No | Working directory for command execution | `$(MSBuildProjectDirectory)` |
+| `TimeoutMilliseconds` | No | Timeout in milliseconds (`0` = no timeout) | `$(BunTimeoutMilliseconds)` |
+| `ContinueOnError` | No | Whether to continue the build if this step fails | `$(BunContinueOnError)` |
 
 ### Task Parameters
 

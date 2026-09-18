@@ -91,10 +91,11 @@ If the RID cannot be determined, the script falls back to shell-based OS and arc
 2. Sets up a local NuGet source pointing to the workspace packages
 3. Creates a Razor Class Library (`Microsoft.NET.Sdk.Razor`) with `<TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>`
 4. Adds source assets (JS + SCSS), `build.mjs` (terser + sass), and `package.json`
-5. Builds the project — MSBuild dispatches inner builds per TFM, each running Bun to bundle JS and compile SCSS into `wwwroot/`
+5. Builds the project — `BunBeforeStaticWebAssets` runs Bun once before inner TFM builds dispatch, bundling JS and compiling SCSS into `wwwroot/`
 6. Verifies `wwwroot/js/bundle.min.js` and `wwwroot/css/style.min.css` were created
-7. Verifies all three TFM output directories (`bin/Debug/net{8,9,10}.0/`) exist
-8. Packs the RCL as a NuGet package and inspects the `.nupkg` to verify static web assets (JS/CSS) are included
+7. Verifies Bun install and asset build each ran once
+8. Verifies all three TFM output directories (`bin/Debug/net{8,9,10}.0/`) exist
+9. Packs the RCL as a NuGet package and inspects the `.nupkg` to verify static web assets (JS/CSS) are included
 
 Platform detection and runtime package selection follow the same logic as `package-installation/verify.sh`.
 

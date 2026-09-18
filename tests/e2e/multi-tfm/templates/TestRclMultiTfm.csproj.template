@@ -26,29 +26,16 @@
     <None Include="build.mjs" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
-  <!--
-    Bun targets — run once in the outer build (multi-TFM) or normal build (single-TFM).
-    Skipped during inner TFM builds to avoid concurrent bun install races (EBUSY on Windows).
+  <ItemGroup>
+    <BunBeforeStaticWebAssets Include="install">
+      <Arguments>--frozen-lockfile</Arguments>
+    </BunBeforeStaticWebAssets>
+    <BunBeforeStaticWebAssets Include="run">
+      <Arguments>build.mjs</Arguments>
+    </BunBeforeStaticWebAssets>
+  </ItemGroup>
 
-    Condition: fires when TargetFrameworks is empty (single-TFM) OR TargetFramework is empty (outer build).
-    Inner builds have both set, so they skip.
-  -->
-  <Target Name="BunInstall" BeforeTargets="DispatchToInnerBuilds;PreBuildEvent"
-          Condition="'$(TargetFrameworks)' == '' OR '$(TargetFramework)' == ''">
-    <MSBuild Projects="$(MSBuildProjectFullPath)"
-             Targets="Bun"
-             Properties="BunCommand=install;BunArguments=--frozen-lockfile;BunWorkingDirectory=$(MSBuildProjectDirectory)" />
-  </Target>
-
-  <Target Name="BunBuildAssets" AfterTargets="BunInstall"
-          BeforeTargets="DispatchToInnerBuilds;PreBuildEvent"
-          Condition="'$(TargetFrameworks)' == '' OR '$(TargetFramework)' == ''">
-    <MSBuild Projects="$(MSBuildProjectFullPath)"
-             Targets="Bun"
-             Properties="BunCommand=run;BunArguments=build.mjs;BunWorkingDirectory=$(MSBuildProjectDirectory)" />
-  </Target>
-
-  <Target Name="VerifyBunOutput" AfterTargets="BunBuildAssets"
+  <Target Name="VerifyBunOutput" AfterTargets="_RunBunBeforeStaticWebAssets"
           Condition="'$(TargetFrameworks)' == '' OR '$(TargetFramework)' == ''">
     <Error Text="JavaScript bundle was not created!" Condition="!Exists('$(MSBuildProjectDirectory)/wwwroot/js/bundle.min.js')" />
     <Error Text="CSS bundle was not created!" Condition="!Exists('$(MSBuildProjectDirectory)/wwwroot/css/style.min.css')" />

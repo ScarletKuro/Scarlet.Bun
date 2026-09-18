@@ -30,30 +30,25 @@ Scarlet.Bun.Sample/
 ├── build.mjs             # Bun build script
 ├── package.json          # Node dependencies
 ├── Program.cs            # Simple web server
-└── Scarlet.Bun.Sample.csproj  # Project file with BunRunTask
+└── Scarlet.Bun.Sample.csproj  # Project file with BunBeforeStaticWebAssets
 ```
 
 ## How It Works
 
-The `.csproj` file contains MSBuild targets that use `BunRunTask`:
+The `.csproj` file declares Bun steps that run before static web assets are discovered:
 
 ```xml
-<!-- Install Bun dependencies before build -->
-<Target Name="BunInstall" BeforeTargets="PreBuildEvent">
-  <BunRunTask 
-    Command="install"
-    WorkingDirectory="$(MSBuildProjectDirectory)"
-    TimeoutMilliseconds="60000" />
-</Target>
+<ItemGroup>
+  <BunBeforeStaticWebAssets Include="install">
+    <Arguments>--frozen-lockfile</Arguments>
+    <TimeoutMilliseconds>60000</TimeoutMilliseconds>
+  </BunBeforeStaticWebAssets>
 
-<!-- Build assets using Bun -->
-<Target Name="BunBuildAssets" AfterTargets="BunInstall" BeforeTargets="Build">
-  <BunRunTask 
-    Command="run"
-    Arguments="build.mjs"
-    WorkingDirectory="$(MSBuildProjectDirectory)"
-    TimeoutMilliseconds="60000" />
-</Target>
+  <BunBeforeStaticWebAssets Include="run">
+    <Arguments>build.mjs</Arguments>
+    <TimeoutMilliseconds>60000</TimeoutMilliseconds>
+  </BunBeforeStaticWebAssets>
+</ItemGroup>
 ```
 
 ## Running the Sample
@@ -88,7 +83,7 @@ dotnet watch --project samples/Scarlet.Bun.Sample/Scarlet.Bun.Sample.csproj run
 ```
 
 The `.csproj` includes a `Watch` item pointing at `assets/**/*.js` and `assets/**/*.scss`, so editing a file
-under `assets/` triggers `dotnet watch` to rebuild — which re-runs the Bun targets and refreshes the
+under `assets/` triggers `dotnet watch` to rebuild — which re-runs the Bun steps and refreshes the
 browser. See [dotnet watch Integration](../../src/Scarlet.Bun.MSBuild/README.md#dotnet-watch-integration)
 for the general pattern.
 
@@ -100,7 +95,7 @@ for the general pattern.
 ## CI/CD Integration
 
 This sample is also built and tested as part of the CI pipeline to ensure that:
-- The BunRunTask works correctly in CI environments
+- `BunBeforeStaticWebAssets` works correctly in CI environments
 - JavaScript and CSS bundles are created successfully
 - The build process completes without errors
 

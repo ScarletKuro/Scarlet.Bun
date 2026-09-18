@@ -26,11 +26,11 @@ dotnet add package Scarlet.Bun.MSBuild
 ```
 
 ```xml
-<Target Name="BunBuildAssets" BeforeTargets="Build">
-  <MSBuild Projects="$(MSBuildProjectFullPath)"
-           Targets="Bun"
-           Properties="BunCommand=run;BunArguments=build.mjs;BunWorkingDirectory=$(MSBuildProjectDirectory)" />
-</Target>
+<ItemGroup>
+  <BunBeforeStaticWebAssets Include="run">
+    <Arguments>build.mjs</Arguments>
+  </BunBeforeStaticWebAssets>
+</ItemGroup>
 ```
 
 The Bun binary comes either from a platform-specific `Scarlet.Bun.Runtime.*` package or from an on-demand

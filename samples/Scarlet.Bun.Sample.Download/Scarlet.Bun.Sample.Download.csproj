@@ -19,32 +19,22 @@
     <None Include="build.mjs" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
-  <!-- Import the BunRunTask from the referenced project (development scenario) -->
+  <!-- Import the Bun targets from the referenced project (development scenario) -->
   <Import Project="..\..\src\Scarlet.Bun.MSBuild\Scarlet.Bun.MSBuild.targets" />
 
-  <!-- Install Bun dependencies before build (using downloaded runtime) -->
-  <Target Name="BunInstall"
-          BeforeTargets="PreBuildEvent"
-          DependsOnTargets="ResolveProjectReferences">
-      <Message Text="Installing dependencies with Bun (download mode)..." Importance="high" />
-      <MSBuild Projects="$(MSBuildProjectFullPath)"
-               Targets="Bun"
-               Properties="BunCommand=install;BunArguments=--frozen-lockfile;BunWorkingDirectory=$(MSBuildProjectDirectory);BunTimeoutMilliseconds=60000" />
-  </Target>
-
-  <!-- Build assets using Bun (using downloaded runtime) -->
-  <Target Name="BunBuildAssets"
-          AfterTargets="BunInstall"
-          BeforeTargets="Build"
-          DependsOnTargets="ResolveProjectReferences">
-      <Message Text="Building assets with Bun (download mode)..." Importance="high" />
-      <MSBuild Projects="$(MSBuildProjectFullPath)"
-               Targets="Bun"
-               Properties="BunCommand=run;BunArguments=build.mjs;BunWorkingDirectory=$(MSBuildProjectDirectory);BunTimeoutMilliseconds=60000" />
-  </Target>
+  <ItemGroup>
+    <BunBeforeStaticWebAssets Include="install">
+      <Arguments>--frozen-lockfile</Arguments>
+      <TimeoutMilliseconds>60000</TimeoutMilliseconds>
+    </BunBeforeStaticWebAssets>
+    <BunBeforeStaticWebAssets Include="run">
+      <Arguments>build.mjs</Arguments>
+      <TimeoutMilliseconds>60000</TimeoutMilliseconds>
+    </BunBeforeStaticWebAssets>
+  </ItemGroup>
 
   <!-- Verify output files exist after build -->
-  <Target Name="VerifyBunOutput" AfterTargets="BunBuildAssets">
+  <Target Name="VerifyBunOutput" AfterTargets="_RunBunBeforeStaticWebAssets">
     <Error Text="JavaScript bundle was not created!" Condition="!Exists('$(MSBuildProjectDirectory)\wwwroot\js\bundle.min.js')" />
     <Error Text="CSS bundle was not created!" Condition="!Exists('$(MSBuildProjectDirectory)\wwwroot\css\style.min.css')" />
     <Message Text="✓ Bun build completed successfully!" Importance="high" />

@@ -6,7 +6,7 @@ This sample demonstrates using the **runtime download** feature of Scarlet.Bun.M
 
 - Downloads Bun runtime from GitHub releases on-demand
 - Caches the runtime in a local directory for reuse
-- Uses a specific version (1.3.6) for reproducibility
+- Uses a specific version (1.3.12) for reproducibility
 - Automatically bundles JavaScript and compiles SCSS during build
 
 ## Configuration
@@ -17,7 +17,7 @@ The runtime download mode is configured in the `.csproj` file:
 <PropertyGroup>
   <!-- Enable Bun runtime download mode -->
   <BunRuntimeDownload>true</BunRuntimeDownload>
-  <BunVersionDownload>1.3.6</BunVersionDownload>
+  <BunVersionDownload>1.3.12</BunVersionDownload>
   <BunRuntimeDirectory>$(MSBuildProjectDirectory)/runtimes</BunRuntimeDirectory>
 </PropertyGroup>
 ```
@@ -32,6 +32,23 @@ The runtime download mode is configured in the `.csproj` file:
    - Install npm dependencies with `bun install --frozen-lockfile`
    - Bundle and minify JavaScript files
    - Compile and minify SCSS files
+
+The Bun steps are declared with `BunBeforeStaticWebAssets`, so generated `wwwroot` files are available to
+the .NET static web assets pipeline:
+
+```xml
+<ItemGroup>
+  <BunBeforeStaticWebAssets Include="install">
+    <Arguments>--frozen-lockfile</Arguments>
+    <TimeoutMilliseconds>60000</TimeoutMilliseconds>
+  </BunBeforeStaticWebAssets>
+
+  <BunBeforeStaticWebAssets Include="run">
+    <Arguments>build.mjs</Arguments>
+    <TimeoutMilliseconds>60000</TimeoutMilliseconds>
+  </BunBeforeStaticWebAssets>
+</ItemGroup>
+```
 
 ## Running the Sample
 

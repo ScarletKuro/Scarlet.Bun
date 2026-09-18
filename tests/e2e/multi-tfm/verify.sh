@@ -310,8 +310,8 @@ echo "✓ Created package.json, bun.lock, and build.mjs"
 process_template "$TEMPLATES_DIR/TestRclMultiTfm.csproj.template" "TestRclMultiTfm.csproj"
 echo "✓ Updated project file with multi-target frameworks (net8.0, net9.0, net10.0)"
 
-# Build the project. Bun install + asset build run once in the outer build
-# (before DispatchToInnerBuilds), then inner TFM builds compile without re-running Bun.
+# Build the project. BunBeforeStaticWebAssets runs install + asset build once
+# before DispatchToInnerBuilds, then inner TFM builds compile without re-running Bun.
 echo ""
 echo "Building Razor Class Library (multi-TFM)..."
 echo "=========================================="
@@ -367,6 +367,23 @@ if [ -f "wwwroot/css/style.min.css" ]; then
     echo "✓ CSS bundle created (wwwroot/css/style.min.css)"
 else
     echo "✗ CSS bundle not found"
+    FAILED=1
+fi
+
+INSTALL_RUNS=$(grep -c "Executing: bun install --frozen-lockfile" build.log || true)
+BUILD_RUNS=$(grep -c "Executing: bun run build.mjs" build.log || true)
+
+if [ "$INSTALL_RUNS" -eq 1 ]; then
+    echo "✓ Bun install ran once before static web asset discovery"
+else
+    echo "✗ Expected Bun install to run once, but saw $INSTALL_RUNS executions"
+    FAILED=1
+fi
+
+if [ "$BUILD_RUNS" -eq 1 ]; then
+    echo "✓ Bun asset build ran once before static web asset discovery"
+else
+    echo "✗ Expected Bun asset build to run once, but saw $BUILD_RUNS executions"
     FAILED=1
 fi
 
