@@ -95,7 +95,8 @@ If the RID cannot be determined, the script falls back to shell-based OS and arc
 6. Verifies `wwwroot/js/bundle.min.js` and `wwwroot/css/style.min.css` were created
 7. Verifies Bun install and asset build each ran once, in declaration order
 8. Verifies all three TFM output directories (`bin/Debug/net{8,9,10}.0/`) exist
-9. Packs the RCL as a NuGet package and inspects the `.nupkg` to verify static web assets (JS/CSS) are included
+9. Packs the RCL as a NuGet package and verifies the JS/CSS land under `staticwebassets/` in the `.nupkg`
+10. Packs again with `--no-build` and verifies the assets survive without Bun re-running
 
 Platform detection and runtime package selection follow the same logic as `package-installation/verify.sh`.
 

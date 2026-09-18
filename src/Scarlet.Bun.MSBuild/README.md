@@ -300,6 +300,20 @@ the assets without a custom target.
 
 If you need to sequence another target after these steps, use `AfterTargets="RunBunBeforeStaticWebAssets"`.
 
+> **Your build script must write into the project's own `wwwroot`.** Only that directory is picked back
+> up. The .NET SDK hardcodes it — `RelativePathPattern="wwwroot/**"` and
+> `ContentRoot="$(MSBuildProjectDirectory)\wwwroot\"` — so files generated anywhere else cannot become
+> static web assets, whatever this package does. This matters when you set `WorkingDirectory`: the step
+> runs somewhere else, but its output still has to land in `wwwroot`.
+
+```xml
+<!-- Runs bun in ./frontend, but build.mjs writes to ../wwwroot -->
+<BunBeforeStaticWebAssets Include="run">
+  <Arguments>build.mjs</Arguments>
+  <WorkingDirectory>$(MSBuildProjectDirectory)/frontend</WorkingDirectory>
+</BunBeforeStaticWebAssets>
+```
+
 ### Basic Example
 
 For non-static-web-asset scenarios, you can call the reusable `Bun` target from your own targets:
@@ -407,7 +421,7 @@ long-lived process is a further option, at the cost of managing that process's l
 |------------------------|----------|-------------|---------|
 | `Include` | Yes | Item identity; the Bun command to execute, for example `install`, `run` or `test` | - |
 | `Arguments` | No | Arguments to pass after the command | "" |
-| `WorkingDirectory` | No | Working directory for command execution | `$(MSBuildProjectDirectory)` |
+| `WorkingDirectory` | No | Working directory for command execution. Generated assets must still land in the project's `wwwroot` to be discovered | `$(MSBuildProjectDirectory)` |
 | `TimeoutMilliseconds` | No | Timeout in milliseconds (`0` = no timeout) | `$(BunTimeoutMilliseconds)` |
 | `ContinueOnError` | No | Whether to continue the build if this step fails | `$(BunContinueOnError)` |
 

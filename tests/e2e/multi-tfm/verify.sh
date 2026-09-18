@@ -447,10 +447,74 @@ else
         FAILED=1
     fi
 
+    # The assets have to land under staticwebassets/, which is what makes them reachable as
+    # _content/<PackageId>/... in a consuming app. Packing them anywhere else (content/, contentFiles/)
+    # still puts the files in the package, so grepping for the file names alone would pass while the
+    # package is useless to consumers.
+    if echo "$NUPKG_CONTENTS" | grep -q "staticwebassets/js/bundle\.min\.js"; then
+        echo "✓ JavaScript bundle packed as a static web asset"
+    else
+        echo "✗ JavaScript bundle is in the package but not under staticwebassets/"
+        FAILED=1
+    fi
+
+    if echo "$NUPKG_CONTENTS" | grep -q "staticwebassets/css/style\.min\.css"; then
+        echo "✓ CSS bundle packed as a static web asset"
+    else
+        echo "✗ CSS bundle is in the package but not under staticwebassets/"
+        FAILED=1
+    fi
+
     # Show the static web asset paths for inspection
     echo ""
     echo "Static web asset entries in package:"
     echo "$NUPKG_CONTENTS" | grep -E "bundle\.min\.js|style\.min\.css" || echo "(none found)"
+fi
+
+# Pack again without building. CI commonly builds once and packs separately, and that path skips
+# ResolveProjectStaticWebAssets entirely (it carries Condition="'$(NoBuild)' != 'true'"), so the package
+# has to come together from the manifest the earlier build already wrote.
+echo ""
+echo "=========================================="
+echo "Packing without building (--no-build)..."
+echo "=========================================="
+rm -rf ./nupkg-nobuild
+if dotnet pack --no-build --configuration Debug --output ./nupkg-nobuild --verbosity normal > pack-nobuild.log 2>&1; then
+    echo "✓ dotnet pack --no-build succeeded"
+
+    NOBUILD_NUPKG=$(find ./nupkg-nobuild -name "*.nupkg" -not -name "*.symbols.nupkg" | head -n 1)
+
+    if [ -z "$NOBUILD_NUPKG" ]; then
+        echo "✗ No .nupkg file produced by --no-build"
+        FAILED=1
+    else
+        NOBUILD_CONTENTS=$(unzip -l "$NOBUILD_NUPKG" 2>/dev/null || true)
+
+        if echo "$NOBUILD_CONTENTS" | grep -q "staticwebassets/js/bundle\.min\.js" &&
+           echo "$NOBUILD_CONTENTS" | grep -q "staticwebassets/css/style\.min\.css"; then
+            echo "✓ --no-build package still carries both bundles as static web assets"
+        else
+            echo "✗ --no-build package is missing the static web assets"
+            echo "$NOBUILD_CONTENTS" | grep -E "bundle\.min\.js|style\.min\.css" || echo "  (neither bundle is in the package)"
+            FAILED=1
+        fi
+    fi
+
+    # A BeforeTargets hook still fires when the target it hooks is skipped by its own condition, so
+    # without the NoBuild guard on RunBunBeforeStaticWebAssets every step re-runs here, rebuilding assets
+    # that nothing will discover. This measured 1 re-run before the guard was added.
+    NOBUILD_BUN_RUNS=$(grep -c "Executing: bun " pack-nobuild.log || true)
+
+    if [ "$NOBUILD_BUN_RUNS" -eq 0 ]; then
+        echo "✓ --no-build did not re-run any Bun steps"
+    else
+        echo "✗ --no-build re-ran $NOBUILD_BUN_RUNS Bun step(s); the build had already produced the assets"
+        FAILED=1
+    fi
+else
+    echo "✗ dotnet pack --no-build failed"
+    tail -n 30 pack-nobuild.log
+    FAILED=1
 fi
 
 echo ""

@@ -53,11 +53,16 @@
   <!--
     Development copy of the NuGet target that runs Bun steps before the
     Razor/static web assets SDK discovers wwwroot files.
+
+    build/Scarlet.Bun.MSBuild.targets documents the item metadata, why only the project's own wwwroot is
+    picked back up, and why the steps run before discovery instead of contributing @(StaticWebAsset)
+    items. That rationale is deliberately not duplicated here: BunTargetsTests compares the <Target>
+    elements, not the comments around them, so a second copy could drift without failing anything.
   -->
   <Target Name="RunBunBeforeStaticWebAssets"
           BeforeTargets="DispatchToInnerBuilds;ResolveProjectStaticWebAssets;PreBuildEvent"
           DependsOnTargets="ResolveProjectReferences"
-          Condition="'@(BunBeforeStaticWebAssets)' != '' AND ('$(TargetFrameworks)' == '' OR '$(TargetFramework)' == '')">
+          Condition="'@(BunBeforeStaticWebAssets)' != '' AND '$(NoBuild)' != 'true' AND ('$(TargetFrameworks)' == '' OR '$(TargetFramework)' == '')">
     <ItemGroup>
       <_BunBeforeStaticWebAssetsStep Include="@(BunBeforeStaticWebAssets)">
         <WorkingDirectory Condition="'%(BunBeforeStaticWebAssets.WorkingDirectory)' == ''">$(MSBuildProjectDirectory)</WorkingDirectory>
