@@ -25,22 +25,32 @@ published: `Scarlet.Bun.MSBuild` packs the assembly into its `tools/netstandard2
 
 ## Prerequisites
 
-Before deploying, ensure you have:
-1. A NuGet.org API key with push permissions for the package
-2. The API key configured as a GitHub secret named `NUGET_KEY`
+`deploy.yml` authenticates to NuGet.org via [Trusted Publishing](https://learn.microsoft.com/nuget/nuget-org/trusted-publishing) (OIDC), not a long-lived API key. Before deploying, ensure you have:
+1. A Trusted Publishing policy configured on NuGet.org, scoped to this repository and the `deploy.yml` workflow
+2. The NuGet.org username that owns that policy, stored as a GitHub secret named `NUGET_USER`
 
-### Setting up the NuGet API Key
+### Setting up Trusted Publishing
 
 1. Go to [NuGet.org](https://www.nuget.org) and sign in
-2. Go to your account settings → API Keys
-3. Create a new API key with "Push" permissions for the Scarlet.Bun.* packages
-4. Copy the API key
-5. In your GitHub repository:
+2. Go to your account settings → Trusted Publishing
+3. Add a new policy for the Scarlet.Bun.* package pattern, scoped to:
+   - Repository owner: `ScarletKuro` (or your fork's owner)
+   - Repository: `Scarlet.Bun`
+   - Workflow file: `.github/workflows/deploy.yml`
+4. In your GitHub repository:
    - Go to Settings → Secrets and variables → Actions
    - Click "New repository secret"
-   - Name: `NUGET_KEY`
-   - Value: Paste your API key
+   - Name: `NUGET_USER`
+   - Value: your NuGet.org username
    - Click "Add secret"
+
+At run time, the `NuGet/login@v1` step in `deploy.yml` exchanges the job's OIDC token (granted by the
+workflow's `id-token: write` permission) plus `NUGET_USER` for a short-lived API key
+(`steps.login.outputs.NUGET_API_KEY`) that `dotnet nuget push` uses. Nothing long-lived is stored as a
+secret, and there is no `NUGET_KEY` to rotate or leak.
+
+Packages are also mirrored to GitHub Packages using the workflow's own `GITHUB_TOKEN` (`packages: write`)
+— no extra setup needed for that.
 
 ## Automatic Bun Version Bump
 
@@ -130,10 +140,11 @@ The deployment workflow (`.github/workflows/deploy.yml`) performs the following 
    - Each runtime package contains the Bun executable for its target platform
    - All packages are marked as `DevelopmentDependency=True` to prevent transitive dependencies
 
-6. **Pushes to NuGet.org**:
-   - Uploads all `.nupkg` files
-   - Uploads all `.snupkg` symbol files
-   - Uses `--skip-duplicate` to avoid errors if the version already exists
+6. **Pushes to NuGet.org and GitHub Packages**:
+   - Logs in to NuGet.org via Trusted Publishing (OIDC), exchanging the job's ID token for a short-lived API key
+   - Uploads all `.nupkg` files (and `.snupkg` symbol files) to NuGet.org
+   - Uploads all `.nupkg` files to GitHub Packages using `GITHUB_TOKEN`
+   - Uses `--skip-duplicate` on both feeds to avoid errors if the version already exists
 
 6. **Verifies the deployment**:
    - Creates a temporary test project
@@ -159,8 +170,9 @@ The deployment workflow (`.github/workflows/deploy.yml`) performs the following 
 
 ### Push to NuGet fails
 
-- Verify the `NUGET_KEY` secret is set and valid
-- Check that the API key has "Push" permissions
+- Verify the `NUGET_USER` secret is set and matches the username on the Trusted Publishing policy
+- Verify the Trusted Publishing policy on NuGet.org is still scoped to this repo and `deploy.yml`
+- Check that the `deploy` job still has `id-token: write` permission - without it, `NuGet/login@v1` cannot mint an API key
 - Ensure you're not trying to push a version that already exists (unless using --skip-duplicate)
 - Check NuGet.org service status
 
@@ -174,7 +186,9 @@ The deployment workflow (`.github/workflows/deploy.yml`) performs the following 
 
 ## Manual Deployment
 
-If you need to deploy manually (not recommended), follow these steps:
+If you need to deploy manually (not recommended), follow these steps. Trusted Publishing only works from
+the OIDC-enabled CI job, so a manual push needs a classic NuGet.org API key instead (Account settings →
+API Keys, "Push" permission for the Scarlet.Bun.* packages) - substitute it for `YOUR_API_KEY` below.
 
 ```bash
 # Set the version

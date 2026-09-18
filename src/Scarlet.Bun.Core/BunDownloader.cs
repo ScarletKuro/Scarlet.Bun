@@ -126,8 +126,8 @@ public sealed class BunDownloader
 
             if (hasExplicitVersion)
             {
-                var downloadUrl = $"{GithubReleasesUrl}/download/bun-v{version}/{platformName}.zip";
-                DownloadAndExtractAsync(downloadUrl, stagedExecutablePath, platformName, executableName)
+                var (downloadUrl, checksumsUrl) = BuildDownloadUrls(platformName, version);
+                DownloadAndExtractAsync(downloadUrl, checksumsUrl, stagedExecutablePath, platformName, executableName)
                     .GetAwaiter().GetResult();
 
                 var publishedPath = PublishStagedExecutable(stagedExecutablePath, bunExecutablePath);
@@ -135,8 +135,8 @@ public sealed class BunDownloader
                 return publishedPath;
             }
 
-            var latestDownloadUrl = $"{GithubReleasesUrl}/latest/download/{platformName}.zip";
-            return ResolveAndDownloadLatestAsync(latestDownloadUrl, bunExecutablePath, versionMarkerPath, stagedExecutablePath, platformName, executableName)
+            var (latestDownloadUrl, latestChecksumsUrl) = BuildDownloadUrls(platformName, null);
+            return ResolveAndDownloadLatestAsync(latestDownloadUrl, latestChecksumsUrl, bunExecutablePath, versionMarkerPath, stagedExecutablePath, platformName, executableName)
                 .GetAwaiter().GetResult();
         }
         finally
@@ -186,16 +186,16 @@ public sealed class BunDownloader
 
         if (hasExplicitVersion)
         {
-            var downloadUrl = $"{GithubReleasesUrl}/download/bun-v{version}/{platformName}.zip";
-            await DownloadAndExtractAsync(downloadUrl, stagedExecutablePath, platformName, executableName);
+            var (downloadUrl, checksumsUrl) = BuildDownloadUrls(platformName, version);
+            await DownloadAndExtractAsync(downloadUrl, checksumsUrl, stagedExecutablePath, platformName, executableName);
 
             var publishedPath = PublishStagedExecutable(stagedExecutablePath, bunExecutablePath);
             WriteVersionMarker(versionMarkerPath, version!);
             return publishedPath;
         }
 
-        var latestDownloadUrl = $"{GithubReleasesUrl}/latest/download/{platformName}.zip";
-        return await ResolveAndDownloadLatestAsync(latestDownloadUrl, bunExecutablePath, versionMarkerPath, stagedExecutablePath, platformName, executableName);
+        var (latestDownloadUrl, latestChecksumsUrl) = BuildDownloadUrls(platformName, null);
+        return await ResolveAndDownloadLatestAsync(latestDownloadUrl, latestChecksumsUrl, bunExecutablePath, versionMarkerPath, stagedExecutablePath, platformName, executableName);
     }
 
     /// <summary>
@@ -226,12 +226,27 @@ public sealed class BunDownloader
     }
 
     /// <summary>
-    /// Downloads and extracts the Bun runtime archive from a known URL.
+    /// Builds the archive download URL and the matching upstream SHA-256 checksums URL for a Bun release.
     /// </summary>
-    private async Task DownloadAndExtractAsync(string downloadUrl, string stagedExecutablePath, string platformName, string executableName)
+    private static (string DownloadUrl, string ChecksumsUrl) BuildDownloadUrls(string platformName, string? version)
+    {
+        if (string.IsNullOrWhiteSpace(version))
+        {
+            return ($"{GithubReleasesUrl}/latest/download/{platformName}.zip",
+                    $"{GithubReleasesUrl}/latest/download/SHASUMS256.txt");
+        }
+
+        return ($"{GithubReleasesUrl}/download/bun-v{version}/{platformName}.zip",
+                $"{GithubReleasesUrl}/download/bun-v{version}/SHASUMS256.txt");
+    }
+
+    /// <summary>
+    /// Downloads and extracts the Bun runtime archive.
+    /// </summary>
+    private async Task DownloadAndExtractAsync(string downloadUrl, string checksumsUrl, string stagedExecutablePath, string platformName, string executableName)
     {
         using var response = await _httpClient.GetAsync(downloadUrl);
-        await ExtractResponseToStagedExecutableAsync(response, downloadUrl, stagedExecutablePath, platformName, executableName);
+        await ExtractResponseToStagedExecutableAsync(response, downloadUrl, checksumsUrl, stagedExecutablePath, platformName, executableName);
     }
 
     /// <summary>
@@ -240,6 +255,7 @@ public sealed class BunDownloader
     /// </summary>
     private async Task<string> ResolveAndDownloadLatestAsync(
         string latestUrl,
+        string latestChecksumsUrl,
         string bunExecutablePath,
         string versionMarkerPath,
         string stagedExecutablePath,
@@ -258,16 +274,16 @@ public sealed class BunDownloader
         // A resolved version can be downloaded directly by its tag, skipping the redirect we already
         // followed once to resolve it. If resolution failed, fall back to letting the main (redirect
         // following) client resolve "latest" itself.
-        var downloadUrl = resolvedVersion is not null
-            ? $"{GithubReleasesUrl}/download/bun-v{resolvedVersion}/{platformName}.zip"
-            : latestUrl;
+        var (downloadUrl, checksumsUrl) = resolvedVersion is not null
+            ? BuildDownloadUrls(platformName, resolvedVersion)
+            : (latestUrl, latestChecksumsUrl);
 
         if (resolvedVersion is not null)
         {
             _log.LogMessage($"Bun 'latest' resolved to {resolvedVersion}.");
         }
 
-        await DownloadAndExtractAsync(downloadUrl, stagedExecutablePath, platformName, executableName);
+        await DownloadAndExtractAsync(downloadUrl, checksumsUrl, stagedExecutablePath, platformName, executableName);
         var publishedPath = PublishStagedExecutable(stagedExecutablePath, bunExecutablePath);
 
         if (resolvedVersion is not null)
@@ -288,7 +304,7 @@ public sealed class BunDownloader
     /// Reads an already-obtained response into a temp zip file and extracts the matching executable entry
     /// to <paramref name="stagedExecutablePath"/>.
     /// </summary>
-    private async Task ExtractResponseToStagedExecutableAsync(HttpResponseMessage response, string downloadUrl, string stagedExecutablePath, string platformName, string executableName)
+    private async Task ExtractResponseToStagedExecutableAsync(HttpResponseMessage response, string downloadUrl, string checksumsUrl, string stagedExecutablePath, string platformName, string executableName)
     {
         EnsureSuccessOrThrow(response, downloadUrl);
 
@@ -305,6 +321,11 @@ public sealed class BunDownloader
             {
                 await response.Content.CopyToAsync(fileStream);
             }
+
+            // Verify against upstream's published SHA-256 sums before touching the archive. Bun publishes
+            // SHASUMS256.txt alongside every release; without this, a compromised release asset or a
+            // MITM'd download would be extracted and handed straight to every consumer's build, unverified.
+            await VerifyChecksumAsync(tempZipPath, checksumsUrl, platformName);
 
             // Extract the zip file
             // The zip contains a folder like "bun-windows-x64-baseline/bun.exe"
@@ -368,6 +389,52 @@ public sealed class BunDownloader
     private void WriteVersionMarker(string versionMarkerPath, string version)
     {
         _fileSystem.File.WriteAllText(versionMarkerPath, version);
+    }
+
+    /// <summary>
+    /// Verifies a downloaded archive against the SHA-256 sum GitHub publishes alongside each Bun release.
+    /// </summary>
+    private async Task VerifyChecksumAsync(string zipPath, string checksumsUrl, string platformName)
+    {
+        var archiveName = $"{platformName}.zip";
+        string checksumsText;
+        try
+        {
+            checksumsText = await _httpClient.GetStringAsync(checksumsUrl);
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        {
+            throw new InvalidDataException($"Failed to download checksums from {checksumsUrl}.", ex);
+        }
+
+        string? expectedHash = null;
+        foreach (var line in checksumsText.Split('\n'))
+        {
+            var parts = line.Trim().Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length >= 2 && parts[parts.Length - 1].Equals(archiveName, StringComparison.Ordinal))
+            {
+                expectedHash = parts[0];
+                break;
+            }
+        }
+
+        if (expectedHash is null)
+        {
+            throw new InvalidDataException($"No checksum entry for '{archiveName}' in {checksumsUrl}.");
+        }
+
+        string actualHash;
+        using (var sha256 = SHA256.Create())
+        using (var stream = _fileSystem.File.OpenRead(zipPath))
+        {
+            actualHash = BitConverter.ToString(sha256.ComputeHash(stream)).Replace("-", "");
+        }
+
+        if (!expectedHash.Equals(actualHash, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidDataException(
+                $"Checksum mismatch for '{archiveName}'. Expected {expectedHash}, got {actualHash}.");
+        }
     }
 
     private string PublishStagedExecutable(string stagedExecutablePath, string bunExecutablePath)

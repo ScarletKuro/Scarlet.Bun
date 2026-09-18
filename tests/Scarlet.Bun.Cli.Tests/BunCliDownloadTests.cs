@@ -1,4 +1,5 @@
 using System.IO.Abstractions.TestingHelpers;
+using System.Security.Cryptography;
 using RichardSzalay.MockHttp;
 using Scarlet.Bun.Cli.Tests.Mock;
 
@@ -23,6 +24,12 @@ public class BunCliDownloadTests
     private static readonly string ToolDirectory = Path.Combine(TestRoot, "tool");
     private static readonly string CacheRoot = Path.Combine(TestRoot, "cache");
 
+    // Platform.LinuxX64's archive name (BunRuntimeResolver.GetDownloadName) - checksum verification looks
+    // up this exact filename in the mocked SHASUMS256.txt.
+    private const string ArchiveFileName = "bun-linux-x64-baseline.zip";
+    private static readonly byte[] ArchiveBytes = [1, 2, 3];
+    private static readonly string ArchiveSha256 = Convert.ToHexString(SHA256.HashData(ArchiveBytes)).ToLowerInvariant();
+
     [Fact]
     public void Resolve_WithNothingCached_ShouldDownloadAndReportItAsDownloaded()
     {
@@ -30,8 +37,9 @@ public class BunCliDownloadTests
         var fileSystem = new MockFileSystem();
         using var handler = new MockHttpMessageHandler();
 
+        MockChecksums(handler, "https://github.com/oven-sh/bun/releases/download/bun-v1.4.2/SHASUMS256.txt");
         handler.When("https://github.com/oven-sh/bun/releases/download/bun-v1.4.2/*")
-            .Respond("application/zip", new MemoryStream([1, 2, 3]));
+            .Respond("application/zip", new MemoryStream(ArchiveBytes));
 
         // Act
         var resolution = Resolve(fileSystem, handler, version: "1.4.2");
@@ -52,8 +60,9 @@ public class BunCliDownloadTests
         var fileSystem = new MockFileSystem();
         using var handler = new MockHttpMessageHandler();
 
+        MockChecksums(handler, "https://github.com/oven-sh/bun/releases/download/bun-v1.3.6/SHASUMS256.txt");
         handler.When("https://github.com/oven-sh/bun/releases/download/bun-v1.3.6/*")
-            .Respond("application/zip", new MemoryStream([1, 2, 3]));
+            .Respond("application/zip", new MemoryStream(ArchiveBytes));
 
         // Act
         var resolution = Resolve(fileSystem, handler, version: "1.3.6");
@@ -71,9 +80,11 @@ public class BunCliDownloadTests
         var fileSystem = new MockFileSystem();
         using var handler = new MockHttpMessageHandler();
 
+        MockChecksums(handler, "https://github.com/oven-sh/bun/releases/latest/download/SHASUMS256.txt");
+
         // Expect, not When: this asserts the URL shape rather than merely tolerating it
         handler.Expect("https://github.com/oven-sh/bun/releases/latest/download/bun-linux-x64-baseline.zip")
-            .Respond("application/zip", new MemoryStream([1, 2, 3]));
+            .Respond("application/zip", new MemoryStream(ArchiveBytes));
 
         // Act
         var resolution = Resolve(fileSystem, handler, version: BunCliOptions.LatestVersion);
@@ -81,6 +92,11 @@ public class BunCliDownloadTests
         // Assert
         handler.VerifyNoOutstandingExpectation();
         Assert.Equal(BunSource.Downloaded, resolution.Source);
+    }
+
+    private static void MockChecksums(MockHttpMessageHandler handler, string checksumsUrl)
+    {
+        handler.When(checksumsUrl).Respond("text/plain", $"{ArchiveSha256}  {ArchiveFileName}\n");
     }
 
     [Fact]
