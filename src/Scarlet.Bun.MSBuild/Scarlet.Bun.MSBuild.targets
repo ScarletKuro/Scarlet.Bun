@@ -83,11 +83,16 @@
                 BunRuntime_osx_x64="$(BunRuntime_osx_x64)"
                 BunRuntime_osx_arm64="$(BunRuntime_osx_arm64)" />
 
+    <!--
+      Bun wrote these after MSBuild evaluated the project, so the SDK's own wwwroot glob missed them.
+      The path must stay project-relative: the static web assets SDK matches candidates against
+      "wwwroot/**", and an absolute path silently falls through to plain content instead.
+      Exclude keeps @(Content) free of duplicates on incremental builds, where the glob did already pick
+      the files up. DefineStaticWebAssets distincts its own candidates, so this is about not handing other
+      consumers of @(Content) the same file twice.
+    -->
     <ItemGroup>
-      <Content Include="wwwroot\**\*"
-               Exclude="@(Content)"
-               ExcludeFromSingleFile="true"
-               CopyToPublishDirectory="PreserveNewest" />
+      <Content Include="wwwroot\**\*" Exclude="@(Content)" />
     </ItemGroup>
   </Target>
 </Project>

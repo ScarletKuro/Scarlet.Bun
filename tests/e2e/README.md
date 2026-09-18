@@ -93,7 +93,7 @@ If the RID cannot be determined, the script falls back to shell-based OS and arc
 4. Adds source assets (JS + SCSS), `build.mjs` (terser + sass), and `package.json`
 5. Builds the project — `BunBeforeStaticWebAssets` runs Bun once before inner TFM builds dispatch, bundling JS and compiling SCSS into `wwwroot/`
 6. Verifies `wwwroot/js/bundle.min.js` and `wwwroot/css/style.min.css` were created
-7. Verifies Bun install and asset build each ran once
+7. Verifies Bun install and asset build each ran once, in declaration order
 8. Verifies all three TFM output directories (`bin/Debug/net{8,9,10}.0/`) exist
 9. Packs the RCL as a NuGet package and inspects the `.nupkg` to verify static web assets (JS/CSS) are included
 

@@ -387,6 +387,19 @@ else
     FAILED=1
 fi
 
+# build.mjs needs the dependencies bun install pulls down, so the declaration order of the
+# BunBeforeStaticWebAssets items has to be the execution order. That falls out of MSBuild task batching
+# rather than anything explicit in the target, so pin it here.
+INSTALL_LINE=$(grep -n "Executing: bun install --frozen-lockfile" build.log | head -1 | cut -d: -f1)
+BUILD_LINE=$(grep -n "Executing: bun run build.mjs" build.log | head -1 | cut -d: -f1)
+
+if [ -n "$INSTALL_LINE" ] && [ -n "$BUILD_LINE" ] && [ "$INSTALL_LINE" -lt "$BUILD_LINE" ]; then
+    echo "✓ Bun install ran before the asset build"
+else
+    echo "✗ Expected Bun install to run before the asset build (install at line ${INSTALL_LINE:-none}, build at line ${BUILD_LINE:-none})"
+    FAILED=1
+fi
+
 # Check that each TFM produced build output
 for tfm in net8.0 net9.0 net10.0; do
     if [ -d "bin/Debug/$tfm" ]; then
