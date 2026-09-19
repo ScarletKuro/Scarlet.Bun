@@ -90,7 +90,7 @@ internal sealed class BunCliApplication
 
         try
         {
-            return _launcher.Run(new BunLaunchRequest(resolution.ExecutablePath!, args));
+            return _launcher.Run(new BunLaunchRequest(resolution.ExecutablePath, args));
         }
         catch (Win32Exception exception)
         {
