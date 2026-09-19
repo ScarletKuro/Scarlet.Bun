@@ -131,12 +131,12 @@ public class BunCliDownloadTests
             ToolDirectory,
             (platform, log) => new BunDownloader(
                 new HttpClient(handler),
+                new FakeLatestVersionResolver(resolvedVersion: null),
                 fileSystem,
                 new FakeZipArchiveProvider(fileSystem),
                 NoOpChmodProvider.Instance,
                 platform,
-                log,
-                new FakeLatestVersionResolver(resolvedVersion: null)));
+                log));
 
         return resolver.Resolve(options, allowDownload: true, new RecordingBunLogger());
     }

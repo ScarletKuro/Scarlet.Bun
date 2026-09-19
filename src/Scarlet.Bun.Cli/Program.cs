@@ -40,12 +40,12 @@ internal static class Program
             AppContext.BaseDirectory,
             (targetPlatform, log) => new BunDownloader(
                 BunDownloader.CreateHttpClient(),
+                new GitHubLatestVersionResolver(),
                 fileSystem,
                 ZipArchiveProvider.Instance,
                 chmodProvider,
                 targetPlatform,
-                log,
-                new GitHubLatestVersionResolver()));
+                log));
 
         var application = new BunCliApplication(
             resolver,

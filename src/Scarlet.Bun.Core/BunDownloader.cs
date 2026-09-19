@@ -26,12 +26,12 @@ public sealed class BunDownloader
 
     public BunDownloader(
         HttpClient httpClient,
+        ILatestVersionResolver latestVersionResolver,
         IFileSystem fileSystem,
         IZipArchiveProvider zipProvider,
         IChmodProvider chmodProvider,
         Platform platform,
-        IBunLogger log,
-        ILatestVersionResolver latestVersionResolver)
+        IBunLogger log)
     {
         _platform = platform;
         _httpClient = httpClient;
@@ -39,7 +39,7 @@ public sealed class BunDownloader
         _zipProvider = zipProvider;
         _chmodProvider = chmodProvider;
         _log = log;
-        _latestVersionResolver = latestVersionResolver ?? throw new ArgumentNullException(nameof(latestVersionResolver));
+        _latestVersionResolver = latestVersionResolver;
     }
 
     /// <summary>
@@ -51,20 +51,16 @@ public sealed class BunDownloader
     /// <param name="version">Specific version to download (e.g., "1.3.6"). If null or empty, downloads latest.</param>
     /// <param name="mutexTimeoutSeconds">Maximum seconds to wait for the download mutex. Defaults to 300 (5 minutes).</param>
     /// <returns>Path to the downloaded Bun executable.</returns>
-    public string DownloadRuntime(
-        string runtimeDirectory,
-        string? version = null,
-        int mutexTimeoutSeconds = 300)
+    public string DownloadRuntime(string runtimeDirectory, string? version = null, int mutexTimeoutSeconds = 300)
     {
         if (string.IsNullOrWhiteSpace(runtimeDirectory))
         {
             throw new ArgumentException("Runtime directory must be specified when using BunRuntimeDownload", nameof(runtimeDirectory));
         }
 
-        var targetPlatform = _platform;
-        var runtimeId = BunRuntimeResolver.GetRuntimeIdentifier(targetPlatform);
-        var platformName = BunRuntimeResolver.GetDownloadName(targetPlatform);
-        var executableName = BunRuntimeResolver.GetExecutableName(targetPlatform);
+        var runtimeId = BunRuntimeResolver.GetRuntimeIdentifier(_platform);
+        var platformName = BunRuntimeResolver.GetDownloadName(_platform);
+        var executableName = BunRuntimeResolver.GetExecutableName(_platform);
 
         var fullRuntimePath = Path.Combine(runtimeDirectory, runtimeId, "native");
         var bunExecutablePath = Path.Combine(fullRuntimePath, executableName);
@@ -151,19 +147,16 @@ public sealed class BunDownloader
     /// <param name="runtimeDirectory">Directory where the runtime should be downloaded.</param>
     /// <param name="version">Specific version to download (e.g., "1.3.6"). If null or empty, downloads latest.</param>
     /// <returns>Path to the downloaded Bun executable.</returns>
-    public async Task<string> DownloadRuntimeAsync(
-        string runtimeDirectory,
-        string? version = null)
+    public async Task<string> DownloadRuntimeAsync(string runtimeDirectory, string? version = null)
     {
         if (string.IsNullOrWhiteSpace(runtimeDirectory))
         {
             throw new ArgumentException("Runtime directory must be specified when using BunRuntimeDownload", nameof(runtimeDirectory));
         }
 
-        var targetPlatform = _platform;
-        var runtimeId = BunRuntimeResolver.GetRuntimeIdentifier(targetPlatform);
-        var platformName = BunRuntimeResolver.GetDownloadName(targetPlatform);
-        var executableName = BunRuntimeResolver.GetExecutableName(targetPlatform);
+        var runtimeId = BunRuntimeResolver.GetRuntimeIdentifier(_platform);
+        var platformName = BunRuntimeResolver.GetDownloadName(_platform);
+        var executableName = BunRuntimeResolver.GetExecutableName(_platform);
 
         // Create the full runtime path: runtimeDirectory/runtimeId/native
         var fullRuntimePath = Path.Combine(runtimeDirectory, runtimeId, "native");
