@@ -182,7 +182,7 @@ public sealed class BunDownloader
         return client;
     }
 
-    private static string CreateMutexName(string executablePath)
+    internal static string CreateMutexName(string executablePath)
     {
         var normalizedPath = Path.GetFullPath(executablePath).ToUpperInvariant();
         using var sha = SHA256.Create();

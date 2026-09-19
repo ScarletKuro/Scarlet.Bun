@@ -345,6 +345,65 @@ public class BunDownloaderTests
     }
 
     [Fact]
+    public void PublishStagedExecutable_WhenMoveSucceedsButDestinationStillMissing_ShouldThrowFileNotFoundException()
+    {
+        // Covers the final safety check in PublishStagedExecutable. File.Move is documented to either move
+        // the file or throw - it never reports success while leaving the destination absent - but the mutex
+        // in DownloadRuntime exists precisely because that guarantee doesn't hold across independent
+        // processes/machines sharing a runtime directory. This simulates a broken Move to prove the check
+        // actually catches such a violation rather than silently returning a path that doesn't exist.
+        var platform = Platform.LinuxX64;
+        var stagedPath = "/test-runtime/linux-x64/native/.bun.staged.tmp";
+        var finalPath = "/test-runtime/linux-x64/native/bun";
+
+        var mockFileSystem = new MockFileSystem();
+        mockFileSystem.AddFile(stagedPath, new MockFileData("staged bun executable"));
+
+        var noOpMoveFileSystem = new NoOpMoveFileSystem(mockFileSystem);
+        var downloader = new BunDownloader(new HttpClient(), new FakeLatestVersionResolver(null), noOpMoveFileSystem, new FakeZipArchiveProvider(mockFileSystem), NoOpChmodProvider.Instance, platform, NoOpBunLogger.Instance);
+
+        var ex = Assert.Throws<FileNotFoundException>(() =>
+            downloader.PublishStagedExecutable(stagedPath, finalPath));
+
+        Assert.Contains("not found after publication", ex.Message);
+        Assert.Contains(finalPath, ex.Message);
+    }
+
+    [Fact]
+    public void DownloadRuntime_WhenMutexAlreadyExists_ShouldLogWaitingAndResumedMessages()
+    {
+        // Covers the "another process is already downloading" logging branch. `createdNew` is false
+        // whenever the named mutex object already exists, regardless of whether it is currently held -
+        // which is exactly the situation described in DownloadRuntime's own doc comment: multiple MSBuild
+        // projects targeting the same runtime directory in a monorepo build.
+        var tempDir = "/test-runtime";
+        var platform = Platform.LinuxX64;
+        var runtimeId = BunRuntimeResolver.GetRuntimeIdentifier(platform);
+        var executableName = BunRuntimeResolver.GetExecutableName(platform);
+        var expectedPath = Path.Combine(tempDir, runtimeId, "native", executableName);
+
+        var mutexName = BunDownloader.CreateMutexName(expectedPath);
+        using var preExistingMutex = new Mutex(false, mutexName, out _);
+
+        var mockFileSystem = new MockFileSystem();
+        var mockHttp = new MockHttpMessageHandler();
+        var zipContent = CreateMockBunZip(executableName);
+        mockHttp.When("https://github.com/oven-sh/bun/releases/latest/download/bun-linux-x64-baseline.zip")
+                .Respond("application/zip", zipContent);
+        MockChecksums(mockHttp, ChecksumsUrlLatest, "bun-linux-x64-baseline.zip", zipContent);
+
+        var httpClient = mockHttp.ToHttpClient();
+        var logger = new RecordingBunLogger();
+        var downloader = new BunDownloader(httpClient, new FakeLatestVersionResolver(null), mockFileSystem, new FakeZipArchiveProvider(mockFileSystem), NoOpChmodProvider.Instance, platform, logger);
+
+        var result = downloader.DownloadRuntime(tempDir);
+
+        Assert.Equal(expectedPath, result);
+        Assert.Contains(logger.Messages, m => m.Contains("Another process is downloading"));
+        Assert.Contains(logger.Messages, m => m.Contains("Finished waiting"));
+    }
+
+    [Fact]
     public async Task DownloadRuntimeAsync_WhenPinnedVersionBumped_ShouldRedownloadAndUpdateMarker()
     {
         // Arrange
@@ -1220,6 +1279,58 @@ public class BunDownloaderTests
                 _inner.AddFile(_raceTargetPath, new MockFileData(_raceContent));
             }
         }
+    }
+
+    /// <summary>
+    /// Wraps a <see cref="MockFileSystem"/>, swapping in <see cref="NoOpMoveFile"/> for
+    /// <see cref="IFileSystem.File"/> and forwarding everything else untouched.
+    /// </summary>
+    private sealed class NoOpMoveFileSystem : IFileSystem
+    {
+        private readonly MockFileSystem _inner;
+
+        public NoOpMoveFileSystem(MockFileSystem inner)
+        {
+            _inner = inner;
+            File = new NoOpMoveFile(inner);
+        }
+
+        public IFile File { get; }
+
+        public IDirectory Directory => _inner.Directory;
+        public IDirectoryInfoFactory DirectoryInfo => _inner.DirectoryInfo;
+        public IDriveInfoFactory DriveInfo => _inner.DriveInfo;
+        public IFileInfoFactory FileInfo => _inner.FileInfo;
+        public IFileStreamFactory FileStream => _inner.FileStream;
+        public IFileSystemWatcherFactory FileSystemWatcher => _inner.FileSystemWatcher;
+        public IFileVersionInfoFactory FileVersionInfo => _inner.FileVersionInfo;
+        public IPath Path => _inner.Path;
+    }
+
+    /// <summary>
+    /// Simulates a filesystem whose <c>Move</c> reports success without actually publishing the destination
+    /// file - a contract violation a real <see cref="File.Move(string, string)"/> never commits, but one
+    /// PublishStagedExecutable's own final existence check must still catch defensively.
+    /// </summary>
+    private sealed class NoOpMoveFile : MockFile
+    {
+        public NoOpMoveFile(MockFileSystem inner) : base(inner)
+        {
+        }
+
+        public override void Move(string sourceFileName, string destFileName)
+        {
+            // Deliberately does not call base.Move and does not create destFileName.
+        }
+    }
+
+    private sealed class RecordingBunLogger : IBunLogger
+    {
+        private readonly List<string> _messages = new();
+
+        public IReadOnlyList<string> Messages => _messages;
+
+        public void LogMessage(string message) => _messages.Add(message);
     }
 
     private sealed class RecordingChmodProvider : IChmodProvider
