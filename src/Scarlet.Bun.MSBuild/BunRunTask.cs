@@ -212,7 +212,12 @@ public class BunRunTask : Task
 
             Log.LogMessage(MessageImportance.High, $"Using Bun at: {bunPath}");
 
-            // Build the full command line
+            // Deliberately a single command-line string, not ProcessStartInfo.ArgumentList: that property
+            // isn't part of the netstandard2.0 surface this task targets. It also wouldn't fix anything -
+            // Arguments here is one flat MSBuild-authored string (like MSBuild's own <Exec Command="...">),
+            // not a pre-split argv array like Scarlet.Bun.Cli forwards, and .NET does not re-parse this
+            // string before Bun's own argv parser sees it (on Windows it's passed through as the literal
+            // command line; on Unix .NET splits it once, using the same convention, to build argv).
             var fullArguments = $"{Command}";
             if (!string.IsNullOrWhiteSpace(Arguments))
             {

@@ -164,12 +164,24 @@ public static class BunRuntimeResolver
     }
 
     /// <summary>
+    /// Directories the musl dynamic loader has been observed in, across the distributions that ship it.
+    /// </summary>
+    /// <remarks>
+    /// Alpine (the only musl distribution covered by CI) always uses <c>/lib</c>. Other musl distros, such
+    /// as Void Linux, install it under <c>/usr/lib</c> or <c>/lib64</c> instead; those are only a
+    /// best-effort widening, not something a test host can verify, since no CI runner uses them.
+    /// </remarks>
+    private static readonly string[] MuslLoaderDirectories = { "/lib", "/lib64", "/usr/lib" };
+
+    /// <summary>
     /// Detects a musl-based Linux distribution, such as Alpine.
     /// </summary>
     /// <returns><see langword="true"/> when the musl dynamic loader is present.</returns>
     /// <remarks>
     /// Probing for the loader keeps this working on netstandard2.0, where
-    /// <c>RuntimeInformation.RuntimeIdentifier</c> is unavailable.
+    /// <c>RuntimeInformation.RuntimeIdentifier</c> is unavailable. A distro whose loader lives somewhere
+    /// none of <see cref="MuslLoaderDirectories"/> covers falls through to the glibc build, which then
+    /// fails to start with an ELF interpreter error rather than a clear "unsupported platform" message.
     /// </remarks>
     private static bool IsMuslLibc()
     {
@@ -180,12 +192,19 @@ public static class BunRuntimeResolver
 
         try
         {
-            return Directory.Exists("/lib")
-                   && Directory.GetFiles("/lib", "ld-musl-*.so.1").Length > 0;
+            foreach (var directory in MuslLoaderDirectories)
+            {
+                if (Directory.Exists(directory) && Directory.GetFiles(directory, "ld-musl-*.so.1").Length > 0)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
         catch (Exception)
         {
-            // An unreadable /lib is not a reason to fail; assume glibc and let the binary speak for itself.
+            // An unreadable directory is not a reason to fail; assume glibc and let the binary speak for itself.
             return false;
         }
     }
