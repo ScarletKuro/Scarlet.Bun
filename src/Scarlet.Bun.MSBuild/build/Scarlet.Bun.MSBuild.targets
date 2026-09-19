@@ -28,7 +28,7 @@
     Supported properties:
     - BunCommand (required) - The Bun command to execute
     - BunArguments (optional) - Command arguments
-    - BunWorkingDirectory (optional) - Working directory
+    - BunWorkingDirectory (optional) - Working directory, defaults to $(MSBuildProjectDirectory)
     - BunTimeoutMilliseconds (optional) - Timeout in milliseconds
     - BunContinueOnError (optional) - Continue on error
     - BunCaptureOutput (optional) - Store stdout/stderr in BunStandardOutput/BunStandardError
@@ -65,6 +65,7 @@
     <Error Text="BunCommand property is required" Condition="'$(BunCommand)' == ''" />
 
     <PropertyGroup>
+      <BunWorkingDirectory Condition="'$(BunWorkingDirectory)' == ''">$(MSBuildProjectDirectory)</BunWorkingDirectory>
       <_BunStampDirectory Condition="'$(BunStampDirectory)' != ''">$(BunStampDirectory)</_BunStampDirectory>
       <_BunStampDirectory Condition="'$(_BunStampDirectory)' == '' AND '$(IntermediateOutputPath)' != ''">$([System.IO.Path]::GetFullPath($([System.IO.Path]::Combine('$(MSBuildProjectDirectory)', '$(IntermediateOutputPath)', 'Scarlet.Bun'))))</_BunStampDirectory>
     </PropertyGroup>
@@ -188,7 +189,8 @@
                 BunRuntime_linux_arm64="$(BunRuntime_linux_arm64)"
                 BunRuntime_osx_x64="$(BunRuntime_osx_x64)"
                 BunRuntime_osx_arm64="$(BunRuntime_osx_arm64)">
-      <Output TaskParameter="StampFilePath" ItemName="FileWrites" />
+      <Output TaskParameter="StampFilePath" ItemName="FileWrites"
+              Condition="'%(_BunBeforeStaticWebAssetsStep.Inputs)' != '' AND '%(_BunBeforeStaticWebAssetsStep.Outputs)' != ''" />
     </BunRunTask>
 
     <!--

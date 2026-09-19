@@ -1,13 +1,9 @@
 using System;
 using System.Collections.Generic;
-using System.ComponentModel;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.IO.Abstractions;
-using System.Runtime.InteropServices;
 using System.Security;
-using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using Microsoft.Build.Framework;
@@ -22,16 +18,6 @@ namespace Scarlet.Bun.MSBuild;
 /// </summary>
 public class BunRunTask : Task
 {
-    /// <summary>
-    /// Linux errno for "Text file busy", surfaced by <see cref="Win32Exception.NativeErrorCode"/> when
-    /// <see cref="Process.Start()"/> fails on Unix.
-    /// </summary>
-    private const int TextFileBusyErrorCode = 26;
-
-    private const int MaxProcessStartAttempts = 5;
-
-    private const int ProcessStartRetryBaseDelayMilliseconds = 25;
-
     /// <summary>
     /// Lines of each stream kept for the failure message even when <see cref="CaptureOutput"/> is off.
     /// </summary>
@@ -394,7 +380,7 @@ public class BunRunTask : Task
                 gate.TryRun(() => Log.LogMessage(MessageImportance.High, e.Data));
             };
 
-            StartProcessWithRetry(process);
+            ProcessStartRetry.Start(process, new MsBuildBunLogger(Log));
             process.BeginOutputReadLine();
             process.BeginErrorReadLine();
 
@@ -482,38 +468,6 @@ public class BunRunTask : Task
             gate.Close();
         }
     }
-
-
-    /// <summary>
-    /// Starts <paramref name="process"/>, retrying a handful of times on Linux/macOS if the kernel reports
-    /// the executable as busy (ETXTBSY). This shows up when a just-downloaded or just-run Bun binary is
-    /// exec'd again within milliseconds - e.g. an <c>install</c> step immediately followed by a <c>run</c>
-    /// step against the same cached binary - and a grandchild process Bun spawned for the first run hasn't
-    /// fully released the executable yet even though the process .NET waited on has already exited.
-    /// </summary>
-    [ExcludeFromCodeCoverage]
-    private void StartProcessWithRetry(Process process)
-    {
-        for (var attempt = 1; ; attempt++)
-        {
-            try
-            {
-                process.Start();
-                return;
-            }
-            catch (Win32Exception ex) when (ex.NativeErrorCode == TextFileBusyErrorCode
-                && !RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
-                && attempt < MaxProcessStartAttempts)
-            {
-                var delayMilliseconds = ProcessStartRetryBaseDelayMilliseconds * (1 << (attempt - 1));
-                Log.LogMessage(
-                    MessageImportance.Normal,
-                    $"Bun executable was busy (ETXTBSY); retrying in {delayMilliseconds}ms (attempt {attempt}/{MaxProcessStartAttempts}).");
-                Thread.Sleep(delayMilliseconds);
-            }
-        }
-    }
-
 
     /// <summary>
     /// Gathers every runtime pack the build knows about, from both the item and the legacy property contract.
@@ -754,11 +708,7 @@ public class BunRunTask : Task
 
     private string CreateDefaultStampPath(string baseDirectory, string stampContent)
     {
-        using var sha256 = SHA256.Create();
-        var stampName = BitConverter
-            .ToString(sha256.ComputeHash(Encoding.UTF8.GetBytes(stampContent)))
-            .Replace("-", string.Empty)
-            .ToLowerInvariant();
+        var stampName = HashUtilities.ComputeSha256Hex(stampContent);
 
         // StampDirectory is the project's real intermediate output, passed by the targets. Falling back to
         // "obj" under the working directory would ignore a relocated BaseIntermediateOutputPath or artifacts
@@ -775,11 +725,17 @@ public class BunRunTask : Task
     /// resolved against: the project's, as every other relative path in a project file is.
     /// </summary>
     /// <remarks>
-    /// Deliberately not <see cref="WorkingDirectory"/>. That says where the command runs, and letting it move
-    /// what the paths mean would make <c>&lt;Inputs&gt;assets/app.js&lt;/Inputs&gt;</c> point somewhere else
-    /// the moment a step also set a working directory - silently, and differently from every other item in
-    /// the file. <see cref="Environment.CurrentDirectory"/> is only the last resort, for a task constructed
-    /// outside a real build.
+    /// <see cref="ProjectDirectory"/> is what both packaged targets (<c>Bun</c> and
+    /// <c>RunBunBeforeStaticWebAssets</c>) always pass, so real project builds never fall through here.
+    /// <see cref="WorkingDirectory"/> is deliberately not the first choice: it says where the command runs,
+    /// and letting it also decide what a relative path means would make <c>&lt;Inputs&gt;assets/app.js&lt;/Inputs&gt;</c>
+    /// point somewhere else the moment a step also set a working directory - silently, and differently from
+    /// every other item in the file. It is still a better fallback than jumping straight to
+    /// <see cref="Environment.CurrentDirectory"/>, though: a caller that invokes this task directly, outside
+    /// the packaged targets, and sets <see cref="WorkingDirectory"/> without <see cref="ProjectDirectory"/>
+    /// most likely intends that same directory as the project location too - which is also exactly what the
+    /// task's own unit tests do. <see cref="Environment.CurrentDirectory"/> is the true last resort, for a
+    /// task constructed with neither property set.
     /// </remarks>
     private string ResolveIncrementalBaseDirectory()
     {
@@ -793,7 +749,7 @@ public class BunRunTask : Task
             : WorkingDirectory!;
     }
 
-    private static string ResolveIncrementalPath(string baseDirectory, string path)
+    private string ResolveIncrementalPath(string baseDirectory, string path)
     {
         try
         {
@@ -801,8 +757,15 @@ public class BunRunTask : Task
                 ? path
                 : Path.GetFullPath(Path.Combine(baseDirectory, path));
         }
-        catch (Exception)
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
         {
+            // Falls back to the raw, unresolved path rather than throwing: probing freshness must never be
+            // what fails a build. The path is still handed to File/Directory.Exists below, which will most
+            // likely just report it missing - but logged, so a bad Inputs/Outputs entry is diagnosable
+            // instead of silently resolving against the wrong base directory.
+            Log.LogMessage(
+                MessageImportance.Normal,
+                $"Could not resolve incremental path '{path}' against '{baseDirectory}': {ex.Message}. Using it unresolved.");
             return path;
         }
     }
@@ -853,7 +816,8 @@ public class BunRunTask : Task
             timestamp = newest;
             return true;
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or SecurityException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or SecurityException
+            or ArgumentException or NotSupportedException)
         {
             timestamp = default;
             return false;

@@ -3,7 +3,6 @@ using System.IO;
 using System.IO.Abstractions;
 using System.Net.Http;
 using System.Security.Cryptography;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Scarlet.Bun.Core.Providers;
@@ -185,9 +184,7 @@ public sealed class BunDownloader
     internal static string CreateMutexName(string executablePath)
     {
         var normalizedPath = Path.GetFullPath(executablePath).ToUpperInvariant();
-        using var sha = SHA256.Create();
-        var hash = sha.ComputeHash(Encoding.UTF8.GetBytes(normalizedPath));
-        var hashString = BitConverter.ToString(hash).Replace("-", "");
+        var hashString = HashUtilities.ComputeSha256Hex(normalizedPath).ToUpperInvariant();
         return $"Global\\ScarletBun_{hashString}";
     }
 
