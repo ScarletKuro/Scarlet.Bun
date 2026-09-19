@@ -409,7 +409,7 @@ public sealed class BunDownloader
                 }
             }
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        catch (Exception ex) when (ex is HttpRequestException or IOException or TaskCanceledException)
         {
             throw new InvalidDataException($"Failed to download checksums from {checksumsUrl}.", ex);
         }

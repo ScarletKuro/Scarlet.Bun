@@ -319,6 +319,47 @@ public class BunIntegrationTests
     }
 
     [Fact]
+    public void BunRunTask_WhenIncrementalStampCannotBeWritten_ShouldKeepSuccessfulBunResult()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"scarlet-bun-stamp-write-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            var runtimesDirectory = Path.Combine(Directory.GetCurrentDirectory(), "runtimes");
+            var input = Path.Combine(tempDir, "input.js");
+            var output = Path.Combine(tempDir, "bundle.js");
+            File.WriteAllText(input, "console.log('input');");
+            File.WriteAllText(output, "existing output");
+
+            var buildEngine = new MockBuildEngine(_output);
+            var task = new BunRunTask
+            {
+                Command = "--version",
+                WorkingDirectory = tempDir,
+                RuntimeDirectory = runtimesDirectory,
+                Inputs = input,
+                Outputs = output,
+                StampFile = "invalid\0stamp",
+                BuildEngine = buildEngine
+            };
+
+            var result = task.Execute();
+
+            Assert.True(result);
+            Assert.Equal(0, task.ExitCode);
+            Assert.Contains(buildEngine.Messages, message => message.Message?.Contains("Could not write Bun incremental stamp", StringComparison.Ordinal) == true);
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+            {
+                Directory.Delete(tempDir, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public void BunRunTask_WithMissingCommand_ShouldFail()
     {
         // Arrange

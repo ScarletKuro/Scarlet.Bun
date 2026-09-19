@@ -466,20 +466,29 @@ public class BunRunTask : Task
         }
     }
 
-    private static void WriteIncrementalStamp(IFileSystem fileSystem, IncrementalState? state)
+    private void WriteIncrementalStamp(IFileSystem fileSystem, IncrementalState? state)
     {
         if (state is null)
         {
             return;
         }
 
-        var directory = Path.GetDirectoryName(state.StampPath);
-        if (!string.IsNullOrEmpty(directory))
+        try
         {
-            fileSystem.Directory.CreateDirectory(directory);
-        }
+            var directory = Path.GetDirectoryName(state.StampPath);
+            if (!string.IsNullOrEmpty(directory))
+            {
+                fileSystem.Directory.CreateDirectory(directory);
+            }
 
-        fileSystem.File.WriteAllText(state.StampPath, state.StampContent);
+            fileSystem.File.WriteAllText(state.StampPath, state.StampContent);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            Log.LogMessage(
+                MessageImportance.Normal,
+                $"Could not write Bun incremental stamp '{state.StampPath}'. The command succeeded, but this step may run again next build. {ex.Message}");
+        }
     }
 
     private static IReadOnlyList<string> SplitPaths(string? paths)
