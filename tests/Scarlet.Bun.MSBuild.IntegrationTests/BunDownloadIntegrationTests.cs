@@ -280,7 +280,7 @@ public class BunDownloadIntegrationTests
             _output.WriteLine($"First write time: {firstWriteTime}");
 
             // Wait a bit to ensure timestamps would be different if file was rewritten
-            System.Threading.Thread.Sleep(100);
+            Thread.Sleep(100);
 
             // Second call - should reuse runtime
             var task2 = new BunRunTask

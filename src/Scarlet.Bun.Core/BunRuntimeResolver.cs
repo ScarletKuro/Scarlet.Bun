@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.IO.Abstractions;
 using System.Runtime.InteropServices;
@@ -164,13 +165,26 @@ public static class BunRuntimeResolver
     }
 
     /// <summary>
+    /// Directories the musl dynamic loader has been observed in, across the distributions that ship it.
+    /// </summary>
+    /// <remarks>
+    /// Alpine (the only musl distribution covered by CI) always uses <c>/lib</c>. Other musl distros, such
+    /// as Void Linux, install it under <c>/usr/lib</c> or <c>/lib64</c> instead; those are only a
+    /// best-effort widening, not something a test host can verify, since no CI runner uses them.
+    /// </remarks>
+    private static readonly string[] MuslLoaderDirectories = { "/lib", "/lib64", "/usr/lib" };
+
+    /// <summary>
     /// Detects a musl-based Linux distribution, such as Alpine.
     /// </summary>
     /// <returns><see langword="true"/> when the musl dynamic loader is present.</returns>
     /// <remarks>
     /// Probing for the loader keeps this working on netstandard2.0, where
-    /// <c>RuntimeInformation.RuntimeIdentifier</c> is unavailable.
+    /// <c>RuntimeInformation.RuntimeIdentifier</c> is unavailable. A distro whose loader lives somewhere
+    /// none of <see cref="MuslLoaderDirectories"/> covers falls through to the glibc build, which then
+    /// fails to start with an ELF interpreter error rather than a clear "unsupported platform" message.
     /// </remarks>
+    [ExcludeFromCodeCoverage]
     private static bool IsMuslLibc()
     {
         if (!RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
@@ -180,12 +194,19 @@ public static class BunRuntimeResolver
 
         try
         {
-            return Directory.Exists("/lib")
-                   && Directory.GetFiles("/lib", "ld-musl-*.so.1").Length > 0;
+            foreach (var directory in MuslLoaderDirectories)
+            {
+                if (Directory.Exists(directory) && Directory.GetFiles(directory, "ld-musl-*.so.1").Length > 0)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
         catch (Exception)
         {
-            // An unreadable /lib is not a reason to fail; assume glibc and let the binary speak for itself.
+            // An unreadable directory is not a reason to fail; assume glibc and let the binary speak for itself.
             return false;
         }
     }
@@ -276,7 +297,7 @@ public static class BunRuntimeResolver
     /// </summary>
     /// <param name="fileSystem">File system abstraction.</param>
     /// <param name="chmodProvider">Provider for setting executable permissions.</param>
-    /// <param name="platform">Target platform. If null, uses current platform.</param>
+    /// <param name="platform">Target platform.</param>
     /// <param name="runtimeDirectory">Optional explicit runtime directory. When set, it wins over <paramref name="runtimePacks"/>.</param>
     /// <param name="runtimePacks">Runtime packs contributed by the referenced runtime packages.</param>
     /// <param name="log">Optional sink for diagnostic messages about the selection.</param>
@@ -285,31 +306,29 @@ public static class BunRuntimeResolver
     public static string ResolveBunExecutable(
         IFileSystem fileSystem,
         IChmodProvider chmodProvider,
-        Platform? platform = null,
+        Platform platform,
         string? runtimeDirectory = null,
         IReadOnlyList<BunRuntimePack>? runtimePacks = null,
         Action<string>? log = null)
     {
-        var targetPlatform = platform ?? GetCurrentPlatform();
-
         // An explicit directory is a deliberate override, so it is never second-guessed against the packs.
         if (!string.IsNullOrEmpty(runtimeDirectory))
         {
-            return ResolveFromDirectory(fileSystem, chmodProvider, targetPlatform, runtimeDirectory!);
+            return ResolveFromDirectory(fileSystem, chmodProvider, platform, runtimeDirectory!);
         }
 
-        var candidates = SelectPacks(runtimePacks, targetPlatform);
+        var candidates = SelectPacks(runtimePacks, platform);
         var searched = new List<string>();
 
         foreach (var candidate in candidates)
         {
-            var candidatePath = GetExecutablePath(candidate.RuntimesPath, targetPlatform);
+            var candidatePath = GetExecutablePath(candidate.RuntimesPath, platform);
 
             if (fileSystem.File.Exists(candidatePath))
             {
                 if (candidates.Count > 1)
                 {
-                    log?.Invoke($"Selected Bun runtime pack {candidate} out of {candidates.Count} candidates for {GetRuntimeIdentifier(targetPlatform)}.");
+                    log?.Invoke($"Selected Bun runtime pack {candidate} out of {candidates.Count} candidates for {GetRuntimeIdentifier(platform)}.");
                 }
                 else
                 {
@@ -325,8 +344,8 @@ public static class BunRuntimeResolver
         }
 
         throw new FileNotFoundException(candidates.Count > 0
-            ? BuildIncompletePackMessage(targetPlatform, candidates, searched)
-            : BuildMissingPackMessage(targetPlatform, runtimePacks));
+            ? BuildIncompletePackMessage(platform, candidates, searched)
+            : BuildMissingPackMessage(platform, runtimePacks));
     }
 
     /// <summary>

@@ -199,20 +199,30 @@ public class BunRunTask : Task
 
                 Log.LogMessage(MessageImportance.Low, $"Runtime packs: {(packs.Count == 0 ? "(none)" : string.Join(", ", packs))}");
 
+                // Resolved once and reused for the log line below - on Linux, GetCurrentPlatform() probes
+                // the filesystem for a musl loader, and calling it twice would do that walk twice for no
+                // reason.
+                var currentPlatform = BunRuntimeResolver.GetCurrentPlatform();
+
                 bunPath = BunRuntimeResolver.ResolveBunExecutable(
                     fileSystem,
                     chmodProvider,
-                    platform: null,
+                    platform: currentPlatform,
                     runtimeDirectory: RuntimeDirectory,
                     runtimePacks: packs,
                     log: message => Log.LogMessage(MessageImportance.Normal, message));
 
-                Log.LogMessage(MessageImportance.High, $"Platform: {BunRuntimeResolver.GetCurrentPlatform()}");
+                Log.LogMessage(MessageImportance.High, $"Platform: {currentPlatform}");
             }
 
             Log.LogMessage(MessageImportance.High, $"Using Bun at: {bunPath}");
 
-            // Build the full command line
+            // Deliberately a single command-line string, not ProcessStartInfo.ArgumentList: that property
+            // isn't part of the netstandard2.0 surface this task targets. It also wouldn't fix anything -
+            // Arguments here is one flat MSBuild-authored string (like MSBuild's own <Exec Command="...">),
+            // not a pre-split argv array like Scarlet.Bun.Cli forwards, and .NET does not re-parse this
+            // string before Bun's own argv parser sees it (on Windows it's passed through as the literal
+            // command line; on Unix .NET splits it once, using the same convention, to build argv).
             var fullArguments = $"{Command}";
             if (!string.IsNullOrWhiteSpace(Arguments))
             {
@@ -269,11 +279,9 @@ public class BunRunTask : Task
             process.BeginOutputReadLine();
             process.BeginErrorReadLine();
 
-            bool exited;
             if (TimeoutMilliseconds > 0)
             {
-                exited = process.WaitForExit(TimeoutMilliseconds);
-                if (!exited)
+                if (!process.WaitForExit(TimeoutMilliseconds))
                 {
                     try
                     {
@@ -290,7 +298,6 @@ public class BunRunTask : Task
             else
             {
                 process.WaitForExit();
-                exited = true;
             }
 
             ExitCode = process.ExitCode;

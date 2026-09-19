@@ -31,7 +31,7 @@ public class TaskPackagingTests
                 reference.Attribute("ReferenceOutputAssembly")?.Value,
                 "false",
                 StringComparison.OrdinalIgnoreCase))
-            .Select(reference => System.IO.Path.GetFileNameWithoutExtension(
+            .Select(reference => Path.GetFileNameWithoutExtension(
                 reference.Attribute("Include")!.Value.Replace('\\', '/')) + ".dll")
             .ToList();
 
@@ -62,7 +62,7 @@ public class TaskPackagingTests
 
     private static XElement LoadTaskProject()
     {
-        var projectPath = System.IO.Path.Combine(
+        var projectPath = Path.Combine(
             RepositoryRoot.Path, "src", "Scarlet.Bun.MSBuild", "Scarlet.Bun.MSBuild.csproj");
 
         Assert.True(File.Exists(projectPath), $"Task project not found: {projectPath}");
@@ -80,7 +80,7 @@ public class TaskPackagingTests
                 (none.Attribute("PackagePath")?.Value ?? string.Empty).Replace('\\', '/').TrimEnd('/'),
                 ToolsPackagePath,
                 StringComparison.OrdinalIgnoreCase))
-            .Select(none => System.IO.Path.GetFileName(none.Attribute("Include")!.Value.Replace('\\', '/')))
+            .Select(none => Path.GetFileName(none.Attribute("Include")!.Value.Replace('\\', '/')))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
     }
 }

@@ -137,59 +137,32 @@ public sealed class BunDownloader
         }
         finally
         {
+            // ReleaseMutex is thread-affine: it must run on the exact thread that called WaitOne. Everything
+            // in this try block is a blocking .GetAwaiter().GetResult() rather than a real `await`, so this
+            // method never yields its thread back to the pool - unlike an `async` method spanning the same
+            // awaits, where a post-await continuation resuming on a different pooled thread would make this
+            // throw ApplicationException instead of releasing the lock.
             mutex.ReleaseMutex();
         }
     }
 
     /// <summary>
-    /// Downloads the Bun runtime for the current platform.
+    /// Downloads the Bun runtime for the current platform, with the same cross-process mutex synchronization
+    /// as <see cref="DownloadRuntime"/>.
     /// </summary>
     /// <param name="runtimeDirectory">Directory where the runtime should be downloaded.</param>
     /// <param name="version">Specific version to download (e.g., "1.3.6"). If null or empty, downloads latest.</param>
+    /// <param name="mutexTimeoutSeconds">Maximum seconds to wait for the download mutex. Defaults to 300 (5 minutes).</param>
     /// <returns>Path to the downloaded Bun executable.</returns>
-    public async Task<string> DownloadRuntimeAsync(string runtimeDirectory, string? version = null)
-    {
-        if (string.IsNullOrWhiteSpace(runtimeDirectory))
-        {
-            throw new ArgumentException("Runtime directory must be specified when using BunRuntimeDownload", nameof(runtimeDirectory));
-        }
-
-        var runtimeId = BunRuntimeResolver.GetRuntimeIdentifier(_platform);
-        var platformName = BunRuntimeResolver.GetDownloadName(_platform);
-        var executableName = BunRuntimeResolver.GetExecutableName(_platform);
-
-        // Create the full runtime path: runtimeDirectory/runtimeId/native
-        var fullRuntimePath = Path.Combine(runtimeDirectory, runtimeId, "native");
-        var bunExecutablePath = Path.Combine(fullRuntimePath, executableName);
-        var versionMarkerPath = GetVersionMarkerPath(bunExecutablePath);
-        var hasExplicitVersion = !string.IsNullOrWhiteSpace(version);
-
-        // Check if a runtime matching the requested version is already cached.
-        // "latest" is never trusted here - it must always ask GitHub whether it moved.
-        if (hasExplicitVersion && IsCacheValidForVersion(bunExecutablePath, versionMarkerPath, version!))
-        {
-            // Verify it's executable on Unix
-            _log.LogMessage($"Bun {version} is already cached at {bunExecutablePath}. Skipping download.");
-            _chmodProvider.EnsureExecutablePermissions(bunExecutablePath);
-            return bunExecutablePath;
-        }
-
-        _fileSystem.Directory.CreateDirectory(fullRuntimePath);
-        var stagedExecutablePath = CreateStagedExecutablePath(fullRuntimePath, executableName);
-
-        if (hasExplicitVersion)
-        {
-            var (downloadUrl, checksumsUrl) = BuildDownloadUrls(platformName, version);
-            await DownloadAndExtractAsync(downloadUrl, checksumsUrl, stagedExecutablePath, platformName, executableName);
-
-            var publishedPath = PublishStagedExecutable(stagedExecutablePath, bunExecutablePath);
-            WriteVersionMarker(versionMarkerPath, version!);
-            return publishedPath;
-        }
-
-        var (latestDownloadUrl, latestChecksumsUrl) = BuildDownloadUrls(platformName, null);
-        return await ResolveAndDownloadLatestAsync(latestDownloadUrl, latestChecksumsUrl, bunExecutablePath, versionMarkerPath, stagedExecutablePath, platformName, executableName);
-    }
+    /// <remarks>
+    /// Delegates to <see cref="DownloadRuntime"/> on a dedicated pooled thread via <c>Task.Run</c>, rather than
+    /// reimplementing it as a genuinely asynchronous method. The mutex this acquires is thread-affine - released
+    /// only by the thread that acquired it - so the whole critical section must run start-to-finish on one
+    /// thread. <c>Task.Run</c> gives it exactly that thread for the mutex's entire lifetime while still freeing
+    /// the caller's thread, which a truly `async` version spanning real `await`s could not guarantee.
+    /// </remarks>
+    public Task<string> DownloadRuntimeAsync(string runtimeDirectory, string? version = null, int mutexTimeoutSeconds = 300)
+        => Task.Run(() => DownloadRuntime(runtimeDirectory, version, mutexTimeoutSeconds));
 
     /// <summary>
     /// Creates an HttpClient configured for downloading Bun runtimes.
@@ -248,7 +221,9 @@ public sealed class BunDownloader
     /// </summary>
     private async Task DownloadAndExtractAsync(string downloadUrl, string checksumsUrl, string stagedExecutablePath, string platformName, string executableName)
     {
-        using var response = await _httpClient.GetAsync(downloadUrl);
+        // ResponseHeadersRead avoids buffering the whole ~60-94 MB archive in memory before it can be
+        // streamed to disk, which the default ResponseContentRead would do.
+        using var response = await _httpClient.GetAsync(downloadUrl, HttpCompletionOption.ResponseHeadersRead);
         await ExtractResponseToStagedExecutableAsync(response, downloadUrl, checksumsUrl, stagedExecutablePath, platformName, executableName);
     }
 
@@ -323,15 +298,26 @@ public sealed class BunDownloader
 
         try
         {
-            using (var fileStream = _fileSystem.File.Create(tempZipPath))
+            // Hashed in the same pass as the write, via CryptoStream, rather than reading the ~60-94 MB
+            // archive back off disk afterward just to hash it. That second full read used to double the
+            // disk I/O for every download.
+            string actualHash;
+            using (var sha256 = SHA256.Create())
             {
-                await response.Content.CopyToAsync(fileStream);
+                using (var fileStream = _fileSystem.File.Create(tempZipPath))
+                using (var hashingStream = new CryptoStream(fileStream, sha256, CryptoStreamMode.Write))
+                {
+                    await response.Content.CopyToAsync(hashingStream);
+                    hashingStream.FlushFinalBlock();
+                }
+
+                actualHash = BitConverter.ToString(sha256.Hash!).Replace("-", "");
             }
 
             // Verify against upstream's published SHA-256 sums before touching the archive. Bun publishes
             // SHASUMS256.txt alongside every release; checking it catches corrupt or mismatched archive
             // downloads before they are extracted into a consumer build.
-            await VerifyChecksumAsync(tempZipPath, checksumsUrl, platformName);
+            await VerifyChecksumAsync(actualHash, checksumsUrl, platformName);
 
             // Extract the zip file
             // The zip contains a folder like "bun-windows-x64-baseline/bun.exe"
@@ -398,9 +384,10 @@ public sealed class BunDownloader
     }
 
     /// <summary>
-    /// Verifies a downloaded archive against the SHA-256 sum GitHub publishes alongside each Bun release.
+    /// Verifies an already-computed archive hash against the SHA-256 sum GitHub publishes alongside each
+    /// Bun release.
     /// </summary>
-    private async Task VerifyChecksumAsync(string zipPath, string checksumsUrl, string platformName)
+    private async Task VerifyChecksumAsync(string actualHash, string checksumsUrl, string platformName)
     {
         var archiveName = $"{platformName}.zip";
         string checksumsText;
@@ -429,13 +416,6 @@ public sealed class BunDownloader
             throw new InvalidDataException($"No checksum entry for '{archiveName}' in {checksumsUrl}.");
         }
 
-        string actualHash;
-        using (var sha256 = SHA256.Create())
-        using (var stream = _fileSystem.File.OpenRead(zipPath))
-        {
-            actualHash = BitConverter.ToString(sha256.ComputeHash(stream)).Replace("-", "");
-        }
-
         if (!expectedHash.Equals(actualHash, StringComparison.OrdinalIgnoreCase))
         {
             throw new InvalidDataException(
@@ -443,7 +423,7 @@ public sealed class BunDownloader
         }
     }
 
-    private string PublishStagedExecutable(string stagedExecutablePath, string bunExecutablePath)
+    internal string PublishStagedExecutable(string stagedExecutablePath, string bunExecutablePath)
     {
         try
         {
@@ -472,8 +452,9 @@ public sealed class BunDownloader
             }
             catch (IOException) when (_fileSystem.File.Exists(bunExecutablePath))
             {
-                // Another concurrent caller (e.g. two unsynchronized DownloadRuntimeAsync calls for the
-                // same version) already published a file at this path.
+                // Another concurrent caller already published a file at this path - e.g. a mutex abandoned
+                // by a crashed process, or two hosts sharing a network path where the named mutex (which is
+                // process/session scoped) does not reach across machines.
                 return bunExecutablePath;
             }
 
