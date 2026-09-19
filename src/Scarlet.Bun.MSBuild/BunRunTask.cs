@@ -362,8 +362,12 @@ public class BunRunTask : Task
 
             // A null Data is how the framework signals end-of-stream, which is what the drain below waits on.
             // Accumulating stays outside the gate: it is independently thread-safe, and a late line landing in
-            // a buffer nobody reads is harmless. Only the two things that must not outlive the task - touching
-            // the events disposed below, and logging - go through it.
+            // a buffer nobody reads is harmless. Only the two things that must not outlive the task - signalling
+            // the events and logging - go through it.
+            //
+            // Neither handler may touch `process`. It is disposed as control leaves the try, while these can
+            // still fire, so reaching for something like process.Id here would hit a disposed object on a
+            // thread-pool thread - which terminates the build. Nothing tests this; it only holds by inspection.
             process.OutputDataReceived += (_, e) =>
             {
                 if (e.Data == null)
