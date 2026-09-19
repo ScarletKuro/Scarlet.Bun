@@ -7,6 +7,7 @@
          Conditional so a project can opt into download mode (or point somewhere else) before importing this file. -->
     <BunRuntimeDirectory Condition="'$(BunRuntimeDirectory)' == ''">$(_BunTaskProjectDir)bin\runtimes</BunRuntimeDirectory>
     <BunContinueOnError Condition="'$(BunContinueOnError)' == ''">false</BunContinueOnError>
+    <BunCaptureOutput Condition="'$(BunCaptureOutput)' == ''">true</BunCaptureOutput>
   </PropertyGroup>
 
   <!-- Using TaskHostFactory ensures that the task assembly will not be locked at the end of the build.
@@ -33,6 +34,11 @@
                 WorkingDirectory="$(BunWorkingDirectory)"
                 TimeoutMilliseconds="$(BunTimeoutMilliseconds)"
                 ContinueOnError="$(BunContinueOnError)"
+                CaptureOutput="$(BunCaptureOutput)"
+                Inputs="$(BunInputs)"
+                Outputs="$(BunOutputs)"
+                StampFile="$(BunStampFile)"
+                StampDirectory="$(BunStampDirectory)"
                 RuntimeDirectory="$(BunRuntimeDirectory)"
                 BunRuntimeDownload="$(BunRuntimeDownload)"
                 BunVersionDownload="$(BunVersionDownload)"
@@ -47,6 +53,7 @@
       <Output TaskParameter="ExitCode" PropertyName="BunExitCode" />
       <Output TaskParameter="StandardOutput" PropertyName="BunStandardOutput" />
       <Output TaskParameter="StandardError" PropertyName="BunStandardError" />
+      <Output TaskParameter="StampFilePath" ItemName="FileWrites" Condition="'$(BunInputs)' != '' AND '$(BunOutputs)' != ''" />
     </BunRunTask>
   </Target>
 
@@ -63,11 +70,22 @@
           BeforeTargets="DispatchToInnerBuilds;ResolveProjectStaticWebAssets;PreBuildEvent"
           DependsOnTargets="ResolveProjectReferences"
           Condition="'@(BunBeforeStaticWebAssets)' != '' AND '$(NoBuild)' != 'true' AND ('$(TargetFrameworks)' == '' OR '$(TargetFramework)' == '')">
+    <PropertyGroup>
+      <!--
+        Path.Combine returns the second argument unchanged when it is already rooted, so this is correct
+        for a relocated BaseIntermediateOutputPath or an artifacts layout as well as the usual obj\<cfg>\<tfm>\.
+      -->
+      <_BunStampDirectory Condition="'$(_BunStampDirectory)' == '' AND '$(IntermediateOutputPath)' != ''">$([System.IO.Path]::GetFullPath($([System.IO.Path]::Combine('$(MSBuildProjectDirectory)', '$(IntermediateOutputPath)', 'Scarlet.Bun'))))</_BunStampDirectory>
+    </PropertyGroup>
+
     <ItemGroup>
       <_BunBeforeStaticWebAssetsStep Include="@(BunBeforeStaticWebAssets)">
         <WorkingDirectory Condition="'%(BunBeforeStaticWebAssets.WorkingDirectory)' == ''">$(MSBuildProjectDirectory)</WorkingDirectory>
         <TimeoutMilliseconds Condition="'%(BunBeforeStaticWebAssets.TimeoutMilliseconds)' == ''">$(BunTimeoutMilliseconds)</TimeoutMilliseconds>
         <ContinueOnError Condition="'%(BunBeforeStaticWebAssets.ContinueOnError)' == ''">$(BunContinueOnError)</ContinueOnError>
+        <Inputs Condition="'%(BunBeforeStaticWebAssets.Inputs)' != ''">%(BunBeforeStaticWebAssets.Inputs)</Inputs>
+        <Outputs Condition="'%(BunBeforeStaticWebAssets.Outputs)' != ''">%(BunBeforeStaticWebAssets.Outputs)</Outputs>
+        <StampFile Condition="'%(BunBeforeStaticWebAssets.StampFile)' != ''">%(BunBeforeStaticWebAssets.StampFile)</StampFile>
       </_BunBeforeStaticWebAssetsStep>
     </ItemGroup>
 
@@ -76,6 +94,11 @@
                 WorkingDirectory="%(_BunBeforeStaticWebAssetsStep.WorkingDirectory)"
                 TimeoutMilliseconds="%(_BunBeforeStaticWebAssetsStep.TimeoutMilliseconds)"
                 ContinueOnError="%(_BunBeforeStaticWebAssetsStep.ContinueOnError)"
+                CaptureOutput="false"
+                Inputs="%(_BunBeforeStaticWebAssetsStep.Inputs)"
+                Outputs="%(_BunBeforeStaticWebAssetsStep.Outputs)"
+                StampFile="%(_BunBeforeStaticWebAssetsStep.StampFile)"
+                StampDirectory="$(_BunStampDirectory)"
                 RuntimeDirectory="$(BunRuntimeDirectory)"
                 BunRuntimeDownload="$(BunRuntimeDownload)"
                 BunVersionDownload="$(BunVersionDownload)"
@@ -86,7 +109,9 @@
                 BunRuntime_linux_x64="$(BunRuntime_linux_x64)"
                 BunRuntime_linux_arm64="$(BunRuntime_linux_arm64)"
                 BunRuntime_osx_x64="$(BunRuntime_osx_x64)"
-                BunRuntime_osx_arm64="$(BunRuntime_osx_arm64)" />
+                BunRuntime_osx_arm64="$(BunRuntime_osx_arm64)">
+      <Output TaskParameter="StampFilePath" ItemName="FileWrites" />
+    </BunRunTask>
 
     <!--
       Bun wrote these after MSBuild evaluated the project, so the SDK's own wwwroot glob missed them.

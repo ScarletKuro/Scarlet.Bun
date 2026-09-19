@@ -197,6 +197,81 @@ public class BunBeforeStaticWebAssetsTests
     /// A Razor Class Library is the strictest case: its wwwroot files have to be packed under
     /// staticwebassets/ for a consuming app to serve them.
     /// </summary>
+    /// <summary>
+    /// Drives incremental skipping through MSBuild rather than by constructing the task directly, because the
+    /// item metadata has to reach the task's parameters for any of it to happen.
+    /// </summary>
+    /// <remarks>
+    /// Deleting the Inputs and Outputs attributes from both targets files leaves every task-level incremental
+    /// test passing: the feature degrades to "always runs", which no assertion anywhere notices. This is the
+    /// test that fails when that plumbing breaks.
+    /// </remarks>
+    [Fact]
+    public async Task IncrementalMetadata_SkipsUnchangedStepsAndRerunsAfterASourceChange()
+    {
+        using var workspace = CreateRazorClassLibrary(
+            """
+            <BunBeforeStaticWebAssets Include="run">
+              <Arguments>build.mjs</Arguments>
+              <Inputs>assets/app.js</Inputs>
+              <Outputs>wwwroot/css/generated.css</Outputs>
+            </BunBeforeStaticWebAssets>
+            """);
+
+        workspace.WriteFile("assets/app.js", "// v1");
+
+        Assert.Equal(1, await BuildAndCountBunRuns(workspace));
+        Assert.Equal(0, await BuildAndCountBunRuns(workspace));
+
+        workspace.WriteFile("assets/app.js", "// v2");
+        Assert.Equal(1, await BuildAndCountBunRuns(workspace));
+
+        // The stamp belongs to the project's intermediate output, not a stray obj beside the working
+        // directory, and is registered as a FileWrite so a clean takes it with everything else.
+        var stamp = Assert.Single(Directory.GetFiles(
+            workspace.PathTo("obj"), "*.stamp", SearchOption.AllDirectories));
+        Assert.Contains($"Scarlet.Bun{Path.DirectorySeparatorChar}", stamp, StringComparison.Ordinal);
+
+        var clean = await RunDotnet(workspace, $"clean --configuration {DotnetCli.Configuration}");
+        Assert.Equal(0, clean.ExitCode);
+        Assert.False(File.Exists(stamp), "dotnet clean should remove the incremental stamp.");
+    }
+
+    /// <summary>
+    /// A skipped step still has to leave a correct package behind: the generated files were produced by an
+    /// earlier build, and it is the target's Content re-add - not the Bun run - that carries them into the
+    /// static web assets pipeline.
+    /// </summary>
+    [Fact]
+    public async Task IncrementalSkip_StillPacksTheGeneratedStaticWebAssets()
+    {
+        using var workspace = CreateRazorClassLibrary(
+            """
+            <BunBeforeStaticWebAssets Include="run">
+              <Arguments>build.mjs</Arguments>
+              <Inputs>assets/app.js</Inputs>
+              <Outputs>wwwroot/css/generated.css</Outputs>
+            </BunBeforeStaticWebAssets>
+            """);
+
+        workspace.WriteFile("assets/app.js", "// v1");
+
+        Assert.Equal(1, await BuildAndCountBunRuns(workspace));
+        Assert.Equal(0, await BuildAndCountBunRuns(workspace));
+
+        await Pack(workspace);
+
+        Assert.Equal(1, CountPackageEntries(workspace, $"staticwebassets/{GeneratedAsset}"));
+    }
+
+    private async Task<int> BuildAndCountBunRuns(TempWorkspace workspace)
+    {
+        var result = await RunDotnet(workspace, $"build --configuration {DotnetCli.Configuration} --verbosity normal");
+        Assert.Equal(0, result.ExitCode);
+
+        return result.Output.Split('\n').Count(line => line.Contains("Executing: bun ", StringComparison.Ordinal));
+    }
+
     private TempWorkspace CreateRazorClassLibrary(string steps)
     {
         var workspace = TempWorkspace.Create("static-web-assets");

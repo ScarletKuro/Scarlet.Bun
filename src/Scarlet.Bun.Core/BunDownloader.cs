@@ -390,25 +390,28 @@ public sealed class BunDownloader
     private async Task VerifyChecksumAsync(string actualHash, string checksumsUrl, string platformName)
     {
         var archiveName = $"{platformName}.zip";
-        string checksumsText;
+        string? expectedHash = null;
         try
         {
-            checksumsText = await _httpClient.GetStringAsync(checksumsUrl);
+            using var response = await _httpClient.GetAsync(checksumsUrl, HttpCompletionOption.ResponseHeadersRead);
+            EnsureSuccessOrThrow(response, checksumsUrl);
+
+            using var checksumsStream = await response.Content.ReadAsStreamAsync();
+            using var reader = new StreamReader(checksumsStream);
+            string? line;
+            while ((line = await reader.ReadLineAsync()) is not null)
+            {
+                var parts = line.Trim().Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length >= 2 && parts[parts.Length - 1].Equals(archiveName, StringComparison.Ordinal))
+                {
+                    expectedHash = parts[0];
+                    break;
+                }
+            }
         }
-        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
+        catch (Exception ex) when (ex is HttpRequestException or IOException or TaskCanceledException)
         {
             throw new InvalidDataException($"Failed to download checksums from {checksumsUrl}.", ex);
-        }
-
-        string? expectedHash = null;
-        foreach (var line in checksumsText.Split('\n'))
-        {
-            var parts = line.Trim().Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
-            if (parts.Length >= 2 && parts[parts.Length - 1].Equals(archiveName, StringComparison.Ordinal))
-            {
-                expectedHash = parts[0];
-                break;
-            }
         }
 
         if (expectedHash is null)

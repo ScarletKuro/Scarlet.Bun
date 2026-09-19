@@ -284,12 +284,21 @@ the Bun steps as `BunBeforeStaticWebAssets` items:
 
 ```xml
 <ItemGroup>
+  <BunInstallInputs Include="package.json" />
+  <BunInstallInputs Include="bun.lock" Condition="Exists('$(MSBuildProjectDirectory)\bun.lock')" />
+  <BunBuildInputs Include="build.mjs;assets\scripts\**\*.js;assets\styles\**\*.scss" />
+  <BunBuildOutputs Include="wwwroot\js\bundle.min.js;wwwroot\css\site.min.css" />
+
   <BunBeforeStaticWebAssets Include="install">
     <Arguments>--frozen-lockfile</Arguments>
+    <Inputs>@(BunInstallInputs)</Inputs>
+    <Outputs>node_modules</Outputs>
   </BunBeforeStaticWebAssets>
 
   <BunBeforeStaticWebAssets Include="run">
     <Arguments>build.mjs</Arguments>
+    <Inputs>@(BunBuildInputs)</Inputs>
+    <Outputs>@(BunBuildOutputs)</Outputs>
   </BunBeforeStaticWebAssets>
 </ItemGroup>
 ```
@@ -297,6 +306,25 @@ the Bun steps as `BunBeforeStaticWebAssets` items:
 These steps run once before the .NET static web assets SDK discovers files in `wwwroot`. Generated files
 are added back to the build as `Content`, so clean builds, fingerprinting, publish and NuGet packing see
 the assets without a custom target.
+
+`Inputs` and `Outputs` are optional. When both are present, the task writes a success stamp after Bun exits
+with code 0. Later builds skip the step only when every output still exists, that stamp is newer than every
+input, and the stamp still matches the current command, arguments, working directory, inputs and outputs.
+This avoids repeated `bun install` and asset build work on no-op builds. The stamp also records how the Bun
+runtime is selected, so changing `BunVersionDownload`, `BunRuntimeDirectory` or the runtime packages re-runs
+the step rather than keeping bundles produced by the previous Bun. A directory named in `Inputs` is walked
+recursively, so editing a file in place invalidates the step — a directory's own timestamp only moves when
+an entry is added or removed, which would otherwise leave you with silently stale output.
+
+By default the stamp lives under `Scarlet.Bun` inside the project's `$(IntermediateOutputPath)`, so
+`dotnet clean` removes it; set `StampFile` to choose a specific location. Output is still logged, but
+`BunBeforeStaticWebAssets` does not retain stdout and stderr in memory because those output properties are
+not used by the static web assets helper — the last 50 lines of stderr are still included in the failure
+message so a failing step stays diagnosable at any verbosity.
+
+> Incremental skipping compares timestamps, so it cannot see a change it was not told about. List every file
+> the step reads in `Inputs`. In download mode without a pinned `BunVersionDownload`, "latest" moving is also
+> invisible to the stamp — pin the version if you need that to invalidate.
 
 If you need to sequence another target after these steps, use `AfterTargets="RunBunBeforeStaticWebAssets"`.
 
@@ -424,6 +452,9 @@ long-lived process is a further option, at the cost of managing that process's l
 | `WorkingDirectory` | No | Working directory for command execution. Generated assets must still land in the project's `wwwroot` to be discovered | `$(MSBuildProjectDirectory)` |
 | `TimeoutMilliseconds` | No | Timeout in milliseconds (`0` = no timeout) | `$(BunTimeoutMilliseconds)` |
 | `ContinueOnError` | No | Whether to continue the build if this step fails | `$(BunContinueOnError)` |
+| `Inputs` | No | Semicolon-separated files or directories compared against the success stamp. Directories are walked recursively | "" |
+| `Outputs` | No | Semicolon-separated files or directories that must exist before the step can skip | "" |
+| `StampFile` | No | File recording the last successful incremental run. Defaults to a generated file under `Scarlet.Bun` in `$(IntermediateOutputPath)` | generated |
 
 ### Task Parameters
 
@@ -438,6 +469,10 @@ The `BunRunTask` supports the following parameters:
 | `RuntimePacks` | No | The Bun runtimes available to the build, normally `@(BunRuntimePack)`. See [How the Runtime Is Discovered](#how-the-runtime-is-discovered). | empty |
 | `TimeoutMilliseconds` | No | Timeout in milliseconds (0 = no timeout) | 0 |
 | `ContinueOnError` | No | Whether to continue build if command fails | false |
+| `CaptureOutput` | No | Whether to retain stdout/stderr in `StandardOutput` and `StandardError`. Output is still logged when this is false. | true |
+| `Inputs` | No | Semicolon-separated files or directories compared against the success stamp. Directories are walked recursively | null |
+| `Outputs` | No | Semicolon-separated files or directories that must exist before the task can skip | null |
+| `StampFile` | No | File recording a successful incremental run. Used only when `Inputs` and `Outputs` are both set. | generated |
 | `BunRuntimeDownload` | No | When true, downloads the Bun runtime from GitHub releases instead of using embedded runtimes | false |
 | `BunVersionDownload` | No | Specific Bun version to download (e.g., "1.3.6"). If not specified, downloads latest version. Only used when `BunRuntimeDownload=true`. | latest |
 | `DownloadMutexTimeoutSeconds` | No | Maximum seconds to wait for the download mutex when another process is already downloading. Only used when `BunRuntimeDownload=true`. | 300 |
