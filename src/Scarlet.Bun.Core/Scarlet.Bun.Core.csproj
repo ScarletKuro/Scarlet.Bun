@@ -4,6 +4,7 @@
     <TargetFramework>netstandard2.0</TargetFramework>
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
 
     <!-- Shared implementation for Scarlet.Bun.MSBuild and Scarlet.Bun.Cli.
          It is never published on its own: the MSBuild package hand-packs this assembly into

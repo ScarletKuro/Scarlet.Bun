@@ -1,5 +1,4 @@
 using System.ComponentModel;
-using Scarlet.Bun.Core;
 
 namespace Scarlet.Bun.Cli;
 

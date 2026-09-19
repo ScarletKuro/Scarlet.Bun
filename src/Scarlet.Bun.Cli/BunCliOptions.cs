@@ -165,7 +165,7 @@ internal sealed class BunCliOptions
         var overridden = environment.GetVariable(CacheVariable)?.Trim();
         if (!string.IsNullOrEmpty(overridden))
         {
-            return overridden!;
+            return overridden;
         }
 
         var home = environment.HomeDirectory;
@@ -194,7 +194,7 @@ internal sealed class BunCliOptions
             return null;
         }
 
-        var parts = new List<string> { root! };
+        var parts = new List<string> { root };
         parts.AddRange(segments);
         parts.Add("ScarletKuro");
         parts.Add("Scarlet.Bun");
@@ -214,7 +214,7 @@ internal sealed class BunCliOptions
             return false;
         }
 
-        var trimmed = value!.Trim();
+        var trimmed = value.Trim();
 
         return trimmed is "1"
             || string.Equals(trimmed, "true", StringComparison.OrdinalIgnoreCase)
@@ -224,7 +224,7 @@ internal sealed class BunCliOptions
     private static int ReadTimeout(string? value)
     {
         if (!string.IsNullOrWhiteSpace(value)
-            && int.TryParse(value!.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var seconds)
+            && int.TryParse(value.Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var seconds)
             && seconds > 0)
         {
             return seconds;

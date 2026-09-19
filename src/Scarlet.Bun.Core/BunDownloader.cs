@@ -155,11 +155,11 @@ public sealed class BunDownloader
     /// <param name="mutexTimeoutSeconds">Maximum seconds to wait for the download mutex. Defaults to 300 (5 minutes).</param>
     /// <returns>Path to the downloaded Bun executable.</returns>
     /// <remarks>
-    /// Delegates to <see cref="DownloadRuntime"/> on a dedicated pooled thread via <see cref="Task.Run(Func{string})"/>,
-    /// rather than reimplementing it as a genuinely asynchronous method. The mutex this acquires is thread-affine -
-    /// released only by the thread that acquired it - so the whole critical section must run start-to-finish on one
-    /// thread. <see cref="Task.Run(Func{string})"/> gives it exactly that thread for the mutex's entire lifetime while
-    /// still freeing the caller's thread, which a truly `async` version spanning real `await`s could not guarantee.
+    /// Delegates to <see cref="DownloadRuntime"/> on a dedicated pooled thread via <c>Task.Run</c>, rather than
+    /// reimplementing it as a genuinely asynchronous method. The mutex this acquires is thread-affine - released
+    /// only by the thread that acquired it - so the whole critical section must run start-to-finish on one
+    /// thread. <c>Task.Run</c> gives it exactly that thread for the mutex's entire lifetime while still freeing
+    /// the caller's thread, which a truly `async` version spanning real `await`s could not guarantee.
     /// </remarks>
     public Task<string> DownloadRuntimeAsync(string runtimeDirectory, string? version = null, int mutexTimeoutSeconds = 300)
         => Task.Run(() => DownloadRuntime(runtimeDirectory, version, mutexTimeoutSeconds));

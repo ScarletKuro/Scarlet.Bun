@@ -8,6 +8,7 @@
     <LangVersion>latest</LangVersion>
     <RootNamespace>Scarlet.Bun.Cli</RootNamespace>
     <InvariantGlobalization>true</InvariantGlobalization>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
 
     <!-- Required by LibraryImport in PosixInterop: the source generator emits unsafe marshalling stubs
          (SYSLIB1062). The only unsafe code in this project is that generated interop. -->
