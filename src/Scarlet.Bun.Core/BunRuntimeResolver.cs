@@ -297,7 +297,7 @@ public static class BunRuntimeResolver
     /// </summary>
     /// <param name="fileSystem">File system abstraction.</param>
     /// <param name="chmodProvider">Provider for setting executable permissions.</param>
-    /// <param name="platform">Target platform. If null, uses current platform.</param>
+    /// <param name="platform">Target platform.</param>
     /// <param name="runtimeDirectory">Optional explicit runtime directory. When set, it wins over <paramref name="runtimePacks"/>.</param>
     /// <param name="runtimePacks">Runtime packs contributed by the referenced runtime packages.</param>
     /// <param name="log">Optional sink for diagnostic messages about the selection.</param>
@@ -306,31 +306,29 @@ public static class BunRuntimeResolver
     public static string ResolveBunExecutable(
         IFileSystem fileSystem,
         IChmodProvider chmodProvider,
-        Platform? platform = null,
+        Platform platform,
         string? runtimeDirectory = null,
         IReadOnlyList<BunRuntimePack>? runtimePacks = null,
         Action<string>? log = null)
     {
-        var targetPlatform = platform ?? GetCurrentPlatform();
-
         // An explicit directory is a deliberate override, so it is never second-guessed against the packs.
         if (!string.IsNullOrEmpty(runtimeDirectory))
         {
-            return ResolveFromDirectory(fileSystem, chmodProvider, targetPlatform, runtimeDirectory!);
+            return ResolveFromDirectory(fileSystem, chmodProvider, platform, runtimeDirectory!);
         }
 
-        var candidates = SelectPacks(runtimePacks, targetPlatform);
+        var candidates = SelectPacks(runtimePacks, platform);
         var searched = new List<string>();
 
         foreach (var candidate in candidates)
         {
-            var candidatePath = GetExecutablePath(candidate.RuntimesPath, targetPlatform);
+            var candidatePath = GetExecutablePath(candidate.RuntimesPath, platform);
 
             if (fileSystem.File.Exists(candidatePath))
             {
                 if (candidates.Count > 1)
                 {
-                    log?.Invoke($"Selected Bun runtime pack {candidate} out of {candidates.Count} candidates for {GetRuntimeIdentifier(targetPlatform)}.");
+                    log?.Invoke($"Selected Bun runtime pack {candidate} out of {candidates.Count} candidates for {GetRuntimeIdentifier(platform)}.");
                 }
                 else
                 {
@@ -346,8 +344,8 @@ public static class BunRuntimeResolver
         }
 
         throw new FileNotFoundException(candidates.Count > 0
-            ? BuildIncompletePackMessage(targetPlatform, candidates, searched)
-            : BuildMissingPackMessage(targetPlatform, runtimePacks));
+            ? BuildIncompletePackMessage(platform, candidates, searched)
+            : BuildMissingPackMessage(platform, runtimePacks));
     }
 
     /// <summary>

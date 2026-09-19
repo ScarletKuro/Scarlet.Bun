@@ -15,9 +15,15 @@ public class BunRuntimeResolverTests
     [Fact]
     public void ResolveBunExecutable_WithNoRuntimeDirectory_ShouldThrowFileNotFoundException()
     {
+        var platform = BunRuntimeResolver.GetCurrentPlatform();
+
         // Act & Assert
         var exception = Assert.Throws<FileNotFoundException>(() =>
-            BunRuntimeResolver.ResolveBunExecutable(new MockFileSystem(), NoOpChmodProvider.Instance, runtimeDirectory: null));
+            BunRuntimeResolver.ResolveBunExecutable(
+                new MockFileSystem(),
+                NoOpChmodProvider.Instance,
+                platform,
+                runtimeDirectory: null));
         Assert.Contains("Bun runtime package not found", exception.Message);
         Assert.Contains("Scarlet.Bun.Runtime", exception.Message);
     }
@@ -74,9 +80,14 @@ public class BunRuntimeResolverTests
     [Fact]
     public void ResolveBunExecutable_WithInvalidPath_ShouldThrowException()
     {
+        var platform = BunRuntimeResolver.GetCurrentPlatform();
+
         // Act & Assert
         Assert.ThrowsAny<Exception>(() =>
-            BunRuntimeResolver.ResolveBunExecutable(new MockFileSystem(), NoOpChmodProvider.Instance));
+            BunRuntimeResolver.ResolveBunExecutable(
+                new MockFileSystem(),
+                NoOpChmodProvider.Instance,
+                platform));
     }
 
     [Fact]
