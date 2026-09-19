@@ -39,10 +39,13 @@ if (-not $needsDownload) {
   exit 0
 }
 
-$downloadUrl = "https://github.com/oven-sh/bun/releases/download/bun-v$($BunVersion)/$($DownloadFilename)"
+$releaseUrl = "https://github.com/oven-sh/bun/releases/download/bun-v$($BunVersion)"
+$downloadUrl = "$releaseUrl/$($DownloadFilename)"
+$checksumsUrl = "$releaseUrl/SHASUMS256.txt"
 # Unique temp paths so parallel project builds never collide.
 $unique = [System.Guid]::NewGuid().ToString('N').Substring(0, 8)
 $tempZip = Join-Path $env:TEMP "bun-$unique.zip"
+$tempSums = Join-Path $env:TEMP "bun-shasums-$unique.txt"
 
 # Extract into a temp directory, NEVER next to $ExecutablePath. Extracting into the project directory made
 # the search below find the binary it was about to replace, so the move was skipped as a no-op and a stale
@@ -52,6 +55,25 @@ $tempExtract = Join-Path $env:TEMP "bun-extract-$unique"
 try {
   Write-Host "Downloading Bun from $downloadUrl"
   Invoke-WebRequest -Uri $downloadUrl -OutFile $tempZip -UseBasicParsing
+
+  # Verify the download against upstream's published SHA-256 sums before touching the archive. Bun publishes
+  # SHASUMS256.txt alongside every release; checking it catches corrupt or mismatched archive downloads
+  # before they are packaged into consumer builds.
+  Write-Host "Downloading checksums from $checksumsUrl"
+  Invoke-WebRequest -Uri $checksumsUrl -OutFile $tempSums -UseBasicParsing
+
+  $escapedFilename = [regex]::Escape($DownloadFilename)
+  $sumLine = Select-String -Path $tempSums -Pattern "^\S+\s+$escapedFilename$" | Select-Object -First 1
+  if (-not $sumLine) {
+    throw "No checksum entry for '$DownloadFilename' in $checksumsUrl"
+  }
+  $expectedSha256 = ($sumLine.Line -split '\s+')[0]
+
+  $actualSha256 = (Get-FileHash -Path $tempZip -Algorithm SHA256).Hash
+  if ($actualSha256 -ne $expectedSha256) {
+    throw "Checksum mismatch for '$DownloadFilename'. Expected $expectedSha256, got $actualSha256."
+  }
+  Write-Host "Checksum verified: $actualSha256"
 
   Write-Host "Extracting to $tempExtract"
   New-Item -ItemType Directory -Path $tempExtract -Force | Out-Null
@@ -81,5 +103,6 @@ try {
 }
 finally {
   Remove-Item -Path $tempZip -Force -ErrorAction SilentlyContinue
+  Remove-Item -Path $tempSums -Force -ErrorAction SilentlyContinue
   Remove-Item -Path $tempExtract -Recurse -Force -ErrorAction SilentlyContinue
 }

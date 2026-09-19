@@ -33,15 +33,13 @@ public sealed class GitHubLatestVersionResolver : ILatestVersionResolver
     /// </param>
     internal GitHubLatestVersionResolver(HttpMessageHandler handler)
     {
-        _handler = handler ?? throw new ArgumentNullException(nameof(handler));
+        _handler = handler;
     }
 
     public async Task<string?> TryResolveVersionAsync(string latestDownloadUrl, CancellationToken cancellationToken = default)
     {
-        using var client = new HttpClient(_handler ?? new HttpClientHandler { AllowAutoRedirect = false }, disposeHandler: _handler is null)
-        {
-            Timeout = TimeSpan.FromSeconds(30)
-        };
+        using var client = new HttpClient(_handler ?? new HttpClientHandler { AllowAutoRedirect = false }, disposeHandler: _handler is null);
+        client.Timeout = TimeSpan.FromSeconds(30);
         client.DefaultRequestHeaders.Add("User-Agent", "Scarlet.Bun");
 
         using var response = await client.GetAsync(latestDownloadUrl, HttpCompletionOption.ResponseHeadersRead, cancellationToken);

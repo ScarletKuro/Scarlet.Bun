@@ -39,9 +39,6 @@
          trailing zero, so the usual case publishes as plain 1.4.2. -->
     <PackageId>Scarlet.Bun.Cli</PackageId>
     <Version>$(BunVersion).$(BunCliRevision)</Version>
-    <Title>Scarlet.Bun.Cli - Bun as a .NET tool</Title>
-    <Description>Run Bun, the fast all-in-one JavaScript runtime and bundler, as a .NET tool: `dotnet bun install`, `dotnet bun run build.mjs`. Platform-specific packages embed the matching Bun binary, so `dotnet tool restore` works offline and pins Bun through .config/dotnet-tools.json - no download, no network, hash-verified by NuGet. Every argument is forwarded to Bun verbatim.</Description>
-    <PackageTags>bun;bunjs;dotnet-tool;global-tool;cli;javascript;typescript;bundler;npm;node;sass;scss;frontend</PackageTags>
     <Authors>ScarletKuro</Authors>
     <RepositoryUrl>https://github.com/ScarletKuro/Scarlet.Bun</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
@@ -61,6 +58,25 @@
     <NoWarn>$(NoWarn);NU5128</NoWarn>
 
     <ContinuousIntegrationBuild Condition="'$(GITHUB_ACTIONS)' == 'true'">true</ContinuousIntegrationBuild>
+  </PropertyGroup>
+
+  <!--
+    Discovery metadata: only the pointer package (RuntimeIdentifier empty) should compete on nuget.org
+    search. The eight RID packages and 'any' are restore-time plumbing - never installed directly - but the
+    .NET SDK's tool-packaging target otherwise stamps every one of them with the pointer's own Title,
+    Description and PackageTags, verbatim. Since those RID packages are also transitively installed on
+    every restore of the pointer, they rack up the same "recent installs" signal NuGet's search ranking
+    leans on, and end up outranking the pointer for the exact keywords it needs to be found by. Same
+    RuntimeIdentifier condition already used for the README swap below.
+  -->
+  <PropertyGroup Condition="'$(RuntimeIdentifier)' == ''">
+    <Title>Scarlet.Bun.Cli - Bun as a .NET Tool</Title>
+    <Description>Run Bun, the fast all-in-one JavaScript runtime and bundler, as a .NET tool: `dotnet bun install`, `dotnet bun run build.mjs`. Platform-specific packages embed the matching Bun binary, so `dotnet tool restore` works offline and pins Bun through .config/dotnet-tools.json - no download, no network, hash-verified by NuGet. Every argument is forwarded to Bun verbatim.</Description>
+    <PackageTags>bun-cli;bun-tool;dotnet-bun;bun;bunjs;dotnet-tool;global-tool;cli;javascript;typescript;bundler;npm;node;sass;scss;frontend</PackageTags>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(RuntimeIdentifier)' != ''">
+    <Title>Scarlet.Bun.Cli runtime package ($(RuntimeIdentifier))</Title>
+    <Description>Internal runtime asset for Scarlet.Bun.Cli, resolved automatically via NuGet RID fallback. Do not install this package directly - install Scarlet.Bun.Cli instead.</Description>
   </PropertyGroup>
 
   <!--

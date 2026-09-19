@@ -174,4 +174,5 @@ For more information, see the [Bun License Documentation](https://bun.sh/docs/pr
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
+Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for how to build, test, and submit a
+Pull Request.

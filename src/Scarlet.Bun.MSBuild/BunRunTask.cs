@@ -173,12 +173,12 @@ public class BunRunTask : Task
                     using var httpClient = BunDownloader.CreateHttpClient();
                     var downloader = new BunDownloader(
                         httpClient,
+                        new GitHubLatestVersionResolver(),
                         fileSystem,
                         ZipArchiveProvider.Instance,
                         chmodProvider,
                         platform,
-                        new MsBuildBunLogger(Log),
-                        new GitHubLatestVersionResolver());
+                        new MsBuildBunLogger(Log));
                     bunPath = downloader.DownloadRuntime(RuntimeDirectory!, BunVersionDownload, DownloadMutexTimeoutSeconds);
 
                     Log.LogMessage(MessageImportance.High, $"Bun runtime ready at: {bunPath}");
