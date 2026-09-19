@@ -418,7 +418,7 @@ public sealed class BunDownloader
         }
     }
 
-    private string PublishStagedExecutable(string stagedExecutablePath, string bunExecutablePath)
+    internal string PublishStagedExecutable(string stagedExecutablePath, string bunExecutablePath)
     {
         try
         {

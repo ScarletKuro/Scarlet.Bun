@@ -316,6 +316,35 @@ public class BunDownloaderTests
     }
 
     [Fact]
+    public void PublishStagedExecutable_WhenAnotherCallerPublishesBetweenDeleteAndMove_ShouldSwallowMoveFailureAndReturnFinalPath()
+    {
+        // Covers the concurrent-publish fallback in PublishStagedExecutable. The mutex in DownloadRuntime is
+        // specifically designed to make this unreachable through the public API on a single machine (see its
+        // own remarks) - PublishStagedExecutable's own stale-file check would just delete a merely
+        // pre-existing final path before Move ever ran. To reach the fallback at all, the destination has to
+        // reappear *between* that delete and the Move call, which RaceInjectingFileSystem simulates.
+        var platform = Platform.LinuxX64;
+        var stagedPath = "/test-runtime/linux-x64/native/.bun.staged.tmp";
+        var finalPath = "/test-runtime/linux-x64/native/bun";
+
+        var mockFileSystem = new MockFileSystem();
+        mockFileSystem.AddFile(stagedPath, new MockFileData("staged bun executable"));
+        // A stale file here is what makes PublishStagedExecutable call Delete(finalPath) at all - that
+        // Delete is the hook RaceInjectingFileSystem uses to simulate the other caller's publish landing
+        // in the gap right after it.
+        mockFileSystem.AddFile(finalPath, new MockFileData("stale bun executable"));
+
+        var raceSimulatingFileSystem = new RaceInjectingFileSystem(mockFileSystem, finalPath, "published by another caller");
+        var downloader = new BunDownloader(new HttpClient(), new FakeLatestVersionResolver(null), raceSimulatingFileSystem, new FakeZipArchiveProvider(mockFileSystem), NoOpChmodProvider.Instance, platform, NoOpBunLogger.Instance);
+
+        var result = downloader.PublishStagedExecutable(stagedPath, finalPath);
+
+        Assert.Equal(finalPath, result);
+        Assert.Equal("published by another caller", mockFileSystem.File.ReadAllText(finalPath));
+        Assert.False(mockFileSystem.File.Exists(stagedPath), "The staged file must still be cleaned up.");
+    }
+
+    [Fact]
     public async Task DownloadRuntimeAsync_WhenPinnedVersionBumped_ShouldRedownloadAndUpdateMarker()
     {
         // Arrange
@@ -1134,6 +1163,62 @@ public class BunDownloaderTests
         public override void Post(SendOrPostCallback d, object? state)
         {
             new Thread(() => d(state)) { IsBackground = true }.Start();
+        }
+    }
+
+    /// <summary>
+    /// Wraps a <see cref="MockFileSystem"/>, swapping in <see cref="RaceInjectingFile"/> for
+    /// <see cref="IFileSystem.File"/> and forwarding everything else untouched.
+    /// </summary>
+    private sealed class RaceInjectingFileSystem : IFileSystem
+    {
+        private readonly MockFileSystem _inner;
+
+        public RaceInjectingFileSystem(MockFileSystem inner, string raceTargetPath, string raceContent)
+        {
+            _inner = inner;
+            File = new RaceInjectingFile(inner, raceTargetPath, raceContent);
+        }
+
+        public IFile File { get; }
+
+        public IDirectory Directory => _inner.Directory;
+        public IDirectoryInfoFactory DirectoryInfo => _inner.DirectoryInfo;
+        public IDriveInfoFactory DriveInfo => _inner.DriveInfo;
+        public IFileInfoFactory FileInfo => _inner.FileInfo;
+        public IFileStreamFactory FileStream => _inner.FileStream;
+        public IFileSystemWatcherFactory FileSystemWatcher => _inner.FileSystemWatcher;
+        public IFileVersionInfoFactory FileVersionInfo => _inner.FileVersionInfo;
+        public IPath Path => _inner.Path;
+    }
+
+    /// <summary>
+    /// Simulates another caller publishing <paramref name="_raceTargetPath"/> in the gap between
+    /// <see cref="BunDownloader"/>'s own stale-file <c>Delete</c> and its subsequent <c>Move</c> - the one
+    /// interleaving that makes <c>Move</c> throw <see cref="IOException"/> with the destination existing
+    /// again, which no amount of pre-seeding state before the call can reach on its own.
+    /// </summary>
+    private sealed class RaceInjectingFile : MockFile
+    {
+        private readonly MockFileSystem _inner;
+        private readonly string _raceTargetPath;
+        private readonly string _raceContent;
+
+        public RaceInjectingFile(MockFileSystem inner, string raceTargetPath, string raceContent) : base(inner)
+        {
+            _inner = inner;
+            _raceTargetPath = raceTargetPath;
+            _raceContent = raceContent;
+        }
+
+        public override void Delete(string path)
+        {
+            base.Delete(path);
+
+            if (path == _raceTargetPath)
+            {
+                _inner.AddFile(_raceTargetPath, new MockFileData(_raceContent));
+            }
         }
     }
 
