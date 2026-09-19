@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Abstractions;
+using System.Text;
 using Microsoft.Build.Framework;
 using Microsoft.Build.Utilities;
 using Scarlet.Bun.Core;
@@ -265,8 +266,8 @@ public class BunRunTask : Task
                 RedirectStandardError = true,
                 UseShellExecute = false,
                 CreateNoWindow = true,
-                StandardOutputEncoding = System.Text.Encoding.UTF8,
-                StandardErrorEncoding = System.Text.Encoding.UTF8
+                StandardOutputEncoding = Encoding.UTF8,
+                StandardErrorEncoding = Encoding.UTF8
             };
 
             if (!string.IsNullOrWhiteSpace(WorkingDirectory))
@@ -279,8 +280,8 @@ public class BunRunTask : Task
             using var process = new Process();
             process.StartInfo = processStartInfo;
 
-            System.Text.StringBuilder? outputData = CaptureOutput ? new System.Text.StringBuilder() : null;
-            System.Text.StringBuilder? errorData = CaptureOutput ? new System.Text.StringBuilder() : null;
+            var outputData = CaptureOutput ? new StringBuilder() : null;
+            var errorData = CaptureOutput ? new StringBuilder() : null;
 
             process.OutputDataReceived += (_, e) =>
             {
@@ -319,13 +320,9 @@ public class BunRunTask : Task
                     Log.LogError($"Command timed out after {TimeoutMilliseconds}ms");
                     return false;
                 }
+            }
 
-                process.WaitForExit();
-            }
-            else
-            {
-                process.WaitForExit();
-            }
+            process.WaitForExit();
 
             ExitCode = process.ExitCode;
             StandardOutput = outputData?.ToString();
