@@ -12,6 +12,7 @@
     <!-- Optional semicolon-separated inputs/outputs used by the reusable Bun target to skip up-to-date work -->
     <BunInputs Condition="'$(BunInputs)' == ''"></BunInputs>
     <BunOutputs Condition="'$(BunOutputs)' == ''"></BunOutputs>
+    <BunStampFile Condition="'$(BunStampFile)' == ''"></BunStampFile>
     
     <!-- Whether to download Bun runtime from GitHub releases instead of using embedded runtimes -->
     <!-- No default - must be explicitly set by the user -->

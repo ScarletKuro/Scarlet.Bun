@@ -284,7 +284,8 @@ the Bun steps as `BunBeforeStaticWebAssets` items:
 
 ```xml
 <ItemGroup>
-  <BunInstallInputs Include="package.json;bun.lock" />
+  <BunInstallInputs Include="package.json" />
+  <BunInstallInputs Include="bun.lock" Condition="Exists('$(MSBuildProjectDirectory)\bun.lock')" />
   <BunBuildInputs Include="build.mjs;assets\scripts\**\*.js;assets\styles\**\*.scss" />
   <BunBuildOutputs Include="wwwroot\js\bundle.min.js;wwwroot\css\site.min.css" />
 
@@ -306,10 +307,14 @@ These steps run once before the .NET static web assets SDK discovers files in `w
 are added back to the build as `Content`, so clean builds, fingerprinting, publish and NuGet packing see
 the assets without a custom target.
 
-`Inputs` and `Outputs` are optional. When both are present, a step is skipped if every output exists and
-the oldest output is at least as new as the newest input. This avoids repeated `bun install` and asset
-build work on no-op builds. Output is still logged, but `BunBeforeStaticWebAssets` does not retain stdout
-and stderr in memory because those output properties are not used by the static web assets helper.
+`Inputs` and `Outputs` are optional. When both are present, the task writes a success stamp after Bun exits
+with code 0. Later builds skip the step only when every output still exists, that stamp is newer than every
+input, and the stamp still matches the current command, arguments, working directory, inputs and outputs.
+This avoids repeated `bun install` and asset build work on no-op builds without relying on directory mtimes
+such as `node_modules`. By default the stamp lives under `obj/Scarlet.Bun` in the step's working directory;
+set `StampFile` to choose a specific location. Output is still logged, but `BunBeforeStaticWebAssets` does
+not retain stdout and stderr in memory because those output properties are not used by the static web
+assets helper.
 
 If you need to sequence another target after these steps, use `AfterTargets="RunBunBeforeStaticWebAssets"`.
 
@@ -437,8 +442,9 @@ long-lived process is a further option, at the cost of managing that process's l
 | `WorkingDirectory` | No | Working directory for command execution. Generated assets must still land in the project's `wwwroot` to be discovered | `$(MSBuildProjectDirectory)` |
 | `TimeoutMilliseconds` | No | Timeout in milliseconds (`0` = no timeout) | `$(BunTimeoutMilliseconds)` |
 | `ContinueOnError` | No | Whether to continue the build if this step fails | `$(BunContinueOnError)` |
-| `Inputs` | No | Semicolon-separated files or directories that make the step out-of-date when newer than `Outputs` | "" |
-| `Outputs` | No | Semicolon-separated files or directories that must exist and be newer than `Inputs` for the step to skip | "" |
+| `Inputs` | No | Semicolon-separated files or directories compared against the success stamp | "" |
+| `Outputs` | No | Semicolon-separated files or directories that must exist before the step can skip | "" |
+| `StampFile` | No | File recording the last successful incremental run. Defaults to a generated file under `obj/Scarlet.Bun` in `WorkingDirectory` | generated |
 
 ### Task Parameters
 
@@ -454,8 +460,9 @@ The `BunRunTask` supports the following parameters:
 | `TimeoutMilliseconds` | No | Timeout in milliseconds (0 = no timeout) | 0 |
 | `ContinueOnError` | No | Whether to continue build if command fails | false |
 | `CaptureOutput` | No | Whether to retain stdout/stderr in `StandardOutput` and `StandardError`. Output is still logged when this is false. | true |
-| `Inputs` | No | Semicolon-separated files or directories used with `Outputs` for timestamp-based skipping | null |
-| `Outputs` | No | Semicolon-separated files or directories used with `Inputs` for timestamp-based skipping | null |
+| `Inputs` | No | Semicolon-separated files or directories compared against the success stamp | null |
+| `Outputs` | No | Semicolon-separated files or directories that must exist before the task can skip | null |
+| `StampFile` | No | File recording a successful incremental run. Used only when `Inputs` and `Outputs` are both set. | generated |
 | `BunRuntimeDownload` | No | When true, downloads the Bun runtime from GitHub releases instead of using embedded runtimes | false |
 | `BunVersionDownload` | No | Specific Bun version to download (e.g., "1.3.6"). If not specified, downloads latest version. Only used when `BunRuntimeDownload=true`. | latest |
 | `DownloadMutexTimeoutSeconds` | No | Maximum seconds to wait for the download mutex when another process is already downloading. Only used when `BunRuntimeDownload=true`. | 300 |

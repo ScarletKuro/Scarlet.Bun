@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Abstractions;
+using System.Security.Cryptography;
 using System.Text;
 using Microsoft.Build.Framework;
 using Microsoft.Build.Utilities;
@@ -57,6 +58,11 @@ public class BunRunTask : Task
     /// Optional semicolon-separated list of output files or directories for timestamp-based skipping.
     /// </summary>
     public string? Outputs { get; set; }
+
+    /// <summary>
+    /// Optional file that records a successful incremental run. When omitted, a stamp under obj/Scarlet.Bun is used.
+    /// </summary>
+    public string? StampFile { get; set; }
 
     /// <summary>
     /// Optional path to the runtime directory. When set it overrides <see cref="RuntimePacks"/>.
@@ -159,8 +165,9 @@ public class BunRunTask : Task
 
             var fileSystem = new FileSystem();
             var chmodProvider = Chmod.CreateProvider();
+            var incrementalState = CreateIncrementalState(fileSystem);
 
-            if (IsUpToDate(fileSystem))
+            if (IsUpToDate(fileSystem, incrementalState))
             {
                 Log.LogMessage(MessageImportance.Normal, $"Skipping Bun {Command}: outputs are up-to-date.");
                 ExitCode = 0;
@@ -338,6 +345,8 @@ public class BunRunTask : Task
                 return ContinueOnError;
             }
 
+            WriteIncrementalStamp(fileSystem, incrementalState);
+
             Log.LogMessage(MessageImportance.High, "Bun command completed successfully");
             return true;
         }
@@ -375,14 +384,14 @@ public class BunRunTask : Task
         return distinct;
     }
 
-    private bool IsUpToDate(IFileSystem fileSystem)
+    private IncrementalState? CreateIncrementalState(IFileSystem fileSystem)
     {
         var inputPaths = SplitPaths(Inputs);
         var outputPaths = SplitPaths(Outputs);
 
         if (inputPaths.Count == 0 || outputPaths.Count == 0)
         {
-            return false;
+            return null;
         }
 
         var baseDirectory = string.IsNullOrWhiteSpace(WorkingDirectory)
@@ -390,32 +399,87 @@ public class BunRunTask : Task
             : WorkingDirectory!;
 
         DateTime? newestInput = null;
+        var resolvedInputs = new List<string>(inputPaths.Count);
         foreach (var input in inputPaths)
         {
-            if (!TryGetLastWriteTimeUtc(fileSystem, ResolveIncrementalPath(baseDirectory, input), out var timestamp))
+            var resolvedInput = ResolveIncrementalPath(baseDirectory, input);
+            if (!TryGetLastWriteTimeUtc(fileSystem, resolvedInput, out var timestamp))
             {
-                return false;
+                return null;
             }
 
+            resolvedInputs.Add(resolvedInput);
             newestInput = newestInput is null || timestamp > newestInput.Value
                 ? timestamp
                 : newestInput;
         }
 
-        DateTime? oldestOutput = null;
+        var resolvedOutputs = new List<string>(outputPaths.Count);
         foreach (var output in outputPaths)
         {
-            if (!TryGetLastWriteTimeUtc(fileSystem, ResolveIncrementalPath(baseDirectory, output), out var timestamp))
+            resolvedOutputs.Add(ResolveIncrementalPath(baseDirectory, output));
+        }
+
+        var stampContent = CreateIncrementalStampContent(baseDirectory, resolvedInputs, resolvedOutputs);
+        var stampPath = string.IsNullOrWhiteSpace(StampFile)
+            ? CreateDefaultStampPath(baseDirectory, stampContent)
+            : ResolveIncrementalPath(baseDirectory, StampFile!);
+
+        return new IncrementalState(
+            resolvedOutputs,
+            stampPath,
+            newestInput!.Value,
+            stampContent);
+    }
+
+    private static bool IsUpToDate(IFileSystem fileSystem, IncrementalState? state)
+    {
+        if (state is null || !fileSystem.File.Exists(state.StampPath))
+        {
+            return false;
+        }
+
+        foreach (var output in state.Outputs)
+        {
+            if (!fileSystem.File.Exists(output) && !fileSystem.Directory.Exists(output))
             {
                 return false;
             }
-
-            oldestOutput = oldestOutput is null || timestamp < oldestOutput.Value
-                ? timestamp
-                : oldestOutput;
         }
 
-        return oldestOutput!.Value >= newestInput!.Value;
+        if (fileSystem.File.GetLastWriteTimeUtc(state.StampPath) < state.NewestInput)
+        {
+            return false;
+        }
+
+        try
+        {
+            return string.Equals(fileSystem.File.ReadAllText(state.StampPath), state.StampContent, StringComparison.Ordinal);
+        }
+        catch (IOException)
+        {
+            return false;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    private static void WriteIncrementalStamp(IFileSystem fileSystem, IncrementalState? state)
+    {
+        if (state is null)
+        {
+            return;
+        }
+
+        var directory = Path.GetDirectoryName(state.StampPath);
+        if (!string.IsNullOrEmpty(directory))
+        {
+            fileSystem.Directory.CreateDirectory(directory);
+        }
+
+        fileSystem.File.WriteAllText(state.StampPath, state.StampContent);
     }
 
     private static IReadOnlyList<string> SplitPaths(string? paths)
@@ -436,6 +500,44 @@ public class BunRunTask : Task
         }
 
         return result;
+    }
+
+    private string CreateIncrementalStampContent(
+        string baseDirectory,
+        IReadOnlyList<string> inputs,
+        IReadOnlyList<string> outputs)
+    {
+        var content = new StringBuilder();
+        content.AppendLine("Scarlet.Bun.MSBuild incremental stamp v1");
+        content.AppendLine($"Command={Command}");
+        content.AppendLine($"Arguments={Arguments}");
+        content.AppendLine($"WorkingDirectory={Path.GetFullPath(baseDirectory)}");
+        content.AppendLine("Inputs=");
+
+        foreach (var input in inputs)
+        {
+            content.AppendLine(input);
+        }
+
+        content.AppendLine("Outputs=");
+
+        foreach (var output in outputs)
+        {
+            content.AppendLine(output);
+        }
+
+        return content.ToString();
+    }
+
+    private static string CreateDefaultStampPath(string baseDirectory, string stampContent)
+    {
+        using var sha256 = SHA256.Create();
+        var stampName = BitConverter
+            .ToString(sha256.ComputeHash(Encoding.UTF8.GetBytes(stampContent)))
+            .Replace("-", string.Empty)
+            .ToLowerInvariant();
+
+        return Path.Combine(baseDirectory, "obj", "Scarlet.Bun", $"{stampName}.stamp");
     }
 
     private static string ResolveIncrementalPath(string baseDirectory, string path)
@@ -468,6 +570,26 @@ public class BunRunTask : Task
 
         timestamp = default;
         return false;
+    }
+
+    private sealed class IncrementalState
+    {
+        public IncrementalState(
+            IReadOnlyList<string> outputs,
+            string stampPath,
+            DateTime newestInput,
+            string stampContent)
+        {
+            Outputs = outputs;
+            StampPath = stampPath;
+            NewestInput = newestInput;
+            StampContent = stampContent;
+        }
+
+        public IReadOnlyList<string> Outputs { get; }
+        public string StampPath { get; }
+        public DateTime NewestInput { get; }
+        public string StampContent { get; }
     }
 
     /// <summary>

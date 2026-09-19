@@ -37,6 +37,7 @@
                 CaptureOutput="$(BunCaptureOutput)"
                 Inputs="$(BunInputs)"
                 Outputs="$(BunOutputs)"
+                StampFile="$(BunStampFile)"
                 RuntimeDirectory="$(BunRuntimeDirectory)"
                 BunRuntimeDownload="$(BunRuntimeDownload)"
                 BunVersionDownload="$(BunVersionDownload)"
@@ -74,6 +75,7 @@
         <ContinueOnError Condition="'%(BunBeforeStaticWebAssets.ContinueOnError)' == ''">$(BunContinueOnError)</ContinueOnError>
         <Inputs Condition="'%(BunBeforeStaticWebAssets.Inputs)' != ''">%(BunBeforeStaticWebAssets.Inputs)</Inputs>
         <Outputs Condition="'%(BunBeforeStaticWebAssets.Outputs)' != ''">%(BunBeforeStaticWebAssets.Outputs)</Outputs>
+        <StampFile Condition="'%(BunBeforeStaticWebAssets.StampFile)' != ''">%(BunBeforeStaticWebAssets.StampFile)</StampFile>
       </_BunBeforeStaticWebAssetsStep>
     </ItemGroup>
 
@@ -85,6 +87,7 @@
                 CaptureOutput="false"
                 Inputs="%(_BunBeforeStaticWebAssetsStep.Inputs)"
                 Outputs="%(_BunBeforeStaticWebAssetsStep.Outputs)"
+                StampFile="%(_BunBeforeStaticWebAssetsStep.StampFile)"
                 RuntimeDirectory="$(BunRuntimeDirectory)"
                 BunRuntimeDownload="$(BunRuntimeDownload)"
                 BunVersionDownload="$(BunVersionDownload)"
