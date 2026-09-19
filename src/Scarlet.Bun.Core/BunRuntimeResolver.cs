@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.IO.Abstractions;
 using System.Runtime.InteropServices;
@@ -183,6 +184,7 @@ public static class BunRuntimeResolver
     /// none of <see cref="MuslLoaderDirectories"/> covers falls through to the glibc build, which then
     /// fails to start with an ELF interpreter error rather than a clear "unsupported platform" message.
     /// </remarks>
+    [ExcludeFromCodeCoverage]
     private static bool IsMuslLibc()
     {
         if (!RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
