@@ -2,6 +2,10 @@
   <!-- Load the Bun MSBuild task -->
   <UsingTask TaskName="Scarlet.Bun.MSBuild.BunRunTask" AssemblyFile="$(MSBuildThisFileDirectory)../tools/netstandard2.0/Scarlet.Bun.MSBuild.dll" />
 
+  <PropertyGroup>
+    <BunCaptureOutput Condition="'$(BunCaptureOutput)' == ''">true</BunCaptureOutput>
+  </PropertyGroup>
+
   <!--
     Expose a reusable MSBuild task wrapper that automatically passes runtime properties.
 
@@ -27,6 +31,8 @@
     - BunWorkingDirectory (optional) - Working directory
     - BunTimeoutMilliseconds (optional) - Timeout in milliseconds
     - BunContinueOnError (optional) - Continue on error
+    - BunCaptureOutput (optional) - Store stdout/stderr in BunStandardOutput/BunStandardError
+    - BunInputs / BunOutputs / BunStampFile (optional) - Skip up-to-date work after a successful stamped run
     - BunRuntimeDirectory (optional) - Override runtime directory; wins over @(BunRuntimePack)
     - BunRuntimeDownload (optional) - Download runtime from GitHub instead of using embedded
     - BunVersionDownload (optional) - Specific version to download (defaults to latest)
@@ -62,6 +68,10 @@
                 WorkingDirectory="$(BunWorkingDirectory)"
                 TimeoutMilliseconds="$(BunTimeoutMilliseconds)"
                 ContinueOnError="$(BunContinueOnError)"
+                CaptureOutput="$(BunCaptureOutput)"
+                Inputs="$(BunInputs)"
+                Outputs="$(BunOutputs)"
+                StampFile="$(BunStampFile)"
                 RuntimeDirectory="$(BunRuntimeDirectory)"
                 BunRuntimeDownload="$(BunRuntimeDownload)"
                 BunVersionDownload="$(BunVersionDownload)"
@@ -91,7 +101,7 @@
     </ItemGroup>
 
     Include is the Bun command. Optional metadata: Arguments, WorkingDirectory,
-    TimeoutMilliseconds, ContinueOnError.
+    TimeoutMilliseconds, ContinueOnError, Inputs, Outputs, StampFile.
 
     Only the project's own wwwroot is picked back up. That is not a shortcut - the SDK hardcodes it
     too (ContentRoot="$(MSBuildProjectDirectory)\wwwroot\" and RelativePathPattern="wwwroot/**" in
@@ -123,6 +133,9 @@
         <WorkingDirectory Condition="'%(BunBeforeStaticWebAssets.WorkingDirectory)' == ''">$(MSBuildProjectDirectory)</WorkingDirectory>
         <TimeoutMilliseconds Condition="'%(BunBeforeStaticWebAssets.TimeoutMilliseconds)' == ''">$(BunTimeoutMilliseconds)</TimeoutMilliseconds>
         <ContinueOnError Condition="'%(BunBeforeStaticWebAssets.ContinueOnError)' == ''">$(BunContinueOnError)</ContinueOnError>
+        <Inputs Condition="'%(BunBeforeStaticWebAssets.Inputs)' != ''">%(BunBeforeStaticWebAssets.Inputs)</Inputs>
+        <Outputs Condition="'%(BunBeforeStaticWebAssets.Outputs)' != ''">%(BunBeforeStaticWebAssets.Outputs)</Outputs>
+        <StampFile Condition="'%(BunBeforeStaticWebAssets.StampFile)' != ''">%(BunBeforeStaticWebAssets.StampFile)</StampFile>
       </_BunBeforeStaticWebAssetsStep>
     </ItemGroup>
 
@@ -131,6 +144,10 @@
                 WorkingDirectory="%(_BunBeforeStaticWebAssetsStep.WorkingDirectory)"
                 TimeoutMilliseconds="%(_BunBeforeStaticWebAssetsStep.TimeoutMilliseconds)"
                 ContinueOnError="%(_BunBeforeStaticWebAssetsStep.ContinueOnError)"
+                CaptureOutput="false"
+                Inputs="%(_BunBeforeStaticWebAssetsStep.Inputs)"
+                Outputs="%(_BunBeforeStaticWebAssetsStep.Outputs)"
+                StampFile="%(_BunBeforeStaticWebAssetsStep.StampFile)"
                 RuntimeDirectory="$(BunRuntimeDirectory)"
                 BunRuntimeDownload="$(BunRuntimeDownload)"
                 BunVersionDownload="$(BunVersionDownload)"

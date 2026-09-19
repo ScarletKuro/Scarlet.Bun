@@ -176,6 +176,458 @@ public class BunIntegrationTests
     }
 
     [Fact]
+    public void BunRunTask_WithUpToDateInputsAndOutputs_ShouldSkipBeforeResolvingRuntime()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"scarlet-bun-incremental-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            var runtimesDirectory = Path.Combine(Directory.GetCurrentDirectory(), "runtimes");
+            var input = Path.Combine(tempDir, "input.js");
+            var newerInput = Path.Combine(tempDir, "newer-input.js");
+            var output = Path.Combine(tempDir, "bundle.js");
+            File.WriteAllText(input, "console.log('input');");
+            File.WriteAllText(newerInput, "console.log('newer input');");
+            File.WriteAllText(output, "console.log('output');");
+
+            var now = DateTime.UtcNow;
+            File.SetLastWriteTimeUtc(input, now.AddMinutes(-10));
+            File.SetLastWriteTimeUtc(newerInput, now.AddMinutes(-5));
+            File.SetLastWriteTimeUtc(output, now);
+
+            var firstRun = new BunRunTask
+            {
+                Command = "--version",
+                WorkingDirectory = tempDir,
+                RuntimeDirectory = runtimesDirectory,
+                Inputs = $"{input};{newerInput}",
+                Outputs = output,
+                BuildEngine = new MockBuildEngine(_output)
+            };
+
+            Assert.True(firstRun.Execute());
+            Assert.Equal(0, firstRun.ExitCode);
+
+            var buildEngine = new MockBuildEngine(_output);
+            var task = new BunRunTask
+            {
+                Command = "--version",
+                WorkingDirectory = tempDir,
+                RuntimeDirectory = "invalid-runtime-directory",
+                Inputs = $"{input};{newerInput}",
+                Outputs = output,
+                BuildEngine = buildEngine
+            };
+
+            var result = task.Execute();
+
+            Assert.True(result);
+            Assert.Equal(0, task.ExitCode);
+            Assert.Empty(buildEngine.Errors);
+            Assert.Contains(buildEngine.Messages, message => message.Message?.Contains("outputs are up-to-date", StringComparison.Ordinal) == true);
+
+            var changedCommandEngine = new MockBuildEngine(_output);
+            var changedCommand = new BunRunTask
+            {
+                Command = "--help",
+                WorkingDirectory = tempDir,
+                RuntimeDirectory = "invalid-runtime-directory",
+                Inputs = $"{input};{newerInput}",
+                Outputs = output,
+                BuildEngine = changedCommandEngine
+            };
+
+            Assert.False(changedCommand.Execute());
+            Assert.DoesNotContain(changedCommandEngine.Messages, message => message.Message?.Contains("outputs are up-to-date", StringComparison.Ordinal) == true);
+
+            var uncapturedSkip = new BunRunTask
+            {
+                Command = "--version",
+                WorkingDirectory = tempDir,
+                RuntimeDirectory = "invalid-runtime-directory",
+                Inputs = $"{input};{newerInput}",
+                Outputs = output,
+                CaptureOutput = false,
+                BuildEngine = new MockBuildEngine(_output)
+            };
+
+            Assert.True(uncapturedSkip.Execute());
+            Assert.Null(uncapturedSkip.StandardOutput);
+            Assert.Null(uncapturedSkip.StandardError);
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+            {
+                Directory.Delete(tempDir, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void BunRunTask_WithNoWorkingDirectory_ShouldUseCurrentDirectoryForDefaultStampPath()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"scarlet-bun-current-dir-{Guid.NewGuid():N}");
+        var currentDirectoryStampDir = Path.Combine(Directory.GetCurrentDirectory(), "obj", "Scarlet.Bun");
+        var existingStamps = Directory.Exists(currentDirectoryStampDir)
+            ? Directory.GetFiles(currentDirectoryStampDir, "*.stamp").ToHashSet(StringComparer.OrdinalIgnoreCase)
+            : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var createdStamps = new List<string>();
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            var runtimesDirectory = Path.Combine(Directory.GetCurrentDirectory(), "runtimes");
+            var input = Path.Combine(tempDir, "input.js");
+            var output = Path.Combine(tempDir, "bundle.js");
+            File.WriteAllText(input, "console.log('input');");
+            File.WriteAllText(output, "console.log('output');");
+
+            var firstRun = new BunRunTask
+            {
+                Command = "--version",
+                RuntimeDirectory = runtimesDirectory,
+                Inputs = input,
+                Outputs = output,
+                BuildEngine = new MockBuildEngine(_output)
+            };
+
+            Assert.True(firstRun.Execute());
+            createdStamps = Directory.GetFiles(currentDirectoryStampDir, "*.stamp")
+                .Where(path => !existingStamps.Contains(path))
+                .ToList();
+            Assert.Single(createdStamps);
+
+            var buildEngine = new MockBuildEngine(_output);
+            var secondRun = new BunRunTask
+            {
+                Command = "--version",
+                RuntimeDirectory = "invalid-runtime-directory",
+                Inputs = input,
+                Outputs = output,
+                BuildEngine = buildEngine
+            };
+
+            Assert.True(secondRun.Execute());
+            Assert.Contains(buildEngine.Messages, message => message.Message?.Contains("outputs are up-to-date", StringComparison.Ordinal) == true);
+        }
+        finally
+        {
+            foreach (var stamp in createdStamps)
+            {
+                try
+                {
+                    File.Delete(stamp);
+                }
+                catch
+                {
+                    // Best-effort cleanup for the explicit current-directory stamp assertion.
+                }
+            }
+
+            if (Directory.Exists(tempDir))
+            {
+                Directory.Delete(tempDir, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void BunRunTask_WithMissingIncrementalInput_ShouldNotSkip()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"scarlet-bun-missing-input-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            var output = Path.Combine(tempDir, "bundle.js");
+            File.WriteAllText(output, "console.log('output');");
+            var buildEngine = new MockBuildEngine(_output);
+            var task = new BunRunTask
+            {
+                Command = "--version",
+                WorkingDirectory = tempDir,
+                RuntimeDirectory = "invalid-runtime-directory",
+                Inputs = Path.Combine(tempDir, "missing-input.js"),
+                Outputs = output,
+                BuildEngine = buildEngine
+            };
+
+            Assert.False(task.Execute());
+            Assert.DoesNotContain(buildEngine.Messages, message => message.Message?.Contains("outputs are up-to-date", StringComparison.Ordinal) == true);
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+            {
+                Directory.Delete(tempDir, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void BunRunTask_WithDirectoryInput_ShouldUseDirectoryTimestamp()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"scarlet-bun-directory-input-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            var inputDirectory = Path.Combine(tempDir, "assets");
+            Directory.CreateDirectory(inputDirectory);
+            var output = Path.Combine(tempDir, "bundle.js");
+            File.WriteAllText(output, "console.log('output');");
+            var runtimesDirectory = Path.Combine(Directory.GetCurrentDirectory(), "runtimes");
+
+            var firstRun = new BunRunTask
+            {
+                Command = "--version",
+                WorkingDirectory = tempDir,
+                RuntimeDirectory = runtimesDirectory,
+                Inputs = inputDirectory,
+                Outputs = output,
+                BuildEngine = new MockBuildEngine(_output)
+            };
+
+            Assert.True(firstRun.Execute());
+
+            var buildEngine = new MockBuildEngine(_output);
+            var secondRun = new BunRunTask
+            {
+                Command = "--version",
+                WorkingDirectory = tempDir,
+                RuntimeDirectory = "invalid-runtime-directory",
+                Inputs = inputDirectory,
+                Outputs = output,
+                BuildEngine = buildEngine
+            };
+
+            Assert.True(secondRun.Execute());
+            Assert.Contains(buildEngine.Messages, message => message.Message?.Contains("outputs are up-to-date", StringComparison.Ordinal) == true);
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+            {
+                Directory.Delete(tempDir, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void BunRunTask_WithMissingIncrementalOutput_ShouldNotSkip()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"scarlet-bun-missing-output-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            var runtimesDirectory = Path.Combine(Directory.GetCurrentDirectory(), "runtimes");
+            var input = Path.Combine(tempDir, "input.js");
+            var output = Path.Combine(tempDir, "bundle.js");
+            File.WriteAllText(input, "console.log('input');");
+            File.WriteAllText(output, "console.log('output');");
+
+            var firstRun = new BunRunTask
+            {
+                Command = "--version",
+                WorkingDirectory = tempDir,
+                RuntimeDirectory = runtimesDirectory,
+                Inputs = input,
+                Outputs = output,
+                BuildEngine = new MockBuildEngine(_output)
+            };
+
+            Assert.True(firstRun.Execute());
+            File.Delete(output);
+
+            var buildEngine = new MockBuildEngine(_output);
+            var secondRun = new BunRunTask
+            {
+                Command = "--version",
+                WorkingDirectory = tempDir,
+                RuntimeDirectory = "invalid-runtime-directory",
+                Inputs = input,
+                Outputs = output,
+                BuildEngine = buildEngine
+            };
+
+            Assert.False(secondRun.Execute());
+            Assert.DoesNotContain(buildEngine.Messages, message => message.Message?.Contains("outputs are up-to-date", StringComparison.Ordinal) == true);
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+            {
+                Directory.Delete(tempDir, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void BunRunTask_WithInputNewerThanStamp_ShouldNotSkip()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"scarlet-bun-stale-stamp-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            var runtimesDirectory = Path.Combine(Directory.GetCurrentDirectory(), "runtimes");
+            var input = Path.Combine(tempDir, "input.js");
+            var output = Path.Combine(tempDir, "bundle.js");
+            File.WriteAllText(input, "console.log('input');");
+            File.WriteAllText(output, "console.log('output');");
+
+            var firstRun = new BunRunTask
+            {
+                Command = "--version",
+                WorkingDirectory = tempDir,
+                RuntimeDirectory = runtimesDirectory,
+                Inputs = input,
+                Outputs = output,
+                BuildEngine = new MockBuildEngine(_output)
+            };
+
+            Assert.True(firstRun.Execute());
+            File.SetLastWriteTimeUtc(input, DateTime.UtcNow.AddMinutes(1));
+
+            var buildEngine = new MockBuildEngine(_output);
+            var secondRun = new BunRunTask
+            {
+                Command = "--version",
+                WorkingDirectory = tempDir,
+                RuntimeDirectory = "invalid-runtime-directory",
+                Inputs = input,
+                Outputs = output,
+                BuildEngine = buildEngine
+            };
+
+            Assert.False(secondRun.Execute());
+            Assert.DoesNotContain(buildEngine.Messages, message => message.Message?.Contains("outputs are up-to-date", StringComparison.Ordinal) == true);
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+            {
+                Directory.Delete(tempDir, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void BunRunTask_WithCaptureOutputDisabled_ShouldNotRetainStdoutOrStderr()
+    {
+        var runtimesDirectory = Path.Combine(Directory.GetCurrentDirectory(), "runtimes");
+        var task = new BunRunTask
+        {
+            Command = "--version",
+            RuntimeDirectory = runtimesDirectory,
+            CaptureOutput = false,
+            BuildEngine = new MockBuildEngine(_output)
+        };
+
+        var result = task.Execute();
+
+        Assert.True(result);
+        Assert.Equal(0, task.ExitCode);
+        Assert.Null(task.StandardOutput);
+        Assert.Null(task.StandardError);
+    }
+
+    [Fact]
+    public void BunRunTask_WithFailedIncrementalRun_ShouldNotCreateSuccessStamp()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"scarlet-bun-failed-incremental-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            var runtimesDirectory = Path.Combine(Directory.GetCurrentDirectory(), "runtimes");
+            var input = Path.Combine(tempDir, "input.js");
+            var output = Path.Combine(tempDir, "bundle.js");
+            File.WriteAllText(input, "console.log('input');");
+            File.WriteAllText(output, "partial output");
+
+            var failedRun = new BunRunTask
+            {
+                Command = "invalid-command-that-does-not-exist-xyz123",
+                WorkingDirectory = tempDir,
+                RuntimeDirectory = runtimesDirectory,
+                ContinueOnError = true,
+                Inputs = input,
+                Outputs = output,
+                BuildEngine = new MockBuildEngine(_output)
+            };
+
+            Assert.True(failedRun.Execute());
+            Assert.NotEqual(0, failedRun.ExitCode);
+
+            var buildEngine = new MockBuildEngine(_output);
+            var nextRun = new BunRunTask
+            {
+                Command = "invalid-command-that-does-not-exist-xyz123",
+                WorkingDirectory = tempDir,
+                RuntimeDirectory = "invalid-runtime-directory",
+                Inputs = input,
+                Outputs = output,
+                BuildEngine = buildEngine
+            };
+
+            Assert.False(nextRun.Execute());
+            Assert.DoesNotContain(buildEngine.Messages, message => message.Message?.Contains("outputs are up-to-date", StringComparison.Ordinal) == true);
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+            {
+                Directory.Delete(tempDir, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void BunRunTask_WhenIncrementalStampCannotBeWritten_ShouldKeepSuccessfulBunResult()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"scarlet-bun-stamp-write-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            var runtimesDirectory = Path.Combine(Directory.GetCurrentDirectory(), "runtimes");
+            var input = Path.Combine(tempDir, "input.js");
+            var output = Path.Combine(tempDir, "bundle.js");
+            File.WriteAllText(input, "console.log('input');");
+            File.WriteAllText(output, "existing output");
+
+            var buildEngine = new MockBuildEngine(_output);
+            var task = new BunRunTask
+            {
+                Command = "--version",
+                WorkingDirectory = tempDir,
+                RuntimeDirectory = runtimesDirectory,
+                Inputs = input,
+                Outputs = output,
+                StampFile = "invalid\0stamp",
+                BuildEngine = buildEngine
+            };
+
+            var result = task.Execute();
+
+            Assert.True(result);
+            Assert.Equal(0, task.ExitCode);
+            Assert.Contains(buildEngine.Messages, message => message.Message?.Contains("Could not write Bun incremental stamp", StringComparison.Ordinal) == true);
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+            {
+                Directory.Delete(tempDir, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
     public void BunRunTask_WithMissingCommand_ShouldFail()
     {
         // Arrange

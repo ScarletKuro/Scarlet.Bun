@@ -1,8 +1,14 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.IO.Abstractions;
+using System.Runtime.InteropServices;
+using System.Security.Cryptography;
+using System.Text;
+using System.Threading;
 using Microsoft.Build.Framework;
 using Microsoft.Build.Utilities;
 using Scarlet.Bun.Core;
@@ -15,6 +21,16 @@ namespace Scarlet.Bun.MSBuild;
 /// </summary>
 public class BunRunTask : Task
 {
+    /// <summary>
+    /// Linux errno for "Text file busy", surfaced by <see cref="Win32Exception.NativeErrorCode"/> when
+    /// <see cref="Process.Start()"/> fails on Unix.
+    /// </summary>
+    private const int TextFileBusyErrorCode = 26;
+
+    private const int MaxProcessStartAttempts = 5;
+
+    private const int ProcessStartRetryBaseDelayMilliseconds = 25;
+
     /// <summary>
     /// The Bun command to execute (e.g., "run", "install", "build").
     /// </summary>
@@ -40,6 +56,27 @@ public class BunRunTask : Task
     /// Whether to continue the build if the command fails.
     /// </summary>
     public bool ContinueOnError { get; set; } = false;
+
+    /// <summary>
+    /// Whether stdout and stderr should be retained in <see cref="StandardOutput"/> and <see cref="StandardError"/>.
+    /// Output is still logged while the process runs.
+    /// </summary>
+    public bool CaptureOutput { get; set; } = true;
+
+    /// <summary>
+    /// Optional semicolon-separated list of input files or directories for timestamp-based skipping.
+    /// </summary>
+    public string? Inputs { get; set; }
+
+    /// <summary>
+    /// Optional semicolon-separated list of output files or directories for timestamp-based skipping.
+    /// </summary>
+    public string? Outputs { get; set; }
+
+    /// <summary>
+    /// Optional file that records a successful incremental run. When omitted, a stamp under obj/Scarlet.Bun is used.
+    /// </summary>
+    public string? StampFile { get; set; }
 
     /// <summary>
     /// Optional path to the runtime directory. When set it overrides <see cref="RuntimePacks"/>.
@@ -142,6 +179,16 @@ public class BunRunTask : Task
 
             var fileSystem = new FileSystem();
             var chmodProvider = Chmod.CreateProvider();
+            var incrementalState = CreateIncrementalState(fileSystem);
+
+            if (IsUpToDate(fileSystem, incrementalState))
+            {
+                Log.LogMessage(MessageImportance.Normal, $"Skipping Bun {Command}: outputs are up-to-date.");
+                ExitCode = 0;
+                StandardOutput = CaptureOutput ? string.Empty : null;
+                StandardError = CaptureOutput ? string.Empty : null;
+                return true;
+            }
 
             string bunPath;
 
@@ -240,8 +287,8 @@ public class BunRunTask : Task
                 RedirectStandardError = true,
                 UseShellExecute = false,
                 CreateNoWindow = true,
-                StandardOutputEncoding = System.Text.Encoding.UTF8,
-                StandardErrorEncoding = System.Text.Encoding.UTF8
+                StandardOutputEncoding = Encoding.UTF8,
+                StandardErrorEncoding = Encoding.UTF8
             };
 
             if (!string.IsNullOrWhiteSpace(WorkingDirectory))
@@ -254,14 +301,14 @@ public class BunRunTask : Task
             using var process = new Process();
             process.StartInfo = processStartInfo;
 
-            var outputData = new System.Text.StringBuilder();
-            var errorData = new System.Text.StringBuilder();
+            var outputData = CaptureOutput ? new StringBuilder() : null;
+            var errorData = CaptureOutput ? new StringBuilder() : null;
 
             process.OutputDataReceived += (_, e) =>
             {
                 if (e.Data != null)
                 {
-                    outputData.AppendLine(e.Data);
+                    outputData?.AppendLine(e.Data);
                     Log.LogMessage(MessageImportance.Normal, e.Data);
                 }
             };
@@ -270,12 +317,12 @@ public class BunRunTask : Task
             {
                 if (e.Data != null)
                 {
-                    errorData.AppendLine(e.Data);
+                    errorData?.AppendLine(e.Data);
                     Log.LogMessage(MessageImportance.High, e.Data);
                 }
             };
 
-            process.Start();
+            StartProcessWithRetry(process);
             process.BeginOutputReadLine();
             process.BeginErrorReadLine();
 
@@ -295,14 +342,12 @@ public class BunRunTask : Task
                     return false;
                 }
             }
-            else
-            {
-                process.WaitForExit();
-            }
+
+            process.WaitForExit();
 
             ExitCode = process.ExitCode;
-            StandardOutput = outputData.ToString();
-            StandardError = errorData.ToString();
+            StandardOutput = outputData?.ToString();
+            StandardError = errorData?.ToString();
 
             if (ExitCode != 0)
             {
@@ -313,6 +358,8 @@ public class BunRunTask : Task
                 }
                 return ContinueOnError;
             }
+
+            WriteIncrementalStamp(fileSystem, incrementalState);
 
             Log.LogMessage(MessageImportance.High, "Bun command completed successfully");
             return true;
@@ -333,6 +380,36 @@ public class BunRunTask : Task
     }
 
     /// <summary>
+    /// Starts <paramref name="process"/>, retrying a handful of times on Linux/macOS if the kernel reports
+    /// the executable as busy (ETXTBSY). This shows up when a just-downloaded or just-run Bun binary is
+    /// exec'd again within milliseconds - e.g. an <c>install</c> step immediately followed by a <c>run</c>
+    /// step against the same cached binary - and a grandchild process Bun spawned for the first run hasn't
+    /// fully released the executable yet even though the process .NET waited on has already exited.
+    /// </summary>
+    [ExcludeFromCodeCoverage]
+    private void StartProcessWithRetry(Process process)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                process.Start();
+                return;
+            }
+            catch (Win32Exception ex) when (ex.NativeErrorCode == TextFileBusyErrorCode
+                && !RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+                && attempt < MaxProcessStartAttempts)
+            {
+                var delayMilliseconds = ProcessStartRetryBaseDelayMilliseconds * (1 << (attempt - 1));
+                Log.LogMessage(
+                    MessageImportance.Normal,
+                    $"Bun executable was busy (ETXTBSY); retrying in {delayMilliseconds}ms (attempt {attempt}/{MaxProcessStartAttempts}).");
+                Thread.Sleep(delayMilliseconds);
+            }
+        }
+    }
+
+    /// <summary>
     /// Gathers every runtime pack the build knows about, from both the item and the legacy property contract.
     /// </summary>
     /// <returns>The distinct packs available to this build.</returns>
@@ -349,6 +426,223 @@ public class BunRunTask : Task
         ReportDeprecatedPacks(distinct);
 
         return distinct;
+    }
+
+    private IncrementalState? CreateIncrementalState(IFileSystem fileSystem)
+    {
+        var inputPaths = SplitPaths(Inputs);
+        var outputPaths = SplitPaths(Outputs);
+
+        if (inputPaths.Count == 0 || outputPaths.Count == 0)
+        {
+            return null;
+        }
+
+        var baseDirectory = string.IsNullOrWhiteSpace(WorkingDirectory)
+            ? Environment.CurrentDirectory
+            : WorkingDirectory!;
+
+        DateTime? newestInput = null;
+        var resolvedInputs = new List<string>(inputPaths.Count);
+        foreach (var input in inputPaths)
+        {
+            var resolvedInput = ResolveIncrementalPath(baseDirectory, input);
+            if (!TryGetLastWriteTimeUtc(fileSystem, resolvedInput, out var timestamp))
+            {
+                return null;
+            }
+
+            resolvedInputs.Add(resolvedInput);
+            newestInput = newestInput is null || timestamp > newestInput.Value
+                ? timestamp
+                : newestInput;
+        }
+
+        var resolvedOutputs = new List<string>(outputPaths.Count);
+        foreach (var output in outputPaths)
+        {
+            resolvedOutputs.Add(ResolveIncrementalPath(baseDirectory, output));
+        }
+
+        var stampContent = CreateIncrementalStampContent(baseDirectory, resolvedInputs, resolvedOutputs);
+        var stampPath = string.IsNullOrWhiteSpace(StampFile)
+            ? CreateDefaultStampPath(baseDirectory, stampContent)
+            : ResolveIncrementalPath(baseDirectory, StampFile!);
+
+        return new IncrementalState(
+            resolvedOutputs,
+            stampPath,
+            newestInput!.Value,
+            stampContent);
+    }
+
+    private static bool IsUpToDate(IFileSystem fileSystem, IncrementalState? state)
+    {
+        if (state is null || !fileSystem.File.Exists(state.StampPath))
+        {
+            return false;
+        }
+
+        foreach (var output in state.Outputs)
+        {
+            if (!fileSystem.File.Exists(output) && !fileSystem.Directory.Exists(output))
+            {
+                return false;
+            }
+        }
+
+        if (fileSystem.File.GetLastWriteTimeUtc(state.StampPath) < state.NewestInput)
+        {
+            return false;
+        }
+
+        try
+        {
+            return string.Equals(fileSystem.File.ReadAllText(state.StampPath), state.StampContent, StringComparison.Ordinal);
+        }
+        catch (IOException)
+        {
+            return false;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    private void WriteIncrementalStamp(IFileSystem fileSystem, IncrementalState? state)
+    {
+        if (state is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var directory = Path.GetDirectoryName(state.StampPath);
+            if (!string.IsNullOrEmpty(directory))
+            {
+                fileSystem.Directory.CreateDirectory(directory);
+            }
+
+            fileSystem.File.WriteAllText(state.StampPath, state.StampContent);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            Log.LogMessage(
+                MessageImportance.Normal,
+                $"Could not write Bun incremental stamp '{state.StampPath}'. The command succeeded, but this step may run again next build. {ex.Message}");
+        }
+    }
+
+    private static IReadOnlyList<string> SplitPaths(string? paths)
+    {
+        if (string.IsNullOrWhiteSpace(paths))
+        {
+            return Array.Empty<string>();
+        }
+
+        var result = new List<string>();
+        foreach (var path in paths!.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries))
+        {
+            var trimmed = path.Trim();
+            if (trimmed.Length > 0)
+            {
+                result.Add(trimmed);
+            }
+        }
+
+        return result;
+    }
+
+    private string CreateIncrementalStampContent(
+        string baseDirectory,
+        IReadOnlyList<string> inputs,
+        IReadOnlyList<string> outputs)
+    {
+        var content = new StringBuilder();
+        content.AppendLine("Scarlet.Bun.MSBuild incremental stamp v1");
+        content.AppendLine($"Command={Command}");
+        content.AppendLine($"Arguments={Arguments}");
+        content.AppendLine($"WorkingDirectory={Path.GetFullPath(baseDirectory)}");
+        content.AppendLine("Inputs=");
+
+        foreach (var input in inputs)
+        {
+            content.AppendLine(input);
+        }
+
+        content.AppendLine("Outputs=");
+
+        foreach (var output in outputs)
+        {
+            content.AppendLine(output);
+        }
+
+        return content.ToString();
+    }
+
+    private static string CreateDefaultStampPath(string baseDirectory, string stampContent)
+    {
+        using var sha256 = SHA256.Create();
+        var stampName = BitConverter
+            .ToString(sha256.ComputeHash(Encoding.UTF8.GetBytes(stampContent)))
+            .Replace("-", string.Empty)
+            .ToLowerInvariant();
+
+        return Path.Combine(baseDirectory, "obj", "Scarlet.Bun", $"{stampName}.stamp");
+    }
+
+    private static string ResolveIncrementalPath(string baseDirectory, string path)
+    {
+        try
+        {
+            return Path.IsPathRooted(path)
+                ? path
+                : Path.GetFullPath(Path.Combine(baseDirectory, path));
+        }
+        catch (Exception)
+        {
+            return path;
+        }
+    }
+
+    private static bool TryGetLastWriteTimeUtc(IFileSystem fileSystem, string path, out DateTime timestamp)
+    {
+        if (fileSystem.File.Exists(path))
+        {
+            timestamp = fileSystem.File.GetLastWriteTimeUtc(path);
+            return true;
+        }
+
+        if (fileSystem.Directory.Exists(path))
+        {
+            timestamp = fileSystem.Directory.GetLastWriteTimeUtc(path);
+            return true;
+        }
+
+        timestamp = default;
+        return false;
+    }
+
+    private sealed class IncrementalState
+    {
+        public IncrementalState(
+            IReadOnlyList<string> outputs,
+            string stampPath,
+            DateTime newestInput,
+            string stampContent)
+        {
+            Outputs = outputs;
+            StampPath = stampPath;
+            NewestInput = newestInput;
+            StampContent = stampContent;
+        }
+
+        public IReadOnlyList<string> Outputs { get; }
+        public string StampPath { get; }
+        public DateTime NewestInput { get; }
+        public string StampContent { get; }
     }
 
     /// <summary>
