@@ -298,15 +298,26 @@ public sealed class BunDownloader
 
         try
         {
-            using (var fileStream = _fileSystem.File.Create(tempZipPath))
+            // Hashed in the same pass as the write, via CryptoStream, rather than reading the ~60-94 MB
+            // archive back off disk afterward just to hash it. That second full read used to double the
+            // disk I/O for every download.
+            string actualHash;
+            using (var sha256 = SHA256.Create())
             {
-                await response.Content.CopyToAsync(fileStream);
+                using (var fileStream = _fileSystem.File.Create(tempZipPath))
+                using (var hashingStream = new CryptoStream(fileStream, sha256, CryptoStreamMode.Write))
+                {
+                    await response.Content.CopyToAsync(hashingStream);
+                    hashingStream.FlushFinalBlock();
+                }
+
+                actualHash = BitConverter.ToString(sha256.Hash!).Replace("-", "");
             }
 
             // Verify against upstream's published SHA-256 sums before touching the archive. Bun publishes
             // SHASUMS256.txt alongside every release; checking it catches corrupt or mismatched archive
             // downloads before they are extracted into a consumer build.
-            await VerifyChecksumAsync(tempZipPath, checksumsUrl, platformName);
+            await VerifyChecksumAsync(actualHash, checksumsUrl, platformName);
 
             // Extract the zip file
             // The zip contains a folder like "bun-windows-x64-baseline/bun.exe"
@@ -373,9 +384,10 @@ public sealed class BunDownloader
     }
 
     /// <summary>
-    /// Verifies a downloaded archive against the SHA-256 sum GitHub publishes alongside each Bun release.
+    /// Verifies an already-computed archive hash against the SHA-256 sum GitHub publishes alongside each
+    /// Bun release.
     /// </summary>
-    private async Task VerifyChecksumAsync(string zipPath, string checksumsUrl, string platformName)
+    private async Task VerifyChecksumAsync(string actualHash, string checksumsUrl, string platformName)
     {
         var archiveName = $"{platformName}.zip";
         string checksumsText;
@@ -402,13 +414,6 @@ public sealed class BunDownloader
         if (expectedHash is null)
         {
             throw new InvalidDataException($"No checksum entry for '{archiveName}' in {checksumsUrl}.");
-        }
-
-        string actualHash;
-        using (var sha256 = SHA256.Create())
-        using (var stream = _fileSystem.File.OpenRead(zipPath))
-        {
-            actualHash = BitConverter.ToString(sha256.ComputeHash(stream)).Replace("-", "");
         }
 
         if (!expectedHash.Equals(actualHash, StringComparison.OrdinalIgnoreCase))

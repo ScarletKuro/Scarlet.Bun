@@ -199,15 +199,20 @@ public class BunRunTask : Task
 
                 Log.LogMessage(MessageImportance.Low, $"Runtime packs: {(packs.Count == 0 ? "(none)" : string.Join(", ", packs))}");
 
+                // Resolved once and reused for the log line below - on Linux, GetCurrentPlatform() probes
+                // the filesystem for a musl loader, and calling it twice would do that walk twice for no
+                // reason.
+                var currentPlatform = BunRuntimeResolver.GetCurrentPlatform();
+
                 bunPath = BunRuntimeResolver.ResolveBunExecutable(
                     fileSystem,
                     chmodProvider,
-                    platform: null,
+                    platform: currentPlatform,
                     runtimeDirectory: RuntimeDirectory,
                     runtimePacks: packs,
                     log: message => Log.LogMessage(MessageImportance.Normal, message));
 
-                Log.LogMessage(MessageImportance.High, $"Platform: {BunRuntimeResolver.GetCurrentPlatform()}");
+                Log.LogMessage(MessageImportance.High, $"Platform: {currentPlatform}");
             }
 
             Log.LogMessage(MessageImportance.High, $"Using Bun at: {bunPath}");
