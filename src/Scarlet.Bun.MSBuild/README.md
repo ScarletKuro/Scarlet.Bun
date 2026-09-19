@@ -323,8 +323,9 @@ path in a project file - `WorkingDirectory` says where the command runs, not wha
 By default the stamp lives under `Scarlet.Bun` inside the project's `$(IntermediateOutputPath)`; set
 `StampFile` to choose a specific location. `dotnet clean` removes it for single-targeted projects. A
 multi-targeted project runs these steps once in the outer build, which has no `CoreBuild` and so never runs
-the incremental clean — the stamp stays in `obj\<configuration>\`. Harmless: the generated `wwwroot` files
-survive a clean too, so skipping the step remains the correct answer. Output is still logged, but
+the incremental clean — the stamp stays in `obj\<configuration>\`. A stale stamp cannot produce a stale
+build, though, because the step re-runs whenever a declared `Outputs` file is missing: if your project
+deletes its generated files on clean, the next build regenerates them regardless. Output is still logged, but
 `BunBeforeStaticWebAssets` does not retain stdout and stderr in memory because those output properties are
 not used by the static web assets helper — the last 50 lines of **each** stream are still included in the
 failure message, stdout as well as stderr, since plenty of tools explain themselves on stdout and it is
@@ -333,6 +334,11 @@ logged at a level the default verbosity drops.
 > Incremental skipping compares timestamps, so it cannot see a change it was not told about. List every file
 > the step reads in `Inputs`. In download mode without a pinned `BunVersionDownload`, "latest" moving is also
 > invisible to the stamp — pin the version if you need that to invalidate.
+>
+> The same applies to `Outputs`, which is how a deleted artefact gets noticed. List every file the step
+> produces, not just one of them: if a step emits `bundle.min.js` and `style.min.css` but only names the
+> first, deleting the CSS alone leaves the step looking up to date and the file missing. This bites projects
+> that delete their generated `wwwroot` files in a `BeforeTargets="Clean"` target.
 
 If you need to sequence another target after these steps, use `AfterTargets="RunBunBeforeStaticWebAssets"`.
 

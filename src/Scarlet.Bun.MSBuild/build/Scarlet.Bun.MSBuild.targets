@@ -120,7 +120,9 @@
     $(IntermediateOutputPath) and is reported as a FileWrite, so dotnet clean removes it - for a
     single-targeted project. A multi-targeted one runs these steps once in the outer build, which has no
     CoreBuild and so never runs the incremental clean, leaving the stamp in obj\<configuration>\. Harmless:
-    a clean does not remove the generated wwwroot files either, so skipping the step stays correct.
+    a stale stamp cannot cause a stale build, because the step also re-runs whenever a declared Output is
+    missing. So a project that deletes its generated files on clean - a common pattern - gets them back on
+    the next build whether or not the stamp survived.
 
     Only the project's own wwwroot is picked back up. That is not a shortcut - the SDK hardcodes it
     too (ContentRoot="$(MSBuildProjectDirectory)\wwwroot\" and RelativePathPattern="wwwroot/**" in

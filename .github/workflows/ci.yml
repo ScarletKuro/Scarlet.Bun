@@ -179,6 +179,12 @@ jobs:
           chmod +x tests/e2e/multi-tfm/verify.sh
           tests/e2e/multi-tfm/verify.sh "${{ github.workspace }}" "${{ env.VERSION }}" "${{ env.BUN_VERSION }}"
 
+      - name: E2E Test - Incremental skipping
+        shell: bash
+        run: |
+          chmod +x tests/e2e/incremental/verify.sh
+          tests/e2e/incremental/verify.sh "${{ github.workspace }}" "${{ env.VERSION }}" "${{ env.BUN_VERSION }}"
+
       # Runs on every matrix leg deliberately: this is the only thing that proves the correct RID
       # sub-package is selected on win-arm64 and linux-arm64, and that the embedded Bun is executable
       # after NuGet extraction strips the Unix permission bits.

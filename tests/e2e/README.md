@@ -15,6 +15,9 @@ tests/e2e/
 ├── multi-tfm/
 │   ├── verify.sh                    # Multi-target framework E2E test script
 │   └── templates/                   # Template files for the multi-TFM test
+├── incremental/
+│   ├── verify.sh                    # Incremental skipping (Inputs/Outputs) E2E test script
+│   └── templates/                   # Template files for the incremental test
 ├── cli-tool/
 │   ├── verify.sh                    # dotnet-bun .NET tool E2E test script
 │   └── templates/                   # Template files for the CLI tool test
@@ -97,6 +100,33 @@ If the RID cannot be determined, the script falls back to shell-based OS and arc
 8. Verifies all three TFM output directories (`bin/Debug/net{8,9,10}.0/`) exist
 9. Packs the RCL as a NuGet package and verifies the JS/CSS land under `staticwebassets/` in the `.nupkg`
 10. Packs again with `--no-build` and verifies the assets survive without Bun re-running
+
+Platform detection and runtime package selection follow the same logic as `package-installation/verify.sh`.
+
+### incremental/verify.sh
+
+**Purpose**: Validates `BunBeforeStaticWebAssets` incremental skipping (`Inputs`/`Outputs`) against the real
+package.
+
+Multi-targeted on purpose, and that is the point rather than a detail. These steps run in the outer build,
+which has no `CoreBuild` and so never runs the incremental clean — the stamp outlives `dotnet clean`. The
+project deletes its generated `wwwroot` files on clean, the way MudBlazor and similar libraries do, so the
+only thing that can force a rebuild afterwards is the `Outputs` existence check. If that ever stops firing,
+a clean leaves the assets permanently missing and every later build agrees they are up to date.
+
+**Usage**:
+```bash
+./tests/e2e/incremental/verify.sh <workspace-path> <package-version> <runtime-version>
+```
+
+**What it does**: builds a multi-TFM Razor Class Library four times, asserting on the Bun asset step each
+time:
+1. First build — runs, and produces both bundles
+2. Nothing changed — skipped
+3. A source file touched — runs again
+4. `dotnet clean` (which deletes the bundles, leaving the stamp) then build — runs again, and both bundles
+   are back. Guarded by a check that the clean really did delete them, so the assertion cannot pass
+   vacuously
 
 Platform detection and runtime package selection follow the same logic as `package-installation/verify.sh`.
 
