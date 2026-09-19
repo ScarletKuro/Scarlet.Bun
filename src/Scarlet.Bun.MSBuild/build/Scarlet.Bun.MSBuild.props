@@ -5,6 +5,13 @@
     
     <!-- Whether to continue build on Bun command failure -->
     <BunContinueOnError Condition="'$(BunContinueOnError)' == ''">false</BunContinueOnError>
+
+    <!-- Whether the reusable Bun target stores stdout/stderr in BunStandardOutput/BunStandardError -->
+    <BunCaptureOutput Condition="'$(BunCaptureOutput)' == ''">true</BunCaptureOutput>
+
+    <!-- Optional semicolon-separated inputs/outputs used by the reusable Bun target to skip up-to-date work -->
+    <BunInputs Condition="'$(BunInputs)' == ''"></BunInputs>
+    <BunOutputs Condition="'$(BunOutputs)' == ''"></BunOutputs>
     
     <!-- Whether to download Bun runtime from GitHub releases instead of using embedded runtimes -->
     <!-- No default - must be explicitly set by the user -->

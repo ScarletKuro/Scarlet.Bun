@@ -38,14 +38,22 @@ the .NET static web assets pipeline:
 
 ```xml
 <ItemGroup>
+  <BunInstallInputs Include="package.json" />
+  <BunBuildInputs Include="build.mjs;assets\scripts\**\*.js;assets\styles\**\*.scss" />
+  <BunBuildOutputs Include="wwwroot\js\bundle.min.js;wwwroot\css\style.min.css" />
+
   <BunBeforeStaticWebAssets Include="install">
     <Arguments>--frozen-lockfile</Arguments>
     <TimeoutMilliseconds>60000</TimeoutMilliseconds>
+    <Inputs>@(BunInstallInputs)</Inputs>
+    <Outputs>node_modules</Outputs>
   </BunBeforeStaticWebAssets>
 
   <BunBeforeStaticWebAssets Include="run">
     <Arguments>build.mjs</Arguments>
     <TimeoutMilliseconds>60000</TimeoutMilliseconds>
+    <Inputs>@(BunBuildInputs)</Inputs>
+    <Outputs>@(BunBuildOutputs)</Outputs>
   </BunBeforeStaticWebAssets>
 </ItemGroup>
 ```

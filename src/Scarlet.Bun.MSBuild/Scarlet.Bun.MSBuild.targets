@@ -7,6 +7,7 @@
          Conditional so a project can opt into download mode (or point somewhere else) before importing this file. -->
     <BunRuntimeDirectory Condition="'$(BunRuntimeDirectory)' == ''">$(_BunTaskProjectDir)bin\runtimes</BunRuntimeDirectory>
     <BunContinueOnError Condition="'$(BunContinueOnError)' == ''">false</BunContinueOnError>
+    <BunCaptureOutput Condition="'$(BunCaptureOutput)' == ''">true</BunCaptureOutput>
   </PropertyGroup>
 
   <!-- Using TaskHostFactory ensures that the task assembly will not be locked at the end of the build.
@@ -33,6 +34,9 @@
                 WorkingDirectory="$(BunWorkingDirectory)"
                 TimeoutMilliseconds="$(BunTimeoutMilliseconds)"
                 ContinueOnError="$(BunContinueOnError)"
+                CaptureOutput="$(BunCaptureOutput)"
+                Inputs="$(BunInputs)"
+                Outputs="$(BunOutputs)"
                 RuntimeDirectory="$(BunRuntimeDirectory)"
                 BunRuntimeDownload="$(BunRuntimeDownload)"
                 BunVersionDownload="$(BunVersionDownload)"
@@ -68,6 +72,8 @@
         <WorkingDirectory Condition="'%(BunBeforeStaticWebAssets.WorkingDirectory)' == ''">$(MSBuildProjectDirectory)</WorkingDirectory>
         <TimeoutMilliseconds Condition="'%(BunBeforeStaticWebAssets.TimeoutMilliseconds)' == ''">$(BunTimeoutMilliseconds)</TimeoutMilliseconds>
         <ContinueOnError Condition="'%(BunBeforeStaticWebAssets.ContinueOnError)' == ''">$(BunContinueOnError)</ContinueOnError>
+        <Inputs Condition="'%(BunBeforeStaticWebAssets.Inputs)' != ''">%(BunBeforeStaticWebAssets.Inputs)</Inputs>
+        <Outputs Condition="'%(BunBeforeStaticWebAssets.Outputs)' != ''">%(BunBeforeStaticWebAssets.Outputs)</Outputs>
       </_BunBeforeStaticWebAssetsStep>
     </ItemGroup>
 
@@ -76,6 +82,9 @@
                 WorkingDirectory="%(_BunBeforeStaticWebAssetsStep.WorkingDirectory)"
                 TimeoutMilliseconds="%(_BunBeforeStaticWebAssetsStep.TimeoutMilliseconds)"
                 ContinueOnError="%(_BunBeforeStaticWebAssetsStep.ContinueOnError)"
+                CaptureOutput="false"
+                Inputs="%(_BunBeforeStaticWebAssetsStep.Inputs)"
+                Outputs="%(_BunBeforeStaticWebAssetsStep.Outputs)"
                 RuntimeDirectory="$(BunRuntimeDirectory)"
                 BunRuntimeDownload="$(BunRuntimeDownload)"
                 BunVersionDownload="$(BunVersionDownload)"

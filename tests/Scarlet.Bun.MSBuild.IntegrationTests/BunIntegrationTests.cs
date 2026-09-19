@@ -176,6 +176,68 @@ public class BunIntegrationTests
     }
 
     [Fact]
+    public void BunRunTask_WithUpToDateInputsAndOutputs_ShouldSkipBeforeResolvingRuntime()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"scarlet-bun-incremental-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            var input = Path.Combine(tempDir, "input.js");
+            var output = Path.Combine(tempDir, "bundle.js");
+            File.WriteAllText(input, "console.log('input');");
+            File.WriteAllText(output, "console.log('output');");
+
+            var now = DateTime.UtcNow;
+            File.SetLastWriteTimeUtc(input, now.AddMinutes(-10));
+            File.SetLastWriteTimeUtc(output, now);
+
+            var buildEngine = new MockBuildEngine(_output);
+            var task = new BunRunTask
+            {
+                Command = "run",
+                Inputs = input,
+                Outputs = output,
+                BuildEngine = buildEngine
+            };
+
+            var result = task.Execute();
+
+            Assert.True(result);
+            Assert.Equal(0, task.ExitCode);
+            Assert.Empty(buildEngine.Errors);
+            Assert.Contains(buildEngine.Messages, message => message.Message?.Contains("outputs are up-to-date", StringComparison.Ordinal) == true);
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+            {
+                Directory.Delete(tempDir, recursive: true);
+            }
+        }
+    }
+
+    [Fact]
+    public void BunRunTask_WithCaptureOutputDisabled_ShouldNotRetainStdoutOrStderr()
+    {
+        var runtimesDirectory = Path.Combine(Directory.GetCurrentDirectory(), "runtimes");
+        var task = new BunRunTask
+        {
+            Command = "--version",
+            RuntimeDirectory = runtimesDirectory,
+            CaptureOutput = false,
+            BuildEngine = new MockBuildEngine(_output)
+        };
+
+        var result = task.Execute();
+
+        Assert.True(result);
+        Assert.Equal(0, task.ExitCode);
+        Assert.Null(task.StandardOutput);
+        Assert.Null(task.StandardError);
+    }
+
+    [Fact]
     public void BunRunTask_WithMissingCommand_ShouldFail()
     {
         // Arrange

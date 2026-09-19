@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.IO.Abstractions;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
 using Scarlet.Bun.Core.Providers;
@@ -196,7 +197,7 @@ public static class BunRuntimeResolver
         {
             foreach (var directory in MuslLoaderDirectories)
             {
-                if (Directory.Exists(directory) && Directory.GetFiles(directory, "ld-musl-*.so.1").Length > 0)
+                if (Directory.Exists(directory) && Directory.EnumerateFiles(directory, "ld-musl-*.so.1").Any())
                 {
                     return true;
                 }

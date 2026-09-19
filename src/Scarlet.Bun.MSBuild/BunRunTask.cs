@@ -42,6 +42,22 @@ public class BunRunTask : Task
     public bool ContinueOnError { get; set; } = false;
 
     /// <summary>
+    /// Whether stdout and stderr should be retained in <see cref="StandardOutput"/> and <see cref="StandardError"/>.
+    /// Output is still logged while the process runs.
+    /// </summary>
+    public bool CaptureOutput { get; set; } = true;
+
+    /// <summary>
+    /// Optional semicolon-separated list of input files or directories for timestamp-based skipping.
+    /// </summary>
+    public string? Inputs { get; set; }
+
+    /// <summary>
+    /// Optional semicolon-separated list of output files or directories for timestamp-based skipping.
+    /// </summary>
+    public string? Outputs { get; set; }
+
+    /// <summary>
     /// Optional path to the runtime directory. When set it overrides <see cref="RuntimePacks"/>.
     /// Required when BunRuntimeDownload is true.
     /// </summary>
@@ -142,6 +158,15 @@ public class BunRunTask : Task
 
             var fileSystem = new FileSystem();
             var chmodProvider = Chmod.CreateProvider();
+
+            if (IsUpToDate(fileSystem))
+            {
+                Log.LogMessage(MessageImportance.Normal, $"Skipping Bun {Command}: outputs are up-to-date.");
+                ExitCode = 0;
+                StandardOutput = CaptureOutput ? string.Empty : null;
+                StandardError = CaptureOutput ? string.Empty : null;
+                return true;
+            }
 
             string bunPath;
 
@@ -254,14 +279,14 @@ public class BunRunTask : Task
             using var process = new Process();
             process.StartInfo = processStartInfo;
 
-            var outputData = new System.Text.StringBuilder();
-            var errorData = new System.Text.StringBuilder();
+            System.Text.StringBuilder? outputData = CaptureOutput ? new System.Text.StringBuilder() : null;
+            System.Text.StringBuilder? errorData = CaptureOutput ? new System.Text.StringBuilder() : null;
 
             process.OutputDataReceived += (_, e) =>
             {
                 if (e.Data != null)
                 {
-                    outputData.AppendLine(e.Data);
+                    outputData?.AppendLine(e.Data);
                     Log.LogMessage(MessageImportance.Normal, e.Data);
                 }
             };
@@ -270,7 +295,7 @@ public class BunRunTask : Task
             {
                 if (e.Data != null)
                 {
-                    errorData.AppendLine(e.Data);
+                    errorData?.AppendLine(e.Data);
                     Log.LogMessage(MessageImportance.High, e.Data);
                 }
             };
@@ -294,6 +319,8 @@ public class BunRunTask : Task
                     Log.LogError($"Command timed out after {TimeoutMilliseconds}ms");
                     return false;
                 }
+
+                process.WaitForExit();
             }
             else
             {
@@ -301,8 +328,8 @@ public class BunRunTask : Task
             }
 
             ExitCode = process.ExitCode;
-            StandardOutput = outputData.ToString();
-            StandardError = errorData.ToString();
+            StandardOutput = outputData?.ToString();
+            StandardError = errorData?.ToString();
 
             if (ExitCode != 0)
             {
@@ -349,6 +376,101 @@ public class BunRunTask : Task
         ReportDeprecatedPacks(distinct);
 
         return distinct;
+    }
+
+    private bool IsUpToDate(IFileSystem fileSystem)
+    {
+        var inputPaths = SplitPaths(Inputs);
+        var outputPaths = SplitPaths(Outputs);
+
+        if (inputPaths.Count == 0 || outputPaths.Count == 0)
+        {
+            return false;
+        }
+
+        var baseDirectory = string.IsNullOrWhiteSpace(WorkingDirectory)
+            ? Environment.CurrentDirectory
+            : WorkingDirectory!;
+
+        DateTime? newestInput = null;
+        foreach (var input in inputPaths)
+        {
+            if (!TryGetLastWriteTimeUtc(fileSystem, ResolveIncrementalPath(baseDirectory, input), out var timestamp))
+            {
+                return false;
+            }
+
+            newestInput = newestInput is null || timestamp > newestInput.Value
+                ? timestamp
+                : newestInput;
+        }
+
+        DateTime? oldestOutput = null;
+        foreach (var output in outputPaths)
+        {
+            if (!TryGetLastWriteTimeUtc(fileSystem, ResolveIncrementalPath(baseDirectory, output), out var timestamp))
+            {
+                return false;
+            }
+
+            oldestOutput = oldestOutput is null || timestamp < oldestOutput.Value
+                ? timestamp
+                : oldestOutput;
+        }
+
+        return oldestOutput!.Value >= newestInput!.Value;
+    }
+
+    private static IReadOnlyList<string> SplitPaths(string? paths)
+    {
+        if (string.IsNullOrWhiteSpace(paths))
+        {
+            return Array.Empty<string>();
+        }
+
+        var result = new List<string>();
+        foreach (var path in paths!.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries))
+        {
+            var trimmed = path.Trim();
+            if (trimmed.Length > 0)
+            {
+                result.Add(trimmed);
+            }
+        }
+
+        return result;
+    }
+
+    private static string ResolveIncrementalPath(string baseDirectory, string path)
+    {
+        try
+        {
+            return Path.IsPathRooted(path)
+                ? path
+                : Path.GetFullPath(Path.Combine(baseDirectory, path));
+        }
+        catch (Exception)
+        {
+            return path;
+        }
+    }
+
+    private static bool TryGetLastWriteTimeUtc(IFileSystem fileSystem, string path, out DateTime timestamp)
+    {
+        if (fileSystem.File.Exists(path))
+        {
+            timestamp = fileSystem.File.GetLastWriteTimeUtc(path);
+            return true;
+        }
+
+        if (fileSystem.Directory.Exists(path))
+        {
+            timestamp = fileSystem.Directory.GetLastWriteTimeUtc(path);
+            return true;
+        }
+
+        timestamp = default;
+        return false;
     }
 
     /// <summary>
