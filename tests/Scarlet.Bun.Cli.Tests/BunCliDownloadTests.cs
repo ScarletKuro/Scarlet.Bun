@@ -47,8 +47,8 @@ public class BunCliDownloadTests
     [Fact]
     public void Resolve_ShouldRequestTheVersionScopedDirectory()
     {
-        // Arrange - the regression guard for BunDownloader caching on file existence alone: two versions
-        // must not share a directory, or the second request would silently be served the first binary
+        // Arrange - the CLI intentionally asks BunDownloader to use the cache directory scoped to the
+        // requested version.
         var fileSystem = new MockFileSystem();
         using var handler = new MockHttpMessageHandler();
 
@@ -119,7 +119,8 @@ public class BunCliDownloadTests
                 new FakeZipArchiveProvider(fileSystem),
                 NoOpChmodProvider.Instance,
                 platform,
-                log));
+                log,
+                new FakeLatestVersionResolver(resolvedVersion: null)));
 
         return resolver.Resolve(options, allowDownload: true, new RecordingBunLogger());
     }

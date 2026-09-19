@@ -159,8 +159,8 @@ public class BunCliResolverTests
     [Fact]
     public void Resolve_ShouldScopeTheRuntimeDirectoryByVersion()
     {
-        // Arrange - BunDownloader treats any existing file as a cache hit without checking its version, so a
-        // shared directory would keep serving the first version ever downloaded
+        // Arrange - each requested CLI version gets a distinct cache directory so old and new tool versions
+        // can coexist without sharing downloaded runtimes.
         var first = CreateOptions(new Dictionary<string, string>
         {
             [BunCliOptions.CacheVariable] = CacheRoot,

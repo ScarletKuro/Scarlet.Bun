@@ -112,10 +112,8 @@ internal sealed class BunCliOptions
     /// The directory handed to the downloader. It is version-scoped on purpose.
     /// </summary>
     /// <remarks>
-    /// <c>BunDownloader</c> treats an existing file as a cache hit without checking which version it is. A
-    /// single shared directory would therefore keep serving the first version ever downloaded, silently
-    /// ignoring a later change of <see cref="RequestedVersion"/>. Scoping the directory by version makes
-    /// that existence check mean what it appears to mean.
+    /// Keeping the CLI cache version-scoped makes manual inspection and cleanup straightforward, and keeps
+    /// older tool versions from accidentally reusing a runtime downloaded for a different requested version.
     /// </remarks>
     public string RuntimeDirectory => Path.Combine(CacheRoot, "runtimes", RequestedVersion);
 

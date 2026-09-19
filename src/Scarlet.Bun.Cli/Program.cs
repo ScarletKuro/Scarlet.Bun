@@ -44,7 +44,8 @@ internal static class Program
                 ZipArchiveProvider.Instance,
                 chmodProvider,
                 targetPlatform,
-                log));
+                log,
+                new GitHubLatestVersionResolver()));
 
         var application = new BunCliApplication(
             resolver,

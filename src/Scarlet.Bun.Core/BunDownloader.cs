@@ -22,8 +22,16 @@ public sealed class BunDownloader
     private readonly IChmodProvider _chmodProvider;
     private readonly IZipArchiveProvider _zipProvider;
     private readonly IBunLogger _log;
+    private readonly ILatestVersionResolver _latestVersionResolver;
 
-    public BunDownloader(HttpClient httpClient, IFileSystem fileSystem, IZipArchiveProvider zipProvider, IChmodProvider chmodProvider, Platform platform, IBunLogger log)
+    public BunDownloader(
+        HttpClient httpClient,
+        IFileSystem fileSystem,
+        IZipArchiveProvider zipProvider,
+        IChmodProvider chmodProvider,
+        Platform platform,
+        IBunLogger log,
+        ILatestVersionResolver latestVersionResolver)
     {
         _platform = platform;
         _httpClient = httpClient;
@@ -31,6 +39,7 @@ public sealed class BunDownloader
         _zipProvider = zipProvider;
         _chmodProvider = chmodProvider;
         _log = log;
+        _latestVersionResolver = latestVersionResolver ?? throw new ArgumentNullException(nameof(latestVersionResolver));
     }
 
     /// <summary>
@@ -59,11 +68,14 @@ public sealed class BunDownloader
 
         var fullRuntimePath = Path.Combine(runtimeDirectory, runtimeId, "native");
         var bunExecutablePath = Path.Combine(fullRuntimePath, executableName);
+        var versionMarkerPath = GetVersionMarkerPath(bunExecutablePath);
+        var hasExplicitVersion = !string.IsNullOrWhiteSpace(version);
 
-        // Fast path: runtime already exists, no synchronization needed.
+        // Fast path: only trustworthy for a pinned version - "latest" must always ask GitHub whether it moved.
         // The executable is published atomically only after extraction and chmod complete.
-        if (_fileSystem.File.Exists(bunExecutablePath))
+        if (hasExplicitVersion && IsCacheValidForVersion(bunExecutablePath, versionMarkerPath, version!))
         {
+            _log.LogMessage($"Bun {version} is already cached at {bunExecutablePath}. Skipping download.");
             _chmodProvider.EnsureExecutablePermissions(bunExecutablePath);
             return bunExecutablePath;
         }
@@ -103,28 +115,29 @@ public sealed class BunDownloader
         try
         {
             // Double-check: another process may have completed the download while we waited
-            if (_fileSystem.File.Exists(bunExecutablePath))
+            if (hasExplicitVersion && IsCacheValidForVersion(bunExecutablePath, versionMarkerPath, version!))
             {
+                _log.LogMessage($"Bun {version} was downloaded by another process while waiting. Skipping download.");
                 _chmodProvider.EnsureExecutablePermissions(bunExecutablePath);
                 return bunExecutablePath;
             }
 
-            // Construct download URL
-            string downloadUrl;
-            if (string.IsNullOrWhiteSpace(version))
-            {
-                downloadUrl = $"{GithubReleasesUrl}/latest/download/{platformName}.zip";
-            }
-            else
-            {
-                downloadUrl = $"{GithubReleasesUrl}/download/bun-v{version}/{platformName}.zip";
-            }
-
             var stagedExecutablePath = CreateStagedExecutablePath(fullRuntimePath, executableName);
-            DownloadAndExtractAsync(downloadUrl, stagedExecutablePath, platformName, executableName)
-                .GetAwaiter().GetResult();
 
-            return PublishStagedExecutable(stagedExecutablePath, bunExecutablePath);
+            if (hasExplicitVersion)
+            {
+                var downloadUrl = $"{GithubReleasesUrl}/download/bun-v{version}/{platformName}.zip";
+                DownloadAndExtractAsync(downloadUrl, stagedExecutablePath, platformName, executableName)
+                    .GetAwaiter().GetResult();
+
+                var publishedPath = PublishStagedExecutable(stagedExecutablePath, bunExecutablePath);
+                WriteVersionMarker(versionMarkerPath, version!);
+                return publishedPath;
+            }
+
+            var latestDownloadUrl = $"{GithubReleasesUrl}/latest/download/{platformName}.zip";
+            return ResolveAndDownloadLatestAsync(latestDownloadUrl, bunExecutablePath, versionMarkerPath, stagedExecutablePath, platformName, executableName)
+                .GetAwaiter().GetResult();
         }
         finally
         {
@@ -155,32 +168,34 @@ public sealed class BunDownloader
         // Create the full runtime path: runtimeDirectory/runtimeId/native
         var fullRuntimePath = Path.Combine(runtimeDirectory, runtimeId, "native");
         var bunExecutablePath = Path.Combine(fullRuntimePath, executableName);
+        var versionMarkerPath = GetVersionMarkerPath(bunExecutablePath);
+        var hasExplicitVersion = !string.IsNullOrWhiteSpace(version);
 
-        // Check if runtime already exists
-        if (_fileSystem.File.Exists(bunExecutablePath))
+        // Check if a runtime matching the requested version is already cached.
+        // "latest" is never trusted here - it must always ask GitHub whether it moved.
+        if (hasExplicitVersion && IsCacheValidForVersion(bunExecutablePath, versionMarkerPath, version!))
         {
             // Verify it's executable on Unix
+            _log.LogMessage($"Bun {version} is already cached at {bunExecutablePath}. Skipping download.");
             _chmodProvider.EnsureExecutablePermissions(bunExecutablePath);
             return bunExecutablePath;
         }
 
-        // Construct download URL
-        string downloadUrl;
-        if (string.IsNullOrWhiteSpace(version))
-        {
-            downloadUrl = $"{GithubReleasesUrl}/latest/download/{platformName}.zip";
-        }
-        else
-        {
-            downloadUrl = $"{GithubReleasesUrl}/download/bun-v{version}/{platformName}.zip";
-        }
-
-        // Download and extract
         _fileSystem.Directory.CreateDirectory(fullRuntimePath);
         var stagedExecutablePath = CreateStagedExecutablePath(fullRuntimePath, executableName);
-        await DownloadAndExtractAsync(downloadUrl, stagedExecutablePath, platformName, executableName);
 
-        return PublishStagedExecutable(stagedExecutablePath, bunExecutablePath);
+        if (hasExplicitVersion)
+        {
+            var downloadUrl = $"{GithubReleasesUrl}/download/bun-v{version}/{platformName}.zip";
+            await DownloadAndExtractAsync(downloadUrl, stagedExecutablePath, platformName, executableName);
+
+            var publishedPath = PublishStagedExecutable(stagedExecutablePath, bunExecutablePath);
+            WriteVersionMarker(versionMarkerPath, version!);
+            return publishedPath;
+        }
+
+        var latestDownloadUrl = $"{GithubReleasesUrl}/latest/download/{platformName}.zip";
+        return await ResolveAndDownloadLatestAsync(latestDownloadUrl, bunExecutablePath, versionMarkerPath, stagedExecutablePath, platformName, executableName);
     }
 
     /// <summary>
@@ -211,10 +226,72 @@ public sealed class BunDownloader
     }
 
     /// <summary>
-    /// Downloads and extracts the Bun runtime archive.
+    /// Downloads and extracts the Bun runtime archive from a known URL.
     /// </summary>
     private async Task DownloadAndExtractAsync(string downloadUrl, string stagedExecutablePath, string platformName, string executableName)
     {
+        using var response = await _httpClient.GetAsync(downloadUrl);
+        await ExtractResponseToStagedExecutableAsync(response, downloadUrl, stagedExecutablePath, platformName, executableName);
+    }
+
+    /// <summary>
+    /// Resolves the concrete version behind "latest" via <see cref="_latestVersionResolver"/> and downloads
+    /// it only if it differs from what is already cached.
+    /// </summary>
+    private async Task<string> ResolveAndDownloadLatestAsync(
+        string latestUrl,
+        string bunExecutablePath,
+        string versionMarkerPath,
+        string stagedExecutablePath,
+        string platformName,
+        string executableName)
+    {
+        var resolvedVersion = await _latestVersionResolver.TryResolveVersionAsync(latestUrl);
+
+        if (resolvedVersion is not null && IsCacheValidForVersion(bunExecutablePath, versionMarkerPath, resolvedVersion))
+        {
+            _log.LogMessage($"Bun 'latest' still resolves to {resolvedVersion}, which is already cached at {bunExecutablePath}. Skipping download.");
+            _chmodProvider.EnsureExecutablePermissions(bunExecutablePath);
+            return bunExecutablePath;
+        }
+
+        // A resolved version can be downloaded directly by its tag, skipping the redirect we already
+        // followed once to resolve it. If resolution failed, fall back to letting the main (redirect
+        // following) client resolve "latest" itself.
+        var downloadUrl = resolvedVersion is not null
+            ? $"{GithubReleasesUrl}/download/bun-v{resolvedVersion}/{platformName}.zip"
+            : latestUrl;
+
+        if (resolvedVersion is not null)
+        {
+            _log.LogMessage($"Bun 'latest' resolved to {resolvedVersion}.");
+        }
+
+        await DownloadAndExtractAsync(downloadUrl, stagedExecutablePath, platformName, executableName);
+        var publishedPath = PublishStagedExecutable(stagedExecutablePath, bunExecutablePath);
+
+        if (resolvedVersion is not null)
+        {
+            WriteVersionMarker(versionMarkerPath, resolvedVersion);
+        }
+        else
+        {
+            // Could not determine what version was just downloaded (e.g. GitHub changed the redirect
+            // shape). Clear any stale marker rather than leave it pointing at a different version.
+            DeleteFileIfExists(versionMarkerPath);
+        }
+
+        return publishedPath;
+    }
+
+    /// <summary>
+    /// Reads an already-obtained response into a temp zip file and extracts the matching executable entry
+    /// to <paramref name="stagedExecutablePath"/>.
+    /// </summary>
+    private async Task ExtractResponseToStagedExecutableAsync(HttpResponseMessage response, string downloadUrl, string stagedExecutablePath, string platformName, string executableName)
+    {
+        EnsureSuccessOrThrow(response, downloadUrl);
+
         // Download to temporary file
         var tempDir = Path.GetTempPath();
         var tempZipPath = Path.Combine(tempDir, $"bun-{Guid.NewGuid()}.zip");
@@ -224,14 +301,6 @@ public sealed class BunDownloader
 
         try
         {
-            var response = await _httpClient.GetAsync(downloadUrl);
-
-            if (!response.IsSuccessStatusCode)
-            {
-                var error = $"Failed to download Bun runtime from {downloadUrl}. Status: {response.StatusCode}";
-                throw new HttpRequestException(error);
-            }
-
             using (var fileStream = _fileSystem.File.Create(tempZipPath))
             {
                 await response.Content.CopyToAsync(fileStream);
@@ -275,6 +344,32 @@ public sealed class BunDownloader
         }
     }
 
+    private static void EnsureSuccessOrThrow(HttpResponseMessage response, string downloadUrl)
+    {
+        if (!response.IsSuccessStatusCode)
+        {
+            throw new HttpRequestException($"Failed to download Bun runtime from {downloadUrl}. Status: {response.StatusCode}");
+        }
+    }
+
+    private static string GetVersionMarkerPath(string bunExecutablePath) => bunExecutablePath + ".version";
+
+    private bool IsCacheValidForVersion(string bunExecutablePath, string versionMarkerPath, string expectedVersion)
+    {
+        if (!_fileSystem.File.Exists(bunExecutablePath) || !_fileSystem.File.Exists(versionMarkerPath))
+        {
+            return false;
+        }
+
+        var storedVersion = _fileSystem.File.ReadAllText(versionMarkerPath).Trim();
+        return string.Equals(storedVersion, expectedVersion, StringComparison.Ordinal);
+    }
+
+    private void WriteVersionMarker(string versionMarkerPath, string version)
+    {
+        _fileSystem.File.WriteAllText(versionMarkerPath, version);
+    }
+
     private string PublishStagedExecutable(string stagedExecutablePath, string bunExecutablePath)
     {
         try
@@ -287,9 +382,15 @@ public sealed class BunDownloader
 
             _chmodProvider.EnsureExecutablePermissions(stagedExecutablePath);
 
+            // Reaching this point means the caller already determined any existing cache is stale
+            // (missing/mismatched version marker) or absent, so a pre-existing file here is leftover
+            // content that must be replaced, not a valid cache hit to preserve. Unlike the staged-file
+            // cleanup below, a failed delete here must not be swallowed: silently keeping the stale file
+            // while the caller goes on to write the new version marker would make the marker lie about
+            // what is actually on disk.
             if (_fileSystem.File.Exists(bunExecutablePath))
             {
-                return bunExecutablePath;
+                _fileSystem.File.Delete(bunExecutablePath);
             }
 
             try
@@ -298,6 +399,8 @@ public sealed class BunDownloader
             }
             catch (IOException) when (_fileSystem.File.Exists(bunExecutablePath))
             {
+                // Another concurrent caller (e.g. two unsynchronized DownloadRuntimeAsync calls for the
+                // same version) already published a file at this path.
                 return bunExecutablePath;
             }
 
