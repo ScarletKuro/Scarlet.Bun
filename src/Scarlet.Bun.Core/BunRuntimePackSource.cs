@@ -5,8 +5,7 @@ namespace Scarlet.Bun.Core;
 /// </summary>
 /// <remarks>
 /// This exists only to report the deprecated property contract. Delete it together with the
-/// <c>BunRuntime_&lt;rid&gt;</c> parameters on <see cref="BunRunTask"/>; the compiler will then point at
-/// every piece of legacy handling that has to go with them.
+/// <c>BunRuntime_&lt;rid&gt;</c> parameters on <c>BunRunTask</c>; the compiler will then point at every piece of legacy handling that has to go with them.
 /// </remarks>
 public enum BunRuntimePackSource
 {

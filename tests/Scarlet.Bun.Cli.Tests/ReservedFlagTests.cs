@@ -14,7 +14,7 @@ public class ReservedFlagTests
         // Arrange
         var launcher = new RecordingProcessLauncher();
         var stdout = new StringWriter();
-        var application = Create(launcher, stdout, out _);
+        var application = Create(launcher, stdout);
 
         // Act
         var result = application.Run(new[] { BunCliApplication.InfoFlag });
@@ -38,7 +38,7 @@ public class ReservedFlagTests
     {
         // Arrange - restricting recognition to position 0 keeps the reserved surface as small as possible
         var launcher = new RecordingProcessLauncher();
-        var application = Create(launcher, new StringWriter(), out _);
+        var application = Create(launcher, new StringWriter());
 
         // Act
         application.Run(args);
@@ -55,7 +55,6 @@ public class ReservedFlagTests
         var application = Create(
             launcher,
             new StringWriter(),
-            out _,
             new Dictionary<string, string>
             {
                 [BunCliOptions.CacheVariable] = "/cache",
@@ -76,7 +75,7 @@ public class ReservedFlagTests
     {
         // Arrange
         var stdout = new StringWriter();
-        var application = Create(new RecordingProcessLauncher(), stdout, out _);
+        var application = Create(new RecordingProcessLauncher(), stdout);
 
         // Act
         var result = application.Run(new[] { BunCliApplication.InfoFlag, "--json" });
@@ -93,7 +92,7 @@ public class ReservedFlagTests
     {
         // Arrange
         var stderr = new StringWriter();
-        var application = Create(new RecordingProcessLauncher(), new StringWriter(), out _, stderr: stderr);
+        var application = Create(new RecordingProcessLauncher(), new StringWriter(), stderr: stderr);
 
         // Act
         var result = application.Run(new[] { BunCliApplication.InfoFlag, "--nope" });
@@ -139,13 +138,12 @@ public class ReservedFlagTests
     private static BunCliApplication Create(
         IProcessLauncher launcher,
         TextWriter stdout,
-        out MockFileSystem fileSystem,
         IDictionary<string, string>? variables = null,
         TextWriter? stderr = null)
     {
         const string toolDirectory = "/tool";
 
-        fileSystem = new MockFileSystem();
+        var fileSystem = new MockFileSystem();
         fileSystem.AddFile(Path.Combine(toolDirectory, "bun"), new MockFileData("bun"));
 
         variables ??= new Dictionary<string, string> { [BunCliOptions.CacheVariable] = "/cache" };

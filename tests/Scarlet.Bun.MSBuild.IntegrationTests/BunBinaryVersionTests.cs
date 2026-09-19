@@ -78,7 +78,7 @@ public class BunBinaryVersionTests
         using var process = Process.Start(startInfo);
         Assert.NotNull(process);
 
-        var output = process!.StandardOutput.ReadToEnd();
+        var output = process.StandardOutput.ReadToEnd();
         process.WaitForExit();
 
         Assert.True(process.ExitCode == 0, $"'{bunPath} {argument}' exited with {process.ExitCode}.");

@@ -274,11 +274,9 @@ public class BunRunTask : Task
             process.BeginOutputReadLine();
             process.BeginErrorReadLine();
 
-            bool exited;
             if (TimeoutMilliseconds > 0)
             {
-                exited = process.WaitForExit(TimeoutMilliseconds);
-                if (!exited)
+                if (!process.WaitForExit(TimeoutMilliseconds))
                 {
                     try
                     {
@@ -295,7 +293,6 @@ public class BunRunTask : Task
             else
             {
                 process.WaitForExit();
-                exited = true;
             }
 
             ExitCode = process.ExitCode;
