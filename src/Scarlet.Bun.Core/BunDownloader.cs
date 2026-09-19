@@ -316,8 +316,8 @@ public sealed class BunDownloader
             }
 
             // Verify against upstream's published SHA-256 sums before touching the archive. Bun publishes
-            // SHASUMS256.txt alongside every release; without this, a compromised release asset or a
-            // MITM'd download would be extracted and handed straight to every consumer's build, unverified.
+            // SHASUMS256.txt alongside every release; checking it catches corrupt or mismatched archive
+            // downloads before they are extracted into a consumer build.
             await VerifyChecksumAsync(tempZipPath, checksumsUrl, platformName);
 
             // Extract the zip file

@@ -57,8 +57,8 @@ echo "Downloading Bun from $DOWNLOAD_URL"
 curl -fL "$DOWNLOAD_URL" -o "$TMP_ZIP"
 
 # Verify the download against upstream's published SHA-256 sums before touching the archive. Bun publishes
-# SHASUMS256.txt alongside every release; without this check a compromised release asset or a MITM'd
-# download would be extracted and shipped, unverified, into every consumer's build.
+# SHASUMS256.txt alongside every release; checking it catches corrupt or mismatched archive downloads
+# before they are packaged into consumer builds.
 echo "Downloading checksums from $CHECKSUMS_URL"
 curl -fL "$CHECKSUMS_URL" -o "$TMP_SUMS"
 
