@@ -372,6 +372,7 @@ public class BunRunTask : Task
             {
                 if (e.Data == null)
                 {
+                    // ReSharper disable once AccessToDisposedClosure
                     gate.TryRun(outputClosed.Set);
                     return;
                 }
@@ -384,6 +385,7 @@ public class BunRunTask : Task
             {
                 if (e.Data == null)
                 {
+                    // ReSharper disable once AccessToDisposedClosure
                     gate.TryRun(errorClosed.Set);
                     return;
                 }
