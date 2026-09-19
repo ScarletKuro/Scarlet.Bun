@@ -1,10 +1,14 @@
 using System;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.IO.Abstractions;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
+using System.Threading;
 using Microsoft.Build.Framework;
 using Microsoft.Build.Utilities;
 using Scarlet.Bun.Core;
@@ -17,6 +21,16 @@ namespace Scarlet.Bun.MSBuild;
 /// </summary>
 public class BunRunTask : Task
 {
+    /// <summary>
+    /// Linux errno for "Text file busy", surfaced by <see cref="Win32Exception.NativeErrorCode"/> when
+    /// <see cref="Process.Start()"/> fails on Unix.
+    /// </summary>
+    private const int TextFileBusyErrorCode = 26;
+
+    private const int MaxProcessStartAttempts = 5;
+
+    private const int ProcessStartRetryBaseDelayMilliseconds = 25;
+
     /// <summary>
     /// The Bun command to execute (e.g., "run", "install", "build").
     /// </summary>
@@ -308,7 +322,7 @@ public class BunRunTask : Task
                 }
             };
 
-            process.Start();
+            StartProcessWithRetry(process);
             process.BeginOutputReadLine();
             process.BeginErrorReadLine();
 
@@ -362,6 +376,36 @@ public class BunRunTask : Task
             Log.LogErrorFromException(ex, true);
             ExitCode = -1; // Set non-zero exit code to indicate failure
             return ContinueOnError;
+        }
+    }
+
+    /// <summary>
+    /// Starts <paramref name="process"/>, retrying a handful of times on Linux/macOS if the kernel reports
+    /// the executable as busy (ETXTBSY). This shows up when a just-downloaded or just-run Bun binary is
+    /// exec'd again within milliseconds - e.g. an <c>install</c> step immediately followed by a <c>run</c>
+    /// step against the same cached binary - and a grandchild process Bun spawned for the first run hasn't
+    /// fully released the executable yet even though the process .NET waited on has already exited.
+    /// </summary>
+    [ExcludeFromCodeCoverage]
+    private void StartProcessWithRetry(Process process)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                process.Start();
+                return;
+            }
+            catch (Win32Exception ex) when (ex.NativeErrorCode == TextFileBusyErrorCode
+                && !RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+                && attempt < MaxProcessStartAttempts)
+            {
+                var delayMilliseconds = ProcessStartRetryBaseDelayMilliseconds * (1 << (attempt - 1));
+                Log.LogMessage(
+                    MessageImportance.Normal,
+                    $"Bun executable was busy (ETXTBSY); retrying in {delayMilliseconds}ms (attempt {attempt}/{MaxProcessStartAttempts}).");
+                Thread.Sleep(delayMilliseconds);
+            }
         }
     }
 
