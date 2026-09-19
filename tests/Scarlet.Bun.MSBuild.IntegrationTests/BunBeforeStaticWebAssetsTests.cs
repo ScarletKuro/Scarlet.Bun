@@ -194,10 +194,6 @@ public class BunBeforeStaticWebAssetsTests
         """;
 
     /// <summary>
-    /// A Razor Class Library is the strictest case: its wwwroot files have to be packed under
-    /// staticwebassets/ for a consuming app to serve them.
-    /// </summary>
-    /// <summary>
     /// Drives incremental skipping through MSBuild rather than by constructing the task directly, because the
     /// item metadata has to reach the task's parameters for any of it to happen.
     /// </summary>
@@ -272,6 +268,10 @@ public class BunBeforeStaticWebAssetsTests
         return result.Output.Split('\n').Count(line => line.Contains("Executing: bun ", StringComparison.Ordinal));
     }
 
+    /// <summary>
+    /// A Razor Class Library is the strictest case: its wwwroot files have to be packed under
+    /// staticwebassets/ for a consuming app to serve them.
+    /// </summary>
     private TempWorkspace CreateRazorClassLibrary(string steps)
     {
         var workspace = TempWorkspace.Create("static-web-assets");

@@ -41,6 +41,7 @@ the .NET static web assets pipeline:
   <BunInstallInputs Include="package.json" />
   <BunInstallInputs Include="bun.lock" Condition="Exists('$(MSBuildProjectDirectory)\bun.lock')" />
   <BunBuildInputs Include="build.mjs;assets\scripts\**\*.js;assets\styles\**\*.scss" />
+  <BunBuildInputs Include="bun.lock" Condition="Exists('$(MSBuildProjectDirectory)\bun.lock')" />
   <BunBuildOutputs Include="wwwroot\js\bundle.min.js;wwwroot\css\style.min.css" />
 
   <BunBeforeStaticWebAssets Include="install">

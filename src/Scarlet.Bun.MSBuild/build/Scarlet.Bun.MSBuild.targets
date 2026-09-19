@@ -33,6 +33,7 @@
     - BunContinueOnError (optional) - Continue on error
     - BunCaptureOutput (optional) - Store stdout/stderr in BunStandardOutput/BunStandardError
     - BunInputs / BunOutputs / BunStampFile (optional) - Skip up-to-date work after a successful stamped run
+    - BunStampDirectory (optional) - Where generated stamps go; defaults to Scarlet.Bun under $(IntermediateOutputPath)
     - BunRuntimeDirectory (optional) - Override runtime directory; wins over @(BunRuntimePack)
     - BunRuntimeDownload (optional) - Download runtime from GitHub instead of using embedded
     - BunVersionDownload (optional) - Specific version to download (defaults to latest)
@@ -63,6 +64,11 @@
   <Target Name="Bun">
     <Error Text="BunCommand property is required" Condition="'$(BunCommand)' == ''" />
 
+    <PropertyGroup>
+      <_BunStampDirectory Condition="'$(BunStampDirectory)' != ''">$(BunStampDirectory)</_BunStampDirectory>
+      <_BunStampDirectory Condition="'$(_BunStampDirectory)' == '' AND '$(IntermediateOutputPath)' != ''">$([System.IO.Path]::GetFullPath($([System.IO.Path]::Combine('$(MSBuildProjectDirectory)', '$(IntermediateOutputPath)', 'Scarlet.Bun'))))</_BunStampDirectory>
+    </PropertyGroup>
+
     <BunRunTask Command="$(BunCommand)"
                 Arguments="$(BunArguments)"
                 WorkingDirectory="$(BunWorkingDirectory)"
@@ -72,7 +78,8 @@
                 Inputs="$(BunInputs)"
                 Outputs="$(BunOutputs)"
                 StampFile="$(BunStampFile)"
-                StampDirectory="$(BunStampDirectory)"
+                StampDirectory="$(_BunStampDirectory)"
+                ProjectDirectory="$(MSBuildProjectDirectory)"
                 RuntimeDirectory="$(BunRuntimeDirectory)"
                 BunRuntimeDownload="$(BunRuntimeDownload)"
                 BunVersionDownload="$(BunVersionDownload)"
@@ -110,7 +117,10 @@
     stamp. A directory in Inputs is walked recursively, because a directory's own timestamp does not move
     when a file inside it is edited in place. The stamp also covers how the Bun runtime is selected, so a
     version bump re-runs the step instead of keeping bundles the previous Bun produced. The stamp goes in
-    $(IntermediateOutputPath) and is reported as a FileWrite, so dotnet clean removes it.
+    $(IntermediateOutputPath) and is reported as a FileWrite, so dotnet clean removes it - for a
+    single-targeted project. A multi-targeted one runs these steps once in the outer build, which has no
+    CoreBuild and so never runs the incremental clean, leaving the stamp in obj\<configuration>\. Harmless:
+    a clean does not remove the generated wwwroot files either, so skipping the step stays correct.
 
     Only the project's own wwwroot is picked back up. That is not a shortcut - the SDK hardcodes it
     too (ContentRoot="$(MSBuildProjectDirectory)\wwwroot\" and RelativePathPattern="wwwroot/**" in
@@ -142,6 +152,7 @@
         Path.Combine returns the second argument unchanged when it is already rooted, so this is correct
         for a relocated BaseIntermediateOutputPath or an artifacts layout as well as the usual obj\<cfg>\<tfm>\.
       -->
+      <_BunStampDirectory Condition="'$(BunStampDirectory)' != ''">$(BunStampDirectory)</_BunStampDirectory>
       <_BunStampDirectory Condition="'$(_BunStampDirectory)' == '' AND '$(IntermediateOutputPath)' != ''">$([System.IO.Path]::GetFullPath($([System.IO.Path]::Combine('$(MSBuildProjectDirectory)', '$(IntermediateOutputPath)', 'Scarlet.Bun'))))</_BunStampDirectory>
     </PropertyGroup>
 
@@ -150,9 +161,6 @@
         <WorkingDirectory Condition="'%(BunBeforeStaticWebAssets.WorkingDirectory)' == ''">$(MSBuildProjectDirectory)</WorkingDirectory>
         <TimeoutMilliseconds Condition="'%(BunBeforeStaticWebAssets.TimeoutMilliseconds)' == ''">$(BunTimeoutMilliseconds)</TimeoutMilliseconds>
         <ContinueOnError Condition="'%(BunBeforeStaticWebAssets.ContinueOnError)' == ''">$(BunContinueOnError)</ContinueOnError>
-        <Inputs Condition="'%(BunBeforeStaticWebAssets.Inputs)' != ''">%(BunBeforeStaticWebAssets.Inputs)</Inputs>
-        <Outputs Condition="'%(BunBeforeStaticWebAssets.Outputs)' != ''">%(BunBeforeStaticWebAssets.Outputs)</Outputs>
-        <StampFile Condition="'%(BunBeforeStaticWebAssets.StampFile)' != ''">%(BunBeforeStaticWebAssets.StampFile)</StampFile>
       </_BunBeforeStaticWebAssetsStep>
     </ItemGroup>
 
@@ -166,6 +174,7 @@
                 Outputs="%(_BunBeforeStaticWebAssetsStep.Outputs)"
                 StampFile="%(_BunBeforeStaticWebAssetsStep.StampFile)"
                 StampDirectory="$(_BunStampDirectory)"
+                ProjectDirectory="$(MSBuildProjectDirectory)"
                 RuntimeDirectory="$(BunRuntimeDirectory)"
                 BunRuntimeDownload="$(BunRuntimeDownload)"
                 BunVersionDownload="$(BunVersionDownload)"

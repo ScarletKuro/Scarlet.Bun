@@ -390,28 +390,29 @@ public sealed class BunDownloader
     private async Task VerifyChecksumAsync(string actualHash, string checksumsUrl, string platformName)
     {
         var archiveName = $"{platformName}.zip";
-        string? expectedHash = null;
+        string checksumsText;
         try
         {
-            using var response = await _httpClient.GetAsync(checksumsUrl, HttpCompletionOption.ResponseHeadersRead);
-            EnsureSuccessOrThrow(response, checksumsUrl);
-
-            using var checksumsStream = await response.Content.ReadAsStreamAsync();
-            using var reader = new StreamReader(checksumsStream);
-            string? line;
-            while ((line = await reader.ReadLineAsync()) is not null)
-            {
-                var parts = line.Trim().Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
-                if (parts.Length >= 2 && parts[parts.Length - 1].Equals(archiveName, StringComparison.Ordinal))
-                {
-                    expectedHash = parts[0];
-                    break;
-                }
-            }
+            // Buffered, unlike the archive download above: SHASUMS256.txt is a couple of KB, so there is
+            // nothing to stream, and ResponseHeadersRead would scope HttpClient.Timeout to the headers and
+            // leave the body read unbounded. GetStringAsync also honours the response charset and raises a
+            // status failure itself, so it needs no separate check to wrap.
+            checksumsText = await _httpClient.GetStringAsync(checksumsUrl);
         }
-        catch (Exception ex) when (ex is HttpRequestException or IOException or TaskCanceledException)
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
         {
             throw new InvalidDataException($"Failed to download checksums from {checksumsUrl}.", ex);
+        }
+
+        string? expectedHash = null;
+        foreach (var line in checksumsText.Split('\n'))
+        {
+            var parts = line.Trim().Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length >= 2 && parts[parts.Length - 1].Equals(archiveName, StringComparison.Ordinal))
+            {
+                expectedHash = parts[0];
+                break;
+            }
         }
 
         if (expectedHash is null)

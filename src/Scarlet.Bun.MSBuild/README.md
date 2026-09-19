@@ -287,6 +287,7 @@ the Bun steps as `BunBeforeStaticWebAssets` items:
   <BunInstallInputs Include="package.json" />
   <BunInstallInputs Include="bun.lock" Condition="Exists('$(MSBuildProjectDirectory)\bun.lock')" />
   <BunBuildInputs Include="build.mjs;assets\scripts\**\*.js;assets\styles\**\*.scss" />
+  <BunBuildInputs Include="bun.lock" Condition="Exists('$(MSBuildProjectDirectory)\bun.lock')" />
   <BunBuildOutputs Include="wwwroot\js\bundle.min.js;wwwroot\css\site.min.css" />
 
   <BunBeforeStaticWebAssets Include="install">
@@ -316,11 +317,18 @@ the step rather than keeping bundles produced by the previous Bun. A directory n
 recursively, so editing a file in place invalidates the step — a directory's own timestamp only moves when
 an entry is added or removed, which would otherwise leave you with silently stale output.
 
-By default the stamp lives under `Scarlet.Bun` inside the project's `$(IntermediateOutputPath)`, so
-`dotnet clean` removes it; set `StampFile` to choose a specific location. Output is still logged, but
+Relative `Inputs`, `Outputs` and `StampFile` resolve against the **project** directory, like every other
+path in a project file - `WorkingDirectory` says where the command runs, not what the paths mean.
+
+By default the stamp lives under `Scarlet.Bun` inside the project's `$(IntermediateOutputPath)`; set
+`StampFile` to choose a specific location. `dotnet clean` removes it for single-targeted projects. A
+multi-targeted project runs these steps once in the outer build, which has no `CoreBuild` and so never runs
+the incremental clean — the stamp stays in `obj\<configuration>\`. Harmless: the generated `wwwroot` files
+survive a clean too, so skipping the step remains the correct answer. Output is still logged, but
 `BunBeforeStaticWebAssets` does not retain stdout and stderr in memory because those output properties are
-not used by the static web assets helper — the last 50 lines of stderr are still included in the failure
-message so a failing step stays diagnosable at any verbosity.
+not used by the static web assets helper — the last 50 lines of **each** stream are still included in the
+failure message, stdout as well as stderr, since plenty of tools explain themselves on stdout and it is
+logged at a level the default verbosity drops.
 
 > Incremental skipping compares timestamps, so it cannot see a change it was not told about. List every file
 > the step reads in `Inputs`. In download mode without a pinned `BunVersionDownload`, "latest" moving is also
@@ -473,6 +481,8 @@ The `BunRunTask` supports the following parameters:
 | `Inputs` | No | Semicolon-separated files or directories compared against the success stamp. Directories are walked recursively | null |
 | `Outputs` | No | Semicolon-separated files or directories that must exist before the task can skip | null |
 | `StampFile` | No | File recording a successful incremental run. Used only when `Inputs` and `Outputs` are both set. | generated |
+| `ProjectDirectory` | No | Directory that relative `Inputs`/`Outputs`/`StampFile` resolve against, normally `$(MSBuildProjectDirectory)` | `WorkingDirectory` |
+| `StampDirectory` | No | Directory for the generated stamp, normally `$(IntermediateOutputPath)`. Ignored when `StampFile` is set | none |
 | `BunRuntimeDownload` | No | When true, downloads the Bun runtime from GitHub releases instead of using embedded runtimes | false |
 | `BunVersionDownload` | No | Specific Bun version to download (e.g., "1.3.6"). If not specified, downloads latest version. Only used when `BunRuntimeDownload=true`. | latest |
 | `DownloadMutexTimeoutSeconds` | No | Maximum seconds to wait for the download mutex when another process is already downloading. Only used when `BunRuntimeDownload=true`. | 300 |

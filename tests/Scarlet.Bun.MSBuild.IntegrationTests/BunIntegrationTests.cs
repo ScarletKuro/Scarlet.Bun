@@ -752,6 +752,8 @@ public class BunIntegrationTests
         File.WriteAllText(
             Path.Combine(workspace.RootDirectory, "fail.mjs"),
             $$"""
+            console.log("STDOUT_CONTEXT");
+
             for (let i = 1; i <= {{stderrLineCount}}; i++) {
                 console.error(`DETAILED_BUN_DIAGNOSTIC line ${i}`);
             }
@@ -774,6 +776,12 @@ public class BunIntegrationTests
         Assert.True(task.Execute());
         Assert.Null(task.StandardError);
         Assert.Contains(buildEngine.Errors, error => error.Message?.Contains("failed with exit code 3", StringComparison.Ordinal) == true);
+
+        // stdout is logged at Normal importance, which the default minimal verbosity drops, so a tool that
+        // explains itself there would otherwise leave nothing behind on a failure.
+        Assert.Contains(
+            buildEngine.Errors,
+            error => error.Message?.Contains("Standard output: STDOUT_CONTEXT", StringComparison.Ordinal) == true);
 
         var errorOutput = buildEngine.Errors
             .Select(error => error.Message)
