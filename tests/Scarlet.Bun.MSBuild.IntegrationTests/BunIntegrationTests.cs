@@ -731,6 +731,57 @@ public class BunIntegrationTests
         }
     }
 
+    [Fact]
+    public void BunRunTask_WithProjectDirectory_ShouldResolveIncrementalPathsAgainstProjectDirectory()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"scarlet-bun-project-dir-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+
+        try
+        {
+            var projectDirectory = Path.Combine(tempDir, "project");
+            var workingDirectory = Path.Combine(projectDirectory, "frontend");
+            Directory.CreateDirectory(workingDirectory);
+
+            File.WriteAllText(Path.Combine(projectDirectory, "input.js"), "console.log('input');");
+            File.WriteAllText(Path.Combine(projectDirectory, "bundle.js"), "console.log('output');");
+
+            var runtimesDirectory = Path.Combine(Directory.GetCurrentDirectory(), "runtimes");
+            const string relativeStampFile = "custom/task.stamp";
+            var expectedStampFile = Path.Combine(projectDirectory, "custom", "task.stamp");
+
+            BunRunTask CreateTask(MockBuildEngine engine) => new()
+            {
+                Command = "--version",
+                WorkingDirectory = workingDirectory,
+                ProjectDirectory = projectDirectory,
+                RuntimeDirectory = runtimesDirectory,
+                Inputs = "input.js",
+                Outputs = "bundle.js",
+                StampFile = relativeStampFile,
+                BuildEngine = engine
+            };
+
+            var firstRun = CreateTask(new MockBuildEngine(_output));
+            Assert.True(firstRun.Execute());
+            Assert.Equal(expectedStampFile, firstRun.StampFilePath);
+            Assert.True(File.Exists(expectedStampFile), $"Expected relative StampFile to resolve under {projectDirectory}.");
+
+            var buildEngine = new MockBuildEngine(_output);
+            var secondRun = CreateTask(buildEngine);
+
+            Assert.True(secondRun.Execute());
+            Assert.Contains(buildEngine.Messages, message => message.Message?.Contains("outputs are up-to-date", StringComparison.Ordinal) == true);
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+            {
+                Directory.Delete(tempDir, recursive: true);
+            }
+        }
+    }
+
     /// <summary>
     /// Streamed stderr is logged at high importance, which quiet verbosity drops, so the failure message
     /// itself has to carry enough detail to act on even when output is not retained.
