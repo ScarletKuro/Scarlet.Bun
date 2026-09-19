@@ -62,7 +62,9 @@ curl -fL "$DOWNLOAD_URL" -o "$TMP_ZIP"
 echo "Downloading checksums from $CHECKSUMS_URL"
 curl -fL "$CHECKSUMS_URL" -o "$TMP_SUMS"
 
-EXPECTED_SHA256=$(grep -E "  ?$DOWNLOAD_FILENAME\$" "$TMP_SUMS" | awk '{print $1}' | head -n 1)
+# Exact last-field match via awk, not grep -E: interpolating $DOWNLOAD_FILENAME into a regex would let its
+# literal "." match any character, weakening the exactness this check exists for.
+EXPECTED_SHA256=$(awk -v fname="$DOWNLOAD_FILENAME" '$NF == fname { print $1; exit }' "$TMP_SUMS")
 if [ -z "$EXPECTED_SHA256" ]; then
   echo "Error: no checksum entry for '$DOWNLOAD_FILENAME' in $CHECKSUMS_URL" >&2
   exit 1

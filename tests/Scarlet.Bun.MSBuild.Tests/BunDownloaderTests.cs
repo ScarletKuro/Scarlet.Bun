@@ -482,6 +482,56 @@ public class BunDownloaderTests
     }
 
     [Fact]
+    public async Task DownloadRuntimeAsync_WithRealWorldChecksumsFileFormat_ShouldVerifySuccessfully()
+    {
+        // Arrange - a real excerpt of oven-sh/bun's SHASUMS256.txt captured from a live release, with only
+        // the target entry's hash swapped for the mock archive's actual one. Every other line is untouched,
+        // including several filenames sharing "bun-linux-x64" as a prefix, so this guards against exact-match
+        // regressions (e.g. an unescaped "." or a substring match) that a synthetic single-line fixture -
+        // which is all the other tests here use - could never catch.
+        var tempDir = "/test-runtime";
+        var platform = Platform.LinuxX64;
+        var executableName = BunRuntimeResolver.GetExecutableName(platform);
+
+        var mockFileSystem = new MockFileSystem();
+        var mockHttp = new MockHttpMessageHandler();
+
+        var zipContent = CreateMockBunZip(executableName);
+        var actualHash = Convert.ToHexString(SHA256.HashData(zipContent.ToArray())).ToLowerInvariant();
+
+        var realWorldChecksumsLines = new[]
+        {
+            "d9e0811fe1fe68cd7963c40710b3afaeae5bebfd3663714e94a659e72c53bce5  bun-linux-x64-android-baseline-profile.zip",
+            "fe36d8d4795e0eadc22fb6696d44d168491c2e5b9b7cbb12b8c96b0c0c40a4f9  bun-linux-x64-android-baseline.zip",
+            "c2a09028a8178246737f8ecb127aa6f9a789576162ea934e30b4b36a1aa387b8  bun-linux-x64-android-profile.zip",
+            "1e90fc0d3b83cb847b34338aff2765a7034bf53c50414344b3b0bf07a330a144  bun-linux-x64-android.zip",
+            "574be420a9e5212b082079a60af2f23f66b7d3f7713abb046d2f140ea63e5150  bun-linux-x64-baseline-profile.zip",
+            $"{actualHash}  bun-linux-x64-baseline.zip",
+            "f33acc7e775585218a300ae62377ab1dd02c5d624ff970fc9e0096505fd6e0c1  bun-linux-x64-musl-baseline-profile.zip",
+            "76e1db84e98f22f78de0a87e309bfbbf297732847f9720db36750646c85c8c18  bun-linux-x64-musl-baseline.zip",
+            "21754222f1aafea211c76dfb188044bc2010aec581a3f77c664f3b0b2d53b01a  bun-linux-x64-musl-profile.zip",
+            "4835eca59d6da70f4674f5642f6e459dcadab773695b2ed9922d131057989742  bun-linux-x64-musl.zip",
+            "fad558e312e123abc9abc6fcdc2370b60e8a9726575fc6bcc2fdc93e6b600a7f  bun-linux-x64-profile.zip",
+            "36368faef7527875d5ffa52e53cd48021741f2a83eb6208a8dd64068d422a913  bun-linux-x64.zip",
+        };
+        var realWorldChecksums = string.Join("\n", realWorldChecksumsLines) + "\n";
+
+        mockHttp.When("https://github.com/oven-sh/bun/releases/latest/download/bun-linux-x64-baseline.zip")
+                .Respond("application/zip", zipContent);
+        mockHttp.When(ChecksumsUrlLatest)
+                .Respond("text/plain", realWorldChecksums);
+
+        var httpClient = mockHttp.ToHttpClient();
+        var downloader = new BunDownloader(httpClient, new FakeLatestVersionResolver(null), mockFileSystem, new FakeZipArchiveProvider(mockFileSystem), NoOpChmodProvider.Instance, platform, NoOpBunLogger.Instance);
+
+        // Act
+        var result = await downloader.DownloadRuntimeAsync(tempDir);
+
+        // Assert
+        Assert.True(mockFileSystem.File.Exists(result));
+    }
+
+    [Fact]
     public async Task DownloadRuntimeAsync_WhenChecksumsDownloadFails_ShouldThrowInvalidDataException()
     {
         // Arrange

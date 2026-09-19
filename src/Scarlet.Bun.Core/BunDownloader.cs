@@ -221,6 +221,16 @@ public sealed class BunDownloader
     /// <summary>
     /// Builds the archive download URL and the matching upstream SHA-256 checksums URL for a Bun release.
     /// </summary>
+    /// <remarks>
+    /// Both URLs are always plain string formatting from a known version (or "latest"), never derived from
+    /// an HTTP response. GitHub's release-asset redirect chain has two hops: the first
+    /// (".../releases/download/bun-v1.4.2/asset.zip") carries the version; the second - a signed,
+    /// time-limited "release-assets.githubusercontent.com" blob URL - does not, and has no sibling
+    /// SHASUMS256.txt at all. A client that follows redirects automatically only ever observes that second
+    /// hop, so deriving the checksums URL from the downloaded response's resolved URI (as opposed to
+    /// building it here, before any request is made) would point at a checksums file that does not exist.
+    /// See <see cref="GitHubLatestVersionResolver"/> for the same two-hop concern.
+    /// </remarks>
     private static (string DownloadUrl, string ChecksumsUrl) BuildDownloadUrls(string platformName, string? version)
     {
         if (string.IsNullOrWhiteSpace(version))
@@ -266,7 +276,10 @@ public sealed class BunDownloader
 
         // A resolved version can be downloaded directly by its tag, skipping the redirect we already
         // followed once to resolve it. If resolution failed, fall back to letting the main (redirect
-        // following) client resolve "latest" itself.
+        // following) client resolve "latest" itself; the checksums URL falls back the same way, which
+        // means (rarely, only when resolution fails) it is re-resolved independently of the zip's own
+        // "latest" redirect and could theoretically land on a different release cut in between the two
+        // requests. Deriving it from the zip response instead is not an option - see BuildDownloadUrls.
         var (downloadUrl, checksumsUrl) = resolvedVersion is not null
             ? BuildDownloadUrls(platformName, resolvedVersion)
             : (latestUrl, latestChecksumsUrl);
