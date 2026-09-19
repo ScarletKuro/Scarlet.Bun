@@ -215,6 +215,12 @@ public class BunRunTask : Task
         // AsyncStreamReader rethrows on a thread-pool thread, killing the build process.
         var gate = new TaskLifetimeGate();
 
+        // Declared out here, not beside the handlers that use them: a `using` inside the try disposes as
+        // control leaves the try, which is before the finally closes the gate - leaving a window where a late
+        // handler could pass the gate and signal a disposed event. At method scope they outlive the gate.
+        using var outputClosed = new ManualResetEventSlim(false);
+        using var errorClosed = new ManualResetEventSlim(false);
+
         try
         {
             if (string.IsNullOrWhiteSpace(Command))
@@ -355,9 +361,6 @@ public class BunRunTask : Task
             var error = new OutputCollector(DiagnosticTailLineCount, CaptureOutput);
 
             // A null Data is how the framework signals end-of-stream, which is what the drain below waits on.
-            using var outputClosed = new ManualResetEventSlim(false);
-            using var errorClosed = new ManualResetEventSlim(false);
-
             // Accumulating stays outside the gate: it is independently thread-safe, and a late line landing in
             // a buffer nobody reads is harmless. Only the two things that must not outlive the task - touching
             // the events disposed below, and logging - go through it.
