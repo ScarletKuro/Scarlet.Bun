@@ -996,6 +996,49 @@ public class BunDownloaderTests
         Assert.EndsWith(expectedExecutable, result);
     }
 
+    [Fact]
+    public void DownloadRuntime_ReleasesMutexOnAcquiringThread_EvenWhenAwaitsResumeOnAnotherThread()
+    {
+        // Regression test: an earlier refactor made the mutex-guarded critical section a genuinely `async`
+        // method, so a continuation resuming on a different pooled thread after an `await` made
+        // Mutex.ReleaseMutex() throw ApplicationException - it is thread-affine, only the thread that
+        // called WaitOne may release it. DownloadRuntime must stay fully synchronous end to end (blocking
+        // via GetAwaiter().GetResult(), never `await`, inside the mutex try/finally) so the acquiring
+        // thread never changes, no matter how its internal awaited HTTP calls get scheduled.
+        var tempDir = "/test-runtime";
+        var platform = Platform.LinuxX64;
+        var executableName = BunRuntimeResolver.GetExecutableName(platform);
+
+        var mockFileSystem = new MockFileSystem();
+        var mockHttp = new MockHttpMessageHandler();
+
+        var zipContent = CreateMockBunZip(executableName);
+        mockHttp.When("https://github.com/oven-sh/bun/releases/latest/download/bun-linux-x64-baseline.zip")
+                .Respond("application/zip", zipContent);
+        MockChecksums(mockHttp, ChecksumsUrlLatest, "bun-linux-x64-baseline.zip", zipContent);
+
+        // Forces every awaited HTTP call to genuinely suspend rather than complete synchronously - only
+        // then does `await` register a continuation with the ambient SynchronizationContext at all.
+        var httpClient = new HttpClient(new AlwaysYieldsHandler(mockHttp));
+        var downloader = new BunDownloader(httpClient, new FakeLatestVersionResolver(null), mockFileSystem, new FakeZipArchiveProvider(mockFileSystem), NoOpChmodProvider.Instance, platform, NoOpBunLogger.Instance);
+
+        var previousContext = SynchronizationContext.Current;
+        SynchronizationContext.SetSynchronizationContext(new AlwaysResumesOnNewThreadSynchronizationContext());
+        try
+        {
+            // If any await inside the download/verify/extract chain resumed inside the mutex's
+            // try/finally instead of blocking it from the outside, this throws ApplicationException from
+            // ReleaseMutex instead of returning normally.
+            var result = downloader.DownloadRuntime(tempDir);
+
+            Assert.True(mockFileSystem.File.Exists(result));
+        }
+        finally
+        {
+            SynchronizationContext.SetSynchronizationContext(previousContext);
+        }
+    }
+
     #endregion
 
     private static string ChecksumsUrlForVersion(string version) =>
@@ -1060,6 +1103,37 @@ public class BunDownloaderTests
             Assert.True(_fileSystem.File.Exists(destinationFileName), "Expected staged executable to exist after extraction");
             Assert.False(_fileSystem.File.Exists(_finalExecutablePath), "Final executable should not exist during extraction");
             _afterExtract(destinationFileName);
+        }
+    }
+
+    /// <summary>
+    /// Forces every request through this handler to suspend rather than complete synchronously, so an
+    /// `await` on it actually registers a continuation with the ambient <see cref="SynchronizationContext"/>
+    /// instead of continuing inline (which is what an already-completed <see cref="Task"/> does).
+    /// </summary>
+    private sealed class AlwaysYieldsHandler : DelegatingHandler
+    {
+        public AlwaysYieldsHandler(HttpMessageHandler inner) : base(inner)
+        {
+        }
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            await Task.Yield();
+            return await base.SendAsync(request, cancellationToken);
+        }
+    }
+
+    /// <summary>
+    /// A <see cref="SynchronizationContext"/> that marshals every continuation onto a brand-new dedicated
+    /// thread. A real thread pool only sometimes reuses a different thread after an await, which would make
+    /// a test relying on it flaky; spawning a fresh OS thread every time makes the worst case deterministic.
+    /// </summary>
+    private sealed class AlwaysResumesOnNewThreadSynchronizationContext : SynchronizationContext
+    {
+        public override void Post(SendOrPostCallback d, object? state)
+        {
+            new Thread(() => d(state)) { IsBackground = true }.Start();
         }
     }
 
