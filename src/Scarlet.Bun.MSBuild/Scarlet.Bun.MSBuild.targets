@@ -7,6 +7,7 @@
          Conditional so a project can opt into download mode (or point somewhere else) before importing this file. -->
     <BunRuntimeDirectory Condition="'$(BunRuntimeDirectory)' == ''">$(_BunTaskProjectDir)bin\runtimes</BunRuntimeDirectory>
     <BunContinueOnError Condition="'$(BunContinueOnError)' == ''">false</BunContinueOnError>
+    <BunCaptureOutput Condition="'$(BunCaptureOutput)' == ''">true</BunCaptureOutput>
   </PropertyGroup>
 
   <!-- Using TaskHostFactory ensures that the task assembly will not be locked at the end of the build.
@@ -23,16 +24,46 @@
   </ItemGroup>
 
   <!--
+    Where a generated stamp goes, resolved once for both entry points below.
+
+    A target rather than a property group at file scope: $(IntermediateOutputPath) is not set when this file
+    is imported, only by the time a target runs. Depended on rather than duplicated, so the two entry points
+    cannot answer this differently - MSBuild skips a DependsOnTargets when the parent's own condition is
+    false, so this costs nothing in a build that uses neither.
+  -->
+  <Target Name="_BunResolveStampDirectory">
+    <PropertyGroup>
+      <_BunStampDirectory Condition="'$(BunStampDirectory)' != ''">$(BunStampDirectory)</_BunStampDirectory>
+      <!--
+        Path.Combine returns the second argument unchanged when it is already rooted, so this is correct
+        for a relocated BaseIntermediateOutputPath or an artifacts layout as well as the usual obj\<cfg>\<tfm>\.
+      -->
+      <_BunStampDirectory Condition="'$(_BunStampDirectory)' == '' AND '$(IntermediateOutputPath)' != ''">$([System.IO.Path]::GetFullPath($([System.IO.Path]::Combine('$(MSBuildProjectDirectory)', '$(IntermediateOutputPath)', 'Scarlet.Bun'))))</_BunStampDirectory>
+    </PropertyGroup>
+  </Target>
+
+  <!--
     Expose the Bun target wrapper for development scenarios.
     This is the same target that's in build/Scarlet.Bun.MSBuild.targets for NuGet consumption.
   -->
-  <Target Name="Bun">
+  <Target Name="Bun" DependsOnTargets="_BunResolveStampDirectory">
     <Error Text="BunCommand property is required" Condition="'$(BunCommand)' == ''" />
+
+    <PropertyGroup>
+      <BunWorkingDirectory Condition="'$(BunWorkingDirectory)' == ''">$(MSBuildProjectDirectory)</BunWorkingDirectory>
+    </PropertyGroup>
+
     <BunRunTask Command="$(BunCommand)"
                 Arguments="$(BunArguments)"
                 WorkingDirectory="$(BunWorkingDirectory)"
                 TimeoutMilliseconds="$(BunTimeoutMilliseconds)"
                 ContinueOnError="$(BunContinueOnError)"
+                CaptureOutput="$(BunCaptureOutput)"
+                Inputs="$(BunInputs)"
+                Outputs="$(BunOutputs)"
+                StampFile="$(BunStampFile)"
+                StampDirectory="$(_BunStampDirectory)"
+                ProjectDirectory="$(MSBuildProjectDirectory)"
                 RuntimeDirectory="$(BunRuntimeDirectory)"
                 BunRuntimeDownload="$(BunRuntimeDownload)"
                 BunVersionDownload="$(BunVersionDownload)"
@@ -47,6 +78,13 @@
       <Output TaskParameter="ExitCode" PropertyName="BunExitCode" />
       <Output TaskParameter="StandardOutput" PropertyName="BunStandardOutput" />
       <Output TaskParameter="StandardError" PropertyName="BunStandardError" />
+      <!--
+        Only takes effect when this target runs in the calling project's own instance, via CallTarget or
+        DependsOnTargets. Reached the documented way - <MSBuild Projects="..." Targets="Bun" /> - the item
+        lands in a child instance that is discarded, so dotnet clean never learns about the stamp. Harmless:
+        a surviving stamp still cannot skip a step whose outputs are missing or whose inputs moved.
+      -->
+      <Output TaskParameter="StampFilePath" ItemName="FileWrites" Condition="'$(BunInputs)' != '' AND '$(BunOutputs)' != ''" />
     </BunRunTask>
   </Target>
 
@@ -58,10 +96,18 @@
     picked back up, and why the steps run before discovery instead of contributing @(StaticWebAsset)
     items. That rationale is deliberately not duplicated here: BunTargetsTests compares the <Target>
     elements, not the comments around them, so a second copy could drift without failing anything.
+
+    Single-targeted projects only. DependsOnTargets below is what gets the task assembly built before the
+    task runs, and ResolveProjectReferences does not exist in a cross-targeting outer build - which is
+    exactly where this target runs for a multi-targeted project, so importing this file there fails with
+    MSB4057. The packaged copy carries no such dependency and is fine; only this development file is
+    affected, and it is never packed (see the csproj: only build\ and buildMultiTargeting\ ship). Every
+    sample and integration test that imports this is single-targeted, and multi-targeting is covered
+    against the real package by tests/e2e/multi-tfm.
   -->
   <Target Name="RunBunBeforeStaticWebAssets"
           BeforeTargets="DispatchToInnerBuilds;ResolveProjectStaticWebAssets;PreBuildEvent"
-          DependsOnTargets="ResolveProjectReferences"
+          DependsOnTargets="ResolveProjectReferences;_BunResolveStampDirectory"
           Condition="'@(BunBeforeStaticWebAssets)' != '' AND '$(NoBuild)' != 'true' AND ('$(TargetFrameworks)' == '' OR '$(TargetFramework)' == '')">
     <ItemGroup>
       <_BunBeforeStaticWebAssetsStep Include="@(BunBeforeStaticWebAssets)">
@@ -76,6 +122,12 @@
                 WorkingDirectory="%(_BunBeforeStaticWebAssetsStep.WorkingDirectory)"
                 TimeoutMilliseconds="%(_BunBeforeStaticWebAssetsStep.TimeoutMilliseconds)"
                 ContinueOnError="%(_BunBeforeStaticWebAssetsStep.ContinueOnError)"
+                CaptureOutput="false"
+                Inputs="%(_BunBeforeStaticWebAssetsStep.Inputs)"
+                Outputs="%(_BunBeforeStaticWebAssetsStep.Outputs)"
+                StampFile="%(_BunBeforeStaticWebAssetsStep.StampFile)"
+                StampDirectory="$(_BunStampDirectory)"
+                ProjectDirectory="$(MSBuildProjectDirectory)"
                 RuntimeDirectory="$(BunRuntimeDirectory)"
                 BunRuntimeDownload="$(BunRuntimeDownload)"
                 BunVersionDownload="$(BunVersionDownload)"
@@ -86,7 +138,10 @@
                 BunRuntime_linux_x64="$(BunRuntime_linux_x64)"
                 BunRuntime_linux_arm64="$(BunRuntime_linux_arm64)"
                 BunRuntime_osx_x64="$(BunRuntime_osx_x64)"
-                BunRuntime_osx_arm64="$(BunRuntime_osx_arm64)" />
+                BunRuntime_osx_arm64="$(BunRuntime_osx_arm64)">
+      <Output TaskParameter="StampFilePath" ItemName="FileWrites"
+              Condition="'%(_BunBeforeStaticWebAssetsStep.Inputs)' != '' AND '%(_BunBeforeStaticWebAssetsStep.Outputs)' != ''" />
+    </BunRunTask>
 
     <!--
       Bun wrote these after MSBuild evaluated the project, so the SDK's own wwwroot glob missed them.

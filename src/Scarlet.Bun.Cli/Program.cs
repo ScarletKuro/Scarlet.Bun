@@ -49,7 +49,7 @@ internal static class Program
 
         var application = new BunCliApplication(
             resolver,
-            new ProcessLauncher(),
+            new ProcessLauncher(new ConsoleBunLogger(Console.Error)),
             options,
             Console.Out,
             Console.Error);

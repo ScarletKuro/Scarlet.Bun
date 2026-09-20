@@ -80,7 +80,7 @@ internal sealed class BunCliResolver
                     $"{BunCliOptions.PathVariable} points at '{options.ExplicitBunPath}', which does not exist.");
             }
 
-            _chmodProvider.EnsureExecutablePermissions(options.ExplicitBunPath!);
+            _chmodProvider.EnsureExecutablePermissions(options.ExplicitBunPath);
 
             return Build(options.ExplicitBunPath, BunSource.Explicit);
         }

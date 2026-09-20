@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using Scarlet.Bun.Core;
 
 namespace Scarlet.Bun.Cli;
@@ -26,5 +27,6 @@ internal sealed record BunResolution(
     string? FailureReason)
 {
     /// <summary>Whether a usable Bun executable was resolved.</summary>
+    [MemberNotNullWhen(true, nameof(ExecutablePath))]
     public bool IsResolved => ExecutablePath is not null;
 }

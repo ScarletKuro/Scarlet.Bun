@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
+using Scarlet.Bun.Core;
 
 namespace Scarlet.Bun.Cli;
 
@@ -23,6 +24,10 @@ namespace Scarlet.Bun.Cli;
 [ExcludeFromCodeCoverage]
 internal sealed class ProcessLauncher : IProcessLauncher
 {
+    private readonly IBunLogger _log;
+
+    public ProcessLauncher(IBunLogger log) => _log = log;
+
     /// <inheritdoc />
     public int Run(BunLaunchRequest request)
     {
@@ -45,7 +50,9 @@ internal sealed class ProcessLauncher : IProcessLauncher
         using var process = new Process();
         process.StartInfo = startInfo;
 
-        process.Start();
+        // Shared with Scarlet.Bun.MSBuild.BunRunTask: both exec a Bun binary that may have just been
+        // downloaded, or just been run, by a step moments earlier, and can race the same ETXTBSY window.
+        ProcessStartRetry.Start(process, _log);
 
         using var signals = new SignalBridge(process);
 

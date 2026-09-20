@@ -15,6 +15,9 @@ public class BunBeforeStaticWebAssetsTests
 {
     private const string GeneratedAsset = "css/generated.css";
 
+    /// <summary>The TFM the generated test projects target; also the intermediate output path segment.</summary>
+    private const string TargetFramework = "net10.0";
+
     private readonly ITestOutputHelper _output;
 
     public BunBeforeStaticWebAssetsTests(ITestOutputHelper output)
@@ -194,6 +197,186 @@ public class BunBeforeStaticWebAssetsTests
         """;
 
     /// <summary>
+    /// Drives incremental skipping through MSBuild rather than by constructing the task directly, because the
+    /// item metadata has to reach the task's parameters for any of it to happen.
+    /// </summary>
+    /// <remarks>
+    /// Deleting the Inputs and Outputs attributes from both targets files leaves every task-level incremental
+    /// test passing: the feature degrades to "always runs", which no assertion anywhere notices. This is the
+    /// test that fails when that plumbing breaks.
+    /// </remarks>
+    [Fact]
+    public async Task IncrementalMetadata_SkipsUnchangedStepsAndRerunsAfterASourceChange()
+    {
+        using var workspace = CreateRazorClassLibrary(
+            """
+            <BunBeforeStaticWebAssets Include="run">
+              <Arguments>build.mjs</Arguments>
+              <Inputs>assets/app.js</Inputs>
+              <Outputs>wwwroot/css/generated.css</Outputs>
+            </BunBeforeStaticWebAssets>
+            """);
+
+        workspace.WriteFile("assets/app.js", "// v1");
+
+        Assert.Equal(1, await BuildAndCountBunRuns(workspace));
+        Assert.Equal(0, await BuildAndCountBunRuns(workspace));
+
+        workspace.WriteFile("assets/app.js", "// v2");
+        Assert.Equal(1, await BuildAndCountBunRuns(workspace));
+
+        // The stamp belongs to the project's real intermediate output, and the exact directory is the
+        // assertion: the task's own fallback is obj\Scarlet.Bun, which is still "somewhere under obj with
+        // Scarlet.Bun in the path" - so anything looser passes when StampDirectory is not wired through at
+        // all, and only the clean below would notice, under a message blaming the wrong thing.
+        var stamp = Assert.Single(Directory.GetFiles(
+            workspace.PathTo("obj"), "*.stamp", SearchOption.AllDirectories));
+
+        Assert.Equal(
+            workspace.PathTo("obj", DotnetCli.Configuration, TargetFramework, "Scarlet.Bun"),
+            Path.GetDirectoryName(stamp));
+
+        var clean = await RunDotnet(workspace, $"clean --configuration {DotnetCli.Configuration}");
+        Assert.Equal(0, clean.ExitCode);
+        Assert.False(File.Exists(stamp), "dotnet clean should remove the incremental stamp.");
+    }
+
+    /// <summary>
+    /// The last of the documented metadata to reach the task. Unwired, the timeout falls back to
+    /// <c>$(BunTimeoutMilliseconds)</c>, which defaults to 0 - no limit - so a step that should have been
+    /// killed simply runs to completion and the build goes green.
+    /// </summary>
+    [Fact]
+    public async Task TimeoutMillisecondsMetadata_ShouldKillAStepThatOverruns()
+    {
+        using var workspace = CreateRazorClassLibrary(
+            """
+            <BunBeforeStaticWebAssets Include="run">
+              <Arguments>slow.mjs</Arguments>
+              <TimeoutMilliseconds>2000</TimeoutMilliseconds>
+            </BunBeforeStaticWebAssets>
+            """);
+
+        // Far longer than the timeout, so the outcome cannot turn on scheduling noise.
+        workspace.WriteFile("slow.mjs", "await Bun.sleep(120000);");
+
+        var result = await RunDotnet(workspace, $"build --configuration {DotnetCli.Configuration}");
+
+        Assert.NotEqual(0, result.ExitCode);
+        Assert.Contains("timed out after 2000ms", result.Output, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// Relative <c>Inputs</c> and <c>Outputs</c> resolve against the project, not the working directory.
+    /// </summary>
+    /// <remarks>
+    /// Needs both halves to mean anything: a step whose <c>WorkingDirectory</c> is somewhere other than the
+    /// project, *and* relative paths. With them equal - which is the default, and what every other test here
+    /// uses - the task's fallback produces the same answer as the wiring, so dropping
+    /// <c>ProjectDirectory</c> from the task call changes nothing observable. Here it changes everything:
+    /// the inputs resolve under tools\, are not found, and the step silently stops skipping.
+    /// </remarks>
+    [Fact]
+    public async Task RelativeIncrementalPaths_ShouldResolveAgainstTheProjectNotTheWorkingDirectory()
+    {
+        using var workspace = CreateRazorClassLibrary(
+            """
+            <BunBeforeStaticWebAssets Include="run">
+              <Arguments>generate.mjs</Arguments>
+              <WorkingDirectory>$(MSBuildProjectDirectory)/tools</WorkingDirectory>
+              <Inputs>assets/app.js</Inputs>
+              <Outputs>wwwroot/css/generated.css</Outputs>
+            </BunBeforeStaticWebAssets>
+            """);
+
+        File.Delete(workspace.PathTo("build.mjs"));
+        workspace.WriteFile("tools/generate.mjs", WriteGeneratedAsset("../wwwroot/css"));
+        workspace.WriteFile("assets/app.js", "// v1");
+
+        Assert.Equal(1, await BuildAndCountBunRuns(workspace));
+
+        // Skipping at all proves the inputs were found, which only happens from the project directory.
+        Assert.Equal(0, await BuildAndCountBunRuns(workspace));
+
+        workspace.WriteFile("assets/app.js", "// v2");
+        Assert.Equal(1, await BuildAndCountBunRuns(workspace));
+    }
+
+    /// <summary>
+    /// <c>StampFile</c> is the third half of the incremental contract, and the only one whose absence is
+    /// invisible: drop its attribute from the task call and the step still skips, just from the generated
+    /// path instead of the requested one. Nothing else notices, so this asserts the location itself.
+    /// </summary>
+    [Fact]
+    public async Task StampFileMetadata_ShouldPutTheStampWhereItAsks()
+    {
+        using var workspace = CreateRazorClassLibrary(
+            """
+            <BunBeforeStaticWebAssets Include="run">
+              <Arguments>build.mjs</Arguments>
+              <Inputs>assets/app.js</Inputs>
+              <Outputs>wwwroot/css/generated.css</Outputs>
+              <StampFile>custom/bun-assets.stamp</StampFile>
+            </BunBeforeStaticWebAssets>
+            """);
+
+        workspace.WriteFile("assets/app.js", "// v1");
+
+        Assert.Equal(1, await BuildAndCountBunRuns(workspace));
+
+        // Relative to the project, like every other path in a project file.
+        var requested = workspace.PathTo("custom", "bun-assets.stamp");
+        Assert.True(File.Exists(requested), $"Expected the stamp at {requested}.");
+
+        // And nowhere else: a generated stamp under obj would mean StampFile was ignored and the step is
+        // skipping on a path the project never asked for.
+        Assert.Empty(Directory.Exists(workspace.PathTo("obj"))
+            ? Directory.GetFiles(workspace.PathTo("obj"), "*.stamp", SearchOption.AllDirectories)
+            : []);
+
+        // Still a working stamp, not just a file in the right place.
+        Assert.Equal(0, await BuildAndCountBunRuns(workspace));
+
+        workspace.WriteFile("assets/app.js", "// v2");
+        Assert.Equal(1, await BuildAndCountBunRuns(workspace));
+    }
+
+    /// <summary>
+    /// A skipped step still has to leave a correct package behind: the generated files were produced by an
+    /// earlier build, and it is the target's Content re-add - not the Bun run - that carries them into the
+    /// static web assets pipeline.
+    /// </summary>
+    [Fact]
+    public async Task IncrementalSkip_StillPacksTheGeneratedStaticWebAssets()
+    {
+        using var workspace = CreateRazorClassLibrary(
+            """
+            <BunBeforeStaticWebAssets Include="run">
+              <Arguments>build.mjs</Arguments>
+              <Inputs>assets/app.js</Inputs>
+              <Outputs>wwwroot/css/generated.css</Outputs>
+            </BunBeforeStaticWebAssets>
+            """);
+
+        workspace.WriteFile("assets/app.js", "// v1");
+
+        Assert.Equal(1, await BuildAndCountBunRuns(workspace));
+        Assert.Equal(0, await BuildAndCountBunRuns(workspace));
+
+        await Pack(workspace);
+
+        Assert.Equal(1, CountPackageEntries(workspace, $"staticwebassets/{GeneratedAsset}"));
+    }
+
+    private async Task<int> BuildAndCountBunRuns(TempWorkspace workspace)
+    {
+        var result = await RunDotnet(workspace, $"build --configuration {DotnetCli.Configuration} --verbosity normal");
+        Assert.Equal(0, result.ExitCode);
+
+        return result.Output.Split('\n').Count(line => line.Contains("Executing: bun ", StringComparison.Ordinal));
+    }
+
+    /// <summary>
     /// A Razor Class Library is the strictest case: its wwwroot files have to be packed under
     /// staticwebassets/ for a consuming app to serve them.
     /// </summary>
@@ -249,7 +432,7 @@ public class BunBeforeStaticWebAssetsTests
         $"""
         <Project Sdk="{sdk}">
           <PropertyGroup>
-            <TargetFramework>net10.0</TargetFramework>
+            <TargetFramework>{TargetFramework}</TargetFramework>
             <IsPackable>true</IsPackable>
             {additionalProperties}
           </PropertyGroup>

@@ -2,6 +2,10 @@
   <!-- Load the Bun MSBuild task -->
   <UsingTask TaskName="Scarlet.Bun.MSBuild.BunRunTask" AssemblyFile="$(MSBuildThisFileDirectory)../tools/netstandard2.0/Scarlet.Bun.MSBuild.dll" />
 
+  <PropertyGroup>
+    <BunCaptureOutput Condition="'$(BunCaptureOutput)' == ''">true</BunCaptureOutput>
+  </PropertyGroup>
+
   <!--
     Expose a reusable MSBuild task wrapper that automatically passes runtime properties.
 
@@ -24,9 +28,12 @@
     Supported properties:
     - BunCommand (required) - The Bun command to execute
     - BunArguments (optional) - Command arguments
-    - BunWorkingDirectory (optional) - Working directory
+    - BunWorkingDirectory (optional) - Working directory, defaults to $(MSBuildProjectDirectory)
     - BunTimeoutMilliseconds (optional) - Timeout in milliseconds
     - BunContinueOnError (optional) - Continue on error
+    - BunCaptureOutput (optional) - Store stdout/stderr in BunStandardOutput/BunStandardError
+    - BunInputs / BunOutputs / BunStampFile (optional) - Skip up-to-date work after a successful stamped run
+    - BunStampDirectory (optional) - Where generated stamps go; defaults to Scarlet.Bun under $(IntermediateOutputPath)
     - BunRuntimeDirectory (optional) - Override runtime directory; wins over @(BunRuntimePack)
     - BunRuntimeDownload (optional) - Download runtime from GitHub instead of using embedded
     - BunVersionDownload (optional) - Specific version to download (defaults to latest)
@@ -54,14 +61,43 @@
     The BunRuntime_<rid> properties below are the previous contract. They are still passed so that
     runtime packages published before @(BunRuntimePack) existed keep working.
   -->
-  <Target Name="Bun">
+  <!--
+    Where a generated stamp goes, resolved once for both entry points below.
+
+    A target rather than a property group at file scope: $(IntermediateOutputPath) is not set when this file
+    is imported, only by the time a target runs. Depended on rather than duplicated, so the two entry points
+    cannot answer this differently - MSBuild skips a DependsOnTargets when the parent's own condition is
+    false, so this costs nothing in a build that uses neither.
+  -->
+  <Target Name="_BunResolveStampDirectory">
+    <PropertyGroup>
+      <_BunStampDirectory Condition="'$(BunStampDirectory)' != ''">$(BunStampDirectory)</_BunStampDirectory>
+      <!--
+        Path.Combine returns the second argument unchanged when it is already rooted, so this is correct
+        for a relocated BaseIntermediateOutputPath or an artifacts layout as well as the usual obj\<cfg>\<tfm>\.
+      -->
+      <_BunStampDirectory Condition="'$(_BunStampDirectory)' == '' AND '$(IntermediateOutputPath)' != ''">$([System.IO.Path]::GetFullPath($([System.IO.Path]::Combine('$(MSBuildProjectDirectory)', '$(IntermediateOutputPath)', 'Scarlet.Bun'))))</_BunStampDirectory>
+    </PropertyGroup>
+  </Target>
+
+  <Target Name="Bun" DependsOnTargets="_BunResolveStampDirectory">
     <Error Text="BunCommand property is required" Condition="'$(BunCommand)' == ''" />
+
+    <PropertyGroup>
+      <BunWorkingDirectory Condition="'$(BunWorkingDirectory)' == ''">$(MSBuildProjectDirectory)</BunWorkingDirectory>
+    </PropertyGroup>
 
     <BunRunTask Command="$(BunCommand)"
                 Arguments="$(BunArguments)"
                 WorkingDirectory="$(BunWorkingDirectory)"
                 TimeoutMilliseconds="$(BunTimeoutMilliseconds)"
                 ContinueOnError="$(BunContinueOnError)"
+                CaptureOutput="$(BunCaptureOutput)"
+                Inputs="$(BunInputs)"
+                Outputs="$(BunOutputs)"
+                StampFile="$(BunStampFile)"
+                StampDirectory="$(_BunStampDirectory)"
+                ProjectDirectory="$(MSBuildProjectDirectory)"
                 RuntimeDirectory="$(BunRuntimeDirectory)"
                 BunRuntimeDownload="$(BunRuntimeDownload)"
                 BunVersionDownload="$(BunVersionDownload)"
@@ -76,6 +112,13 @@
       <Output TaskParameter="ExitCode" PropertyName="BunExitCode" />
       <Output TaskParameter="StandardOutput" PropertyName="BunStandardOutput" />
       <Output TaskParameter="StandardError" PropertyName="BunStandardError" />
+      <!--
+        Only takes effect when this target runs in the calling project's own instance, via CallTarget or
+        DependsOnTargets. Reached the documented way - <MSBuild Projects="..." Targets="Bun" /> - the item
+        lands in a child instance that is discarded, so dotnet clean never learns about the stamp. Harmless:
+        a surviving stamp still cannot skip a step whose outputs are missing or whose inputs moved.
+      -->
+      <Output TaskParameter="StampFilePath" ItemName="FileWrites" Condition="'$(BunInputs)' != '' AND '$(BunOutputs)' != ''" />
     </BunRunTask>
   </Target>
 
@@ -91,7 +134,19 @@
     </ItemGroup>
 
     Include is the Bun command. Optional metadata: Arguments, WorkingDirectory,
-    TimeoutMilliseconds, ContinueOnError.
+    TimeoutMilliseconds, ContinueOnError, Inputs, Outputs, StampFile.
+
+    Inputs/Outputs/StampFile are opt-in incremental skipping: a successful run stamps what it did, and a
+    later build skips the step while every output still exists and nothing in Inputs is newer than the
+    stamp. A directory in Inputs is walked recursively, because a directory's own timestamp does not move
+    when a file inside it is edited in place. The stamp also covers how the Bun runtime is selected, so a
+    version bump re-runs the step instead of keeping bundles the previous Bun produced. The stamp goes in
+    $(IntermediateOutputPath) and is reported as a FileWrite, so dotnet clean removes it - for a
+    single-targeted project. A multi-targeted one runs these steps once in the outer build, which has no
+    CoreBuild and so never runs the incremental clean, leaving the stamp in obj\<configuration>\. Harmless:
+    a stale stamp cannot cause a stale build, because the step also re-runs whenever a declared Output is
+    missing. So a project that deletes its generated files on clean - a common pattern - gets them back on
+    the next build whether or not the stamp survived.
 
     Only the project's own wwwroot is picked back up. That is not a shortcut - the SDK hardcodes it
     too (ContentRoot="$(MSBuildProjectDirectory)\wwwroot\" and RelativePathPattern="wwwroot/**" in
@@ -117,6 +172,7 @@
   -->
   <Target Name="RunBunBeforeStaticWebAssets"
           BeforeTargets="DispatchToInnerBuilds;ResolveProjectStaticWebAssets;PreBuildEvent"
+          DependsOnTargets="_BunResolveStampDirectory"
           Condition="'@(BunBeforeStaticWebAssets)' != '' AND '$(NoBuild)' != 'true' AND ('$(TargetFrameworks)' == '' OR '$(TargetFramework)' == '')">
     <ItemGroup>
       <_BunBeforeStaticWebAssetsStep Include="@(BunBeforeStaticWebAssets)">
@@ -131,6 +187,12 @@
                 WorkingDirectory="%(_BunBeforeStaticWebAssetsStep.WorkingDirectory)"
                 TimeoutMilliseconds="%(_BunBeforeStaticWebAssetsStep.TimeoutMilliseconds)"
                 ContinueOnError="%(_BunBeforeStaticWebAssetsStep.ContinueOnError)"
+                CaptureOutput="false"
+                Inputs="%(_BunBeforeStaticWebAssetsStep.Inputs)"
+                Outputs="%(_BunBeforeStaticWebAssetsStep.Outputs)"
+                StampFile="%(_BunBeforeStaticWebAssetsStep.StampFile)"
+                StampDirectory="$(_BunStampDirectory)"
+                ProjectDirectory="$(MSBuildProjectDirectory)"
                 RuntimeDirectory="$(BunRuntimeDirectory)"
                 BunRuntimeDownload="$(BunRuntimeDownload)"
                 BunVersionDownload="$(BunVersionDownload)"
@@ -141,7 +203,10 @@
                 BunRuntime_linux_x64="$(BunRuntime_linux_x64)"
                 BunRuntime_linux_arm64="$(BunRuntime_linux_arm64)"
                 BunRuntime_osx_x64="$(BunRuntime_osx_x64)"
-                BunRuntime_osx_arm64="$(BunRuntime_osx_arm64)" />
+                BunRuntime_osx_arm64="$(BunRuntime_osx_arm64)">
+      <Output TaskParameter="StampFilePath" ItemName="FileWrites"
+              Condition="'%(_BunBeforeStaticWebAssetsStep.Inputs)' != '' AND '%(_BunBeforeStaticWebAssetsStep.Outputs)' != ''" />
+    </BunRunTask>
 
     <!--
       Bun wrote these after MSBuild evaluated the project, so the SDK's own wwwroot glob missed them.

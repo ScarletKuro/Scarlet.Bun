@@ -3,7 +3,6 @@ using System.IO;
 using System.IO.Abstractions;
 using System.Net.Http;
 using System.Security.Cryptography;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Scarlet.Bun.Core.Providers;
@@ -182,12 +181,10 @@ public sealed class BunDownloader
         return client;
     }
 
-    private static string CreateMutexName(string executablePath)
+    internal static string CreateMutexName(string executablePath)
     {
         var normalizedPath = Path.GetFullPath(executablePath).ToUpperInvariant();
-        using var sha = SHA256.Create();
-        var hash = sha.ComputeHash(Encoding.UTF8.GetBytes(normalizedPath));
-        var hashString = BitConverter.ToString(hash).Replace("-", "");
+        var hashString = HashUtilities.ComputeSha256Hex(normalizedPath).ToUpperInvariant();
         return $"Global\\ScarletBun_{hashString}";
     }
 
@@ -393,6 +390,10 @@ public sealed class BunDownloader
         string checksumsText;
         try
         {
+            // Buffered, unlike the archive download above: SHASUMS256.txt is a couple of KB, so there is
+            // nothing to stream, and ResponseHeadersRead would scope HttpClient.Timeout to the headers and
+            // leave the body read unbounded. GetStringAsync also honours the response charset and raises a
+            // status failure itself, so it needs no separate check to wrap.
             checksumsText = await _httpClient.GetStringAsync(checksumsUrl);
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)

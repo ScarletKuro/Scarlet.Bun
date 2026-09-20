@@ -3,6 +3,9 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Abstractions;
+using System.Security;
+using System.Text;
+using System.Threading;
 using Microsoft.Build.Framework;
 using Microsoft.Build.Utilities;
 using Scarlet.Bun.Core;
@@ -15,6 +18,21 @@ namespace Scarlet.Bun.MSBuild;
 /// </summary>
 public class BunRunTask : Task
 {
+    /// <summary>
+    /// Lines of each stream kept for the failure message even when <see cref="CaptureOutput"/> is off.
+    /// </summary>
+    /// <remarks>
+    /// Streamed output is logged as messages - stderr at High, which quiet verbosity drops, and stdout at
+    /// Normal, which the default minimal verbosity drops - so without this a failing step reports only its
+    /// exit code. A bounded tail keeps the failure readable without holding a whole transcript in memory.
+    /// </remarks>
+    private const int DiagnosticTailLineCount = 50;
+
+    /// <summary>
+    /// How long a timed run waits for redirected output to drain after the process itself has exited.
+    /// </summary>
+    private const int OutputDrainGraceMilliseconds = 5000;
+
     /// <summary>
     /// The Bun command to execute (e.g., "run", "install", "build").
     /// </summary>
@@ -40,6 +58,52 @@ public class BunRunTask : Task
     /// Whether to continue the build if the command fails.
     /// </summary>
     public bool ContinueOnError { get; set; } = false;
+
+    /// <summary>
+    /// Whether stdout and stderr should be retained in <see cref="StandardOutput"/> and <see cref="StandardError"/>.
+    /// Output is still logged while the process runs.
+    /// </summary>
+    public bool CaptureOutput { get; set; } = true;
+
+    /// <summary>
+    /// Optional semicolon-separated list of input files or directories for timestamp-based skipping.
+    /// A directory is walked recursively, so editing a file in place invalidates the step.
+    /// </summary>
+    public string? Inputs { get; set; }
+
+    /// <summary>
+    /// Optional semicolon-separated list of output files or directories for timestamp-based skipping.
+    /// </summary>
+    public string? Outputs { get; set; }
+
+    /// <summary>
+    /// Optional file that records a successful incremental run. When omitted, a generated name under
+    /// <see cref="StampDirectory"/> is used.
+    /// </summary>
+    public string? StampFile { get; set; }
+
+    /// <summary>
+    /// Optional directory for the generated stamp, normally the project's <c>$(IntermediateOutputPath)</c>.
+    /// Ignored when <see cref="StampFile"/> is set.
+    /// </summary>
+    public string? StampDirectory { get; set; }
+
+    /// <summary>
+    /// The project's directory, which relative <see cref="Inputs"/>, <see cref="Outputs"/> and
+    /// <see cref="StampFile"/> resolve against. Normally <c>$(MSBuildProjectDirectory)</c>.
+    /// </summary>
+    /// <remarks>
+    /// Passed explicitly rather than read from <c>IBuildEngine.ProjectFileOfTaskNode</c>: that reports the
+    /// file containing the task invocation, which for this package is the imported .targets, not the project.
+    /// </remarks>
+    public string? ProjectDirectory { get; set; }
+
+    /// <summary>
+    /// The stamp this run used, so the build can record it in <c>@(FileWrites)</c> and clean it.
+    /// Empty when incremental skipping is not configured.
+    /// </summary>
+    [Output]
+    public string? StampFilePath { get; set; }
 
     /// <summary>
     /// Optional path to the runtime directory. When set it overrides <see cref="RuntimePacks"/>.
@@ -132,6 +196,17 @@ public class BunRunTask : Task
 
     public override bool Execute()
     {
+        // Closed on every exit path. A handler firing after the task has returned - possible whenever the drain
+        // grace expires - would otherwise log into a finished task, which MSBuild turns into an exception that
+        // AsyncStreamReader rethrows on a thread-pool thread, killing the build process.
+        var gate = new TaskLifetimeGate();
+
+        // Declared out here, not beside the handlers that use them: a `using` inside the try disposes as
+        // control leaves the try, which is before the finally closes the gate - leaving a window where a late
+        // handler could pass the gate and signal a disposed event. At method scope they outlive the gate.
+        using var outputClosed = new ManualResetEventSlim(false);
+        using var errorClosed = new ManualResetEventSlim(false);
+
         try
         {
             if (string.IsNullOrWhiteSpace(Command))
@@ -142,6 +217,17 @@ public class BunRunTask : Task
 
             var fileSystem = new FileSystem();
             var chmodProvider = Chmod.CreateProvider();
+            var incrementalState = CreateIncrementalState(fileSystem);
+            StampFilePath = incrementalState?.StampPath;
+
+            if (IsUpToDate(fileSystem, incrementalState))
+            {
+                Log.LogMessage(MessageImportance.Normal, $"Skipping Bun {Command}: outputs are up-to-date.");
+                ExitCode = 0;
+                StandardOutput = CaptureOutput ? string.Empty : null;
+                StandardError = CaptureOutput ? string.Empty : null;
+                return true;
+            }
 
             string bunPath;
 
@@ -240,8 +326,8 @@ public class BunRunTask : Task
                 RedirectStandardError = true,
                 UseShellExecute = false,
                 CreateNoWindow = true,
-                StandardOutputEncoding = System.Text.Encoding.UTF8,
-                StandardErrorEncoding = System.Text.Encoding.UTF8
+                StandardOutputEncoding = Encoding.UTF8,
+                StandardErrorEncoding = Encoding.UTF8
             };
 
             if (!string.IsNullOrWhiteSpace(WorkingDirectory))
@@ -254,28 +340,47 @@ public class BunRunTask : Task
             using var process = new Process();
             process.StartInfo = processStartInfo;
 
-            var outputData = new System.Text.StringBuilder();
-            var errorData = new System.Text.StringBuilder();
+            // Both streams keep a bounded tail for the failure message, and the full text when asked to.
+            // stdout needs a tail as much as stderr: it is logged at Normal importance, which `dotnet build`'s
+            // default minimal verbosity drops, and plenty of tools report what went wrong there.
+            var output = new OutputCollector(DiagnosticTailLineCount, CaptureOutput);
+            var error = new OutputCollector(DiagnosticTailLineCount, CaptureOutput);
 
+            // A null Data is how the framework signals end-of-stream, which is what the drain below waits on.
+            // Accumulating stays outside the gate: it is independently thread-safe, and a late line landing in
+            // a buffer nobody reads is harmless. Only the two things that must not outlive the task - signalling
+            // the events and logging - go through it.
+            //
+            // Neither handler may touch `process`. It is disposed as control leaves the try, while these can
+            // still fire, so reaching for something like process.Id here would hit a disposed object on a
+            // thread-pool thread - which terminates the build. Nothing tests this; it only holds by inspection.
             process.OutputDataReceived += (_, e) =>
             {
-                if (e.Data != null)
+                if (e.Data == null)
                 {
-                    outputData.AppendLine(e.Data);
-                    Log.LogMessage(MessageImportance.Normal, e.Data);
+                    // ReSharper disable once AccessToDisposedClosure
+                    gate.TryRun(outputClosed.Set);
+                    return;
                 }
+
+                output.Add(e.Data);
+                gate.TryRun(() => Log.LogMessage(MessageImportance.Normal, e.Data));
             };
 
             process.ErrorDataReceived += (_, e) =>
             {
-                if (e.Data != null)
+                if (e.Data == null)
                 {
-                    errorData.AppendLine(e.Data);
-                    Log.LogMessage(MessageImportance.High, e.Data);
+                    // ReSharper disable once AccessToDisposedClosure
+                    gate.TryRun(errorClosed.Set);
+                    return;
                 }
+
+                error.Add(e.Data);
+                gate.TryRun(() => Log.LogMessage(MessageImportance.High, e.Data));
             };
 
-            process.Start();
+            ProcessStartRetry.Start(process, new MsBuildBunLogger(Log));
             process.BeginOutputReadLine();
             process.BeginErrorReadLine();
 
@@ -294,6 +399,17 @@ public class BunRunTask : Task
                     Log.LogError($"Command timed out after {TimeoutMilliseconds}ms");
                     return false;
                 }
+
+                // The process is gone, but the handlers may not have drained. Waiting on the end-of-stream
+                // signals rather than the parameterless WaitForExit() keeps that wait bounded - a detached
+                // grandchild holding the write end can withhold EOF forever, outliving the timeout the caller
+                // asked for - and costs no extra thread to abandon when it does.
+                if (!(outputClosed.Wait(OutputDrainGraceMilliseconds) && errorClosed.Wait(OutputDrainGraceMilliseconds)))
+                {
+                    Log.LogMessage(
+                        MessageImportance.Normal,
+                        $"Bun exited but its output was still open after {OutputDrainGraceMilliseconds}ms; some output may be missing.");
+                }
             }
             else
             {
@@ -301,18 +417,35 @@ public class BunRunTask : Task
             }
 
             ExitCode = process.ExitCode;
-            StandardOutput = outputData.ToString();
-            StandardError = errorData.ToString();
+            StandardOutput = output.All;
+            StandardError = error.All;
 
             if (ExitCode != 0)
             {
                 Log.LogError($"Bun command failed with exit code {ExitCode}");
-                if (!string.IsNullOrWhiteSpace(StandardError))
+
+                var errorDetail = CaptureOutput && !string.IsNullOrWhiteSpace(StandardError)
+                    ? StandardError!
+                    : error.Tail;
+
+                if (!string.IsNullOrWhiteSpace(errorDetail))
                 {
-                    Log.LogError($"Error output: {StandardError}");
+                    Log.LogError($"Error output: {errorDetail}");
                 }
+
+                // Always the bounded tail, even when capturing: stdout is context for the failure rather than
+                // the failure itself, and a full `bun install` transcript repeated into an error helps nobody.
+                var standardDetail = output.Tail;
+
+                if (!string.IsNullOrWhiteSpace(standardDetail))
+                {
+                    Log.LogError($"Standard output: {standardDetail}");
+                }
+
                 return ContinueOnError;
             }
+
+            WriteIncrementalStamp(fileSystem, incrementalState);
 
             Log.LogMessage(MessageImportance.High, "Bun command completed successfully");
             return true;
@@ -329,6 +462,10 @@ public class BunRunTask : Task
             Log.LogErrorFromException(ex, true);
             ExitCode = -1; // Set non-zero exit code to indicate failure
             return ContinueOnError;
+        }
+        finally
+        {
+            gate.Close();
         }
     }
 
@@ -349,6 +486,368 @@ public class BunRunTask : Task
         ReportDeprecatedPacks(distinct);
 
         return distinct;
+    }
+
+    private IncrementalState? CreateIncrementalState(IFileSystem fileSystem)
+    {
+        var inputPaths = SplitPaths(Inputs);
+        var outputPaths = SplitPaths(Outputs);
+
+        if (inputPaths.Count == 0 || outputPaths.Count == 0)
+        {
+            return null;
+        }
+
+        var baseDirectory = ResolveIncrementalBaseDirectory();
+
+        // Captured before the inputs are read, so an edit that lands during the run is newer than the stamp.
+        var probedAtUtc = DateTime.UtcNow;
+
+        DateTime? newestInput = null;
+        var resolvedInputs = new List<string>(inputPaths.Count);
+        foreach (var input in inputPaths)
+        {
+            var resolvedInput = ResolveIncrementalPath(baseDirectory, input);
+            if (!TryGetNewestWriteTimeUtc(fileSystem, resolvedInput, out var timestamp))
+            {
+                return null;
+            }
+
+            resolvedInputs.Add(resolvedInput);
+            newestInput = newestInput is null || timestamp > newestInput.Value
+                ? timestamp
+                : newestInput;
+        }
+
+        var resolvedOutputs = new List<string>(outputPaths.Count);
+        foreach (var output in outputPaths)
+        {
+            resolvedOutputs.Add(ResolveIncrementalPath(baseDirectory, output));
+        }
+
+        var stampContent = CreateIncrementalStampContent(resolvedInputs, resolvedOutputs);
+        var stampPath = string.IsNullOrWhiteSpace(StampFile)
+            ? CreateDefaultStampPath(baseDirectory, stampContent)
+            : ResolveIncrementalPath(baseDirectory, StampFile!);
+
+        return new IncrementalState(
+            resolvedOutputs,
+            stampPath,
+            newestInput!.Value,
+            probedAtUtc,
+            stampContent);
+    }
+
+    private static bool IsUpToDate(IFileSystem fileSystem, IncrementalState? state)
+    {
+        if (state is null || !fileSystem.File.Exists(state.StampPath))
+        {
+            return false;
+        }
+
+        foreach (var output in state.Outputs)
+        {
+            if (!fileSystem.File.Exists(output) && !fileSystem.Directory.Exists(output))
+            {
+                return false;
+            }
+        }
+
+        if (fileSystem.File.GetLastWriteTimeUtc(state.StampPath) < state.NewestInput)
+        {
+            return false;
+        }
+
+        try
+        {
+            return string.Equals(fileSystem.File.ReadAllText(state.StampPath), state.StampContent, StringComparison.Ordinal);
+        }
+        catch (IOException)
+        {
+            return false;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    private void WriteIncrementalStamp(IFileSystem fileSystem, IncrementalState? state)
+    {
+        if (state is null)
+        {
+            return;
+        }
+
+        try
+        {
+            var directory = Path.GetDirectoryName(state.StampPath);
+            if (!string.IsNullOrEmpty(directory))
+            {
+                fileSystem.Directory.CreateDirectory(directory);
+            }
+
+            fileSystem.File.WriteAllText(state.StampPath, state.StampContent);
+
+            // Back-date the stamp to when the inputs were read, not to now. Inputs are stat'd before the
+            // process starts, so a file edited while a long run is in flight ends up older than a stamp
+            // written afterwards - and would never invalidate. Dating the stamp from the probe means such an
+            // edit is newer than the stamp and the next build picks it up.
+            fileSystem.File.SetLastWriteTimeUtc(state.StampPath, state.ProbedAtUtc);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            Log.LogMessage(
+                MessageImportance.Normal,
+                $"Could not write Bun incremental stamp '{state.StampPath}'. The command succeeded, but this step may run again next build. {ex.Message}");
+        }
+    }
+
+    private static IReadOnlyList<string> SplitPaths(string? paths)
+    {
+        if (string.IsNullOrWhiteSpace(paths))
+        {
+            return Array.Empty<string>();
+        }
+
+        var result = new List<string>();
+        foreach (var path in paths!.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries))
+        {
+            var trimmed = path.Trim();
+            if (trimmed.Length > 0)
+            {
+                result.Add(trimmed);
+            }
+        }
+
+        return result;
+    }
+
+    private string CreateIncrementalStampContent(
+        IReadOnlyList<string> inputs,
+        IReadOnlyList<string> outputs)
+    {
+        var content = new StringBuilder();
+        content.AppendLine("Scarlet.Bun.MSBuild incremental stamp");
+        content.AppendLine($"Command={Command}");
+        content.AppendLine($"Arguments={Arguments}");
+        // The directory the command ran in, which can change its behaviour. The base the paths were resolved
+        // against is already implicit: the inputs and outputs below are recorded absolute.
+        content.AppendLine($"WorkingDirectory={WorkingDirectory}");
+
+        // How the runtime is selected, not the resolved binary: keeps the up-to-date check ahead of
+        // resolution, so a skipped step still costs no download.
+        content.AppendLine($"RuntimeDirectory={RuntimeDirectory}");
+        content.AppendLine($"RuntimeDownload={BunRuntimeDownload}");
+        content.AppendLine($"VersionDownload={BunVersionDownload}");
+        content.AppendLine("RuntimePacks=");
+
+        foreach (var pack in DescribeRuntimePacksForStamp())
+        {
+            content.AppendLine(pack);
+        }
+
+        content.AppendLine("Inputs=");
+
+        foreach (var input in inputs)
+        {
+            content.AppendLine(input);
+        }
+
+        content.AppendLine("Outputs=");
+
+        foreach (var output in outputs)
+        {
+            content.AppendLine(output);
+        }
+
+        return content.ToString();
+    }
+
+    /// <summary>
+    /// Describes the runtime packs for the stamp, sorted so the text never depends on restore order.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately reads the raw inputs instead of calling <see cref="CollectRuntimePacks"/>: that path
+    /// reports deprecation warnings, and building a stamp is not the moment to emit them a second time.
+    /// </remarks>
+    private IEnumerable<string> DescribeRuntimePacksForStamp()
+    {
+        var descriptions = new List<string>();
+
+        foreach (var pack in RuntimePacks ?? Array.Empty<ITaskItem>())
+        {
+            descriptions.Add(string.Join(
+                "|",
+                pack.ItemSpec,
+                pack.GetMetadata(BunRuntimePack.RidMetadataName),
+                pack.GetMetadata(BunRuntimePack.RuntimesPathMetadataName),
+                pack.GetMetadata(BunRuntimePack.PriorityMetadataName)));
+        }
+
+        foreach (var legacy in new[]
+                 {
+                     ("win-x64", BunRuntime_win_x64),
+                     ("win-arm64", BunRuntime_win_arm64),
+                     ("linux-x64", BunRuntime_linux_x64),
+                     ("linux-arm64", BunRuntime_linux_arm64),
+                     ("osx-x64", BunRuntime_osx_x64),
+                     ("osx-arm64", BunRuntime_osx_arm64)
+                 })
+        {
+            if (!string.IsNullOrWhiteSpace(legacy.Item2))
+            {
+                descriptions.Add($"{legacy.Item1}|{legacy.Item2}");
+            }
+        }
+
+        descriptions.Sort(StringComparer.Ordinal);
+
+        return descriptions;
+    }
+
+    private string CreateDefaultStampPath(string baseDirectory, string stampContent)
+    {
+        var stampName = HashUtilities.ComputeSha256Hex(stampContent);
+
+        // StampDirectory is the project's real intermediate output, passed by the targets. Falling back to
+        // "obj" under the working directory would ignore a relocated BaseIntermediateOutputPath or artifacts
+        // layout, and would scatter stray obj folders when a step sets WorkingDirectory to a subfolder.
+        var stampDirectory = string.IsNullOrWhiteSpace(StampDirectory)
+            ? Path.Combine(baseDirectory, "obj", "Scarlet.Bun")
+            : ResolveIncrementalPath(baseDirectory, StampDirectory!);
+
+        return Path.Combine(stampDirectory, $"{stampName}.stamp");
+    }
+
+    /// <summary>
+    /// The directory relative <see cref="Inputs"/>, <see cref="Outputs"/> and <see cref="StampFile"/> are
+    /// resolved against: the project's, as every other relative path in a project file is.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="ProjectDirectory"/> is what both packaged targets (<c>Bun</c> and
+    /// <c>RunBunBeforeStaticWebAssets</c>) always pass, so real project builds never fall through here.
+    /// <see cref="WorkingDirectory"/> is deliberately not the first choice: it says where the command runs,
+    /// and letting it also decide what a relative path means would make <c>&lt;Inputs&gt;assets/app.js&lt;/Inputs&gt;</c>
+    /// point somewhere else the moment a step also set a working directory - silently, and differently from
+    /// every other item in the file. It is still a better fallback than jumping straight to
+    /// <see cref="Environment.CurrentDirectory"/>, though: a caller that invokes this task directly, outside
+    /// the packaged targets, and sets <see cref="WorkingDirectory"/> without <see cref="ProjectDirectory"/>
+    /// most likely intends that same directory as the project location too - which is also exactly what the
+    /// task's own unit tests do. <see cref="Environment.CurrentDirectory"/> is the true last resort, for a
+    /// task constructed with neither property set.
+    /// </remarks>
+    private string ResolveIncrementalBaseDirectory()
+    {
+        if (!string.IsNullOrWhiteSpace(ProjectDirectory))
+        {
+            return ProjectDirectory!;
+        }
+
+        return string.IsNullOrWhiteSpace(WorkingDirectory)
+            ? Environment.CurrentDirectory
+            : WorkingDirectory!;
+    }
+
+    private string ResolveIncrementalPath(string baseDirectory, string path)
+    {
+        try
+        {
+            return Path.IsPathRooted(path)
+                ? path
+                : Path.GetFullPath(Path.Combine(baseDirectory, path));
+        }
+        catch (Exception ex) when (ex is ArgumentException or NotSupportedException or PathTooLongException)
+        {
+            // Falls back to the raw, unresolved path rather than throwing: probing freshness must never be
+            // what fails a build. The path is still handed to File/Directory.Exists below, which will most
+            // likely just report it missing - but logged, so a bad Inputs/Outputs entry is diagnosable
+            // instead of silently resolving against the wrong base directory.
+            Log.LogMessage(
+                MessageImportance.Normal,
+                $"Could not resolve incremental path '{path}' against '{baseDirectory}': {ex.Message}. Using it unresolved.");
+            return path;
+        }
+    }
+
+    /// <summary>
+    /// Newest write time under <paramref name="path"/>, which may be a file or a directory.
+    /// </summary>
+    /// <remarks>
+    /// A directory is walked recursively rather than read with <see cref="IDirectory.GetLastWriteTimeUtc"/>.
+    /// A directory's own timestamp only moves when an entry is added to or removed from that one directory,
+    /// so editing a file in place - the common case for a source tree handed to Bun - leaves it untouched and
+    /// the step would be skipped with stale outputs. Entries are enumerated as <see cref="IFileSystemInfo"/>
+    /// so each timestamp comes from the walk rather than a second stat per entry. The directory itself is
+    /// included so deletions, which move the parent's timestamp but leave nothing behind to observe, still
+    /// invalidate.
+    /// </remarks>
+    private static bool TryGetNewestWriteTimeUtc(IFileSystem fileSystem, string path, out DateTime timestamp)
+    {
+        if (fileSystem.File.Exists(path))
+        {
+            timestamp = fileSystem.File.GetLastWriteTimeUtc(path);
+            return true;
+        }
+
+        if (!fileSystem.Directory.Exists(path))
+        {
+            timestamp = default;
+            return false;
+        }
+
+        // The (pattern, SearchOption) overload maps to EnumerationOptions.CompatibleRecursive, which sets
+        // IgnoreInaccessible = false - so an unreadable subdirectory throws, as does one deleted mid-walk.
+        // Probing freshness must never be the thing that fails a build: if the tree cannot be read, say so
+        // and let the step run.
+        try
+        {
+            var directory = fileSystem.DirectoryInfo.New(path);
+            var newest = directory.LastWriteTimeUtc;
+
+            foreach (var entry in directory.EnumerateFileSystemInfos("*", SearchOption.AllDirectories))
+            {
+                if (entry.LastWriteTimeUtc > newest)
+                {
+                    newest = entry.LastWriteTimeUtc;
+                }
+            }
+
+            timestamp = newest;
+            return true;
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or SecurityException
+            or ArgumentException or NotSupportedException)
+        {
+            timestamp = default;
+            return false;
+        }
+    }
+
+    private sealed class IncrementalState
+    {
+        public IncrementalState(
+            IReadOnlyList<string> outputs,
+            string stampPath,
+            DateTime newestInput,
+            DateTime probedAtUtc,
+            string stampContent)
+        {
+            Outputs = outputs;
+            StampPath = stampPath;
+            NewestInput = newestInput;
+            ProbedAtUtc = probedAtUtc;
+            StampContent = stampContent;
+        }
+
+        public IReadOnlyList<string> Outputs { get; }
+        public string StampPath { get; }
+        public DateTime NewestInput { get; }
+
+        /// <summary>When the inputs were read, which is what the written stamp is dated from.</summary>
+        public DateTime ProbedAtUtc { get; }
+
+        public string StampContent { get; }
     }
 
     /// <summary>
