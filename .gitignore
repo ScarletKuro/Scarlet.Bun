@@ -6,6 +6,7 @@ obj/
 *.cache
 *.log
 TestResults/
+junit/
 [Dd]ebug/
 [Rr]elease/
 *.nupkg
