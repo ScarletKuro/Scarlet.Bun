@@ -243,8 +243,8 @@ jobs:
       - name: Build
         run: dotnet build --no-restore --configuration Release
 
-      - name: Run tests
-        run: dotnet test --no-build --configuration Release
+      - name: Run tests with coverage
+        run: dotnet test --no-build --configuration Release --collect:"XPlat Code Coverage" --results-directory ./coverage
 
       - name: Pack NuGet packages
         shell: bash
@@ -296,6 +296,28 @@ jobs:
           chmod +x tests/e2e/package-installation/verify.sh
           tests/e2e/package-installation/verify.sh "$GITHUB_WORKSPACE" "${{ env.VERSION }}" "${{ env.BUN_VERSION }}"
 
+      # BunDownloader's asset naming covers musl (bun-linux-*-musl.zip), so the shared download mutex /
+      # atomic-publish flow this test exercises is just as applicable under Alpine as under glibc.
+      - name: E2E Test - Monorepo download
+        shell: bash
+        run: |
+          chmod +x tests/e2e/monorepo-download/verify.sh
+          tests/e2e/monorepo-download/verify.sh "$GITHUB_WORKSPACE" "${{ env.VERSION }}" "${{ env.BUN_VERSION }}"
+
+      # select_runtime_package_from_rid already maps linux-musl-x64/arm64 to the musl runtime packages, so
+      # this proves the same RID-based pack selection on musl that the other CI legs prove for glibc.
+      - name: E2E Test - Multi-TFM
+        shell: bash
+        run: |
+          chmod +x tests/e2e/multi-tfm/verify.sh
+          tests/e2e/multi-tfm/verify.sh "$GITHUB_WORKSPACE" "${{ env.VERSION }}" "${{ env.BUN_VERSION }}"
+
+      - name: E2E Test - Incremental skipping
+        shell: bash
+        run: |
+          chmod +x tests/e2e/incremental/verify.sh
+          tests/e2e/incremental/verify.sh "$GITHUB_WORKSPACE" "${{ env.VERSION }}" "${{ env.BUN_VERSION }}"
+
       # This is what actually proves the musl binaries execute on real musl libc, not just that the zip
       # unpacked correctly: it installs the tool, and dotnet --info inside this container reports a
       # linux-musl-* RID, so the CLI's generic RID detection (tests/e2e/cli-tool/verify.sh) picks the
@@ -305,3 +327,16 @@ jobs:
         run: |
           chmod +x tests/e2e/cli-tool/verify.sh
           tests/e2e/cli-tool/verify.sh "$GITHUB_WORKSPACE" "${{ env.VERSION }}" "${{ env.BUN_VERSION }}"
+
+      # codecov-action is a JS action; Alpine containers only bundle a Node runtime capable of running JS
+      # actions on x64 (see the checkout step above), so this step is skipped on the arm64 leg to avoid a
+      # hard failure. Coverage is still collected on both legs by the "Run tests with coverage" step above.
+      - name: Upload coverage to Codecov
+        if: matrix.arch == 'x64'
+        uses: codecov/codecov-action@v7
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          directory: ./coverage
+          fail_ci_if_error: false
+          flags: musl-${{ matrix.arch }}
+          name: codecov-musl-${{ matrix.arch }}
