@@ -34,6 +34,15 @@ jobs:
           --collect:"XPlat Code Coverage" --results-directory ./coverage
           --logger "junit;LogFilePath=junit/{assembly}.xml"
 
+      # !cancelled() so a genuine test failure's junit output still reaches the aggregated publish-test-
+      # results job below, not just a clean run's.
+      - name: Upload test result artifacts
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: junit-results-${{ matrix.os }}
+          path: tests/**/junit/*.xml
+
       - name: Verify Scarlet.Bun.Sample outputs
         shell: bash
         run: |
@@ -265,6 +274,16 @@ jobs:
           --collect:"XPlat Code Coverage" --results-directory ./coverage
           --logger "junit;LogFilePath=junit/{assembly}.xml"
 
+      # !cancelled() so a genuine test failure's junit output still reaches the aggregated publish-test-
+      # results job below; matrix.arch == 'x64' for the same JS-action-on-Alpine-arm64 restriction as the
+      # checkout step above (actions/upload-artifact is a JS action too).
+      - name: Upload test result artifacts
+        if: ${{ !cancelled() && matrix.arch == 'x64' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: junit-results-musl-${{ matrix.arch }}
+          path: tests/**/junit/*.xml
+
       - name: Pack NuGet packages
         shell: bash
         run: |
@@ -369,3 +388,27 @@ jobs:
           fail_ci_if_error: false
           flags: musl-${{ matrix.arch }}
           name: codecov-test-results-musl-${{ matrix.arch }}
+
+  # A single check run + PR comment aggregating every leg's junit results (the musl-arm64 leg excluded,
+  # per the artifact upload it never produces above). Runs once on a plain Linux runner regardless of
+  # which OS the results came from - it only ever parses the downloaded XML, never executes tests itself.
+  publish-test-results:
+    name: Publish test results
+    needs: [test, test-musl]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    permissions:
+      checks: write
+      pull-requests: write
+    steps:
+      - name: Download junit result artifacts
+        uses: actions/download-artifact@v8
+        with:
+          pattern: junit-results-*
+          path: artifacts
+
+      - name: Publish test results
+        if: ${{ !cancelled() }}
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        with:
+          files: "artifacts/**/*.xml"
