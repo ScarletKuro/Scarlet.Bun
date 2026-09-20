@@ -500,8 +500,9 @@ The `BunRunTask` supports the following parameters:
 | Parameter | Description |
 |-----------|-------------|
 | `ExitCode` | The exit code of the executed command |
-| `StandardOutput` | Standard output from the command |
-| `StandardError` | Standard error from the command |
+| `StandardOutput` | Standard output from the command; `null` when `CaptureOutput` is `false` |
+| `StandardError` | Standard error from the command; `null` when `CaptureOutput` is `false` |
+| `StampFilePath` | The stamp this run used, for recording in `@(FileWrites)`; `null` unless both `Inputs` and `Outputs` are set |
 
 ## Example: JavaScript/SCSS Build Script
 
