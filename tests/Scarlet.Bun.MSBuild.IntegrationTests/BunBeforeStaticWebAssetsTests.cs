@@ -242,6 +242,31 @@ public class BunBeforeStaticWebAssetsTests
     }
 
     /// <summary>
+    /// The last of the documented metadata to reach the task. Unwired, the timeout falls back to
+    /// <c>$(BunTimeoutMilliseconds)</c>, which defaults to 0 - no limit - so a step that should have been
+    /// killed simply runs to completion and the build goes green.
+    /// </summary>
+    [Fact]
+    public async Task TimeoutMillisecondsMetadata_ShouldKillAStepThatOverruns()
+    {
+        using var workspace = CreateRazorClassLibrary(
+            """
+            <BunBeforeStaticWebAssets Include="run">
+              <Arguments>slow.mjs</Arguments>
+              <TimeoutMilliseconds>2000</TimeoutMilliseconds>
+            </BunBeforeStaticWebAssets>
+            """);
+
+        // Far longer than the timeout, so the outcome cannot turn on scheduling noise.
+        workspace.WriteFile("slow.mjs", "await Bun.sleep(120000);");
+
+        var result = await RunDotnet(workspace, $"build --configuration {DotnetCli.Configuration}");
+
+        Assert.NotEqual(0, result.ExitCode);
+        Assert.Contains("timed out after 2000ms", result.Output, StringComparison.Ordinal);
+    }
+
+    /// <summary>
     /// Relative <c>Inputs</c> and <c>Outputs</c> resolve against the project, not the working directory.
     /// </summary>
     /// <remarks>
