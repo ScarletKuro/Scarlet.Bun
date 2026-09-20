@@ -321,11 +321,13 @@ Relative `Inputs`, `Outputs` and `StampFile` resolve against the **project** dir
 path in a project file - `WorkingDirectory` says where the command runs, not what the paths mean.
 
 By default the stamp lives under `Scarlet.Bun` inside the project's `$(IntermediateOutputPath)`; set
-`StampFile` to choose a specific location. `dotnet clean` removes it for single-targeted projects. A
-multi-targeted project runs these steps once in the outer build, which has no `CoreBuild` and so never runs
-the incremental clean — the stamp stays in `obj\<configuration>\`. A stale stamp cannot produce a stale
-build, though, because the step re-runs whenever a declared `Outputs` file is missing: if your project
-deletes its generated files on clean, the next build regenerates them regardless. Output is still logged, but
+`StampFile` to choose a specific location. `dotnet clean` removes it for single-targeted projects using
+`BunBeforeStaticWebAssets`. Two cases leave it behind: a multi-targeted project runs these steps once in the
+outer build, which has no `CoreBuild` and so never runs the incremental clean; and the `Bun` target reached
+through `<MSBuild Projects="…" Targets="Bun" />` records the stamp in a child project instance that is
+discarded, so the outer build never learns of it. Neither can produce a stale build, because the step
+re-runs whenever a declared `Outputs` file is missing: if your project deletes its generated files on clean,
+the next build regenerates them regardless. Output is still logged, but
 `BunBeforeStaticWebAssets` does not retain stdout and stderr in memory because those output properties are
 not used by the static web assets helper — the last 50 lines of **each** stream are still included in the
 failure message, stdout as well as stderr, since plenty of tools explain themselves on stdout and it is

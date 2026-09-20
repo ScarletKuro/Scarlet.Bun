@@ -24,20 +24,26 @@ public class BunTargetsTests
     }
 
     [Theory]
-    // The development copy has to build the task assembly before it can call into it; the packaged copy
-    // ships that assembly, so it must not carry the dependency.
+    // The development copy has to build the task assembly before it can call into it, so it prefixes one
+    // extra dependency; the packaged copy ships that assembly and must not carry it.
+    [InlineData("_BunResolveStampDirectory", null)]
     [InlineData("Bun", null)]
     [InlineData("RunBunBeforeStaticWebAssets", "ResolveProjectReferences")]
-    public void DevelopmentTargets_ShouldStayInSyncWithPackagedTargets(string targetName, string? developmentOnlyDependsOnTargets)
+    public void DevelopmentTargets_ShouldStayInSyncWithPackagedTargets(string targetName, string? developmentOnlyPrefix)
     {
         // Arrange
         var packagedTarget = LoadTarget(PackagedTargets, targetName);
         var developmentTarget = LoadTarget(DevelopmentTargets, targetName);
 
-        Assert.Equal(developmentOnlyDependsOnTargets, developmentTarget.Attribute("DependsOnTargets")?.Value);
-        Assert.Null(packagedTarget.Attribute("DependsOnTargets"));
+        var packagedDependsOn = packagedTarget.Attribute("DependsOnTargets")?.Value;
+        var expectedDevelopmentDependsOn = developmentOnlyPrefix is null
+            ? packagedDependsOn
+            : $"{developmentOnlyPrefix};{packagedDependsOn}";
 
-        developmentTarget.Attribute("DependsOnTargets")?.Remove();
+        Assert.Equal(expectedDevelopmentDependsOn, developmentTarget.Attribute("DependsOnTargets")?.Value);
+
+        // Normalised away so the bodies can be compared as-is; every other difference is a failure.
+        developmentTarget.SetAttributeValue("DependsOnTargets", packagedDependsOn);
 
         // Act & Assert
         Assert.True(

@@ -24,16 +24,33 @@
   </ItemGroup>
 
   <!--
+    Where a generated stamp goes, resolved once for both entry points below.
+
+    A target rather than a property group at file scope: $(IntermediateOutputPath) is not set when this file
+    is imported, only by the time a target runs. Depended on rather than duplicated, so the two entry points
+    cannot answer this differently - MSBuild skips a DependsOnTargets when the parent's own condition is
+    false, so this costs nothing in a build that uses neither.
+  -->
+  <Target Name="_BunResolveStampDirectory">
+    <PropertyGroup>
+      <_BunStampDirectory Condition="'$(BunStampDirectory)' != ''">$(BunStampDirectory)</_BunStampDirectory>
+      <!--
+        Path.Combine returns the second argument unchanged when it is already rooted, so this is correct
+        for a relocated BaseIntermediateOutputPath or an artifacts layout as well as the usual obj\<cfg>\<tfm>\.
+      -->
+      <_BunStampDirectory Condition="'$(_BunStampDirectory)' == '' AND '$(IntermediateOutputPath)' != ''">$([System.IO.Path]::GetFullPath($([System.IO.Path]::Combine('$(MSBuildProjectDirectory)', '$(IntermediateOutputPath)', 'Scarlet.Bun'))))</_BunStampDirectory>
+    </PropertyGroup>
+  </Target>
+
+  <!--
     Expose the Bun target wrapper for development scenarios.
     This is the same target that's in build/Scarlet.Bun.MSBuild.targets for NuGet consumption.
   -->
-  <Target Name="Bun">
+  <Target Name="Bun" DependsOnTargets="_BunResolveStampDirectory">
     <Error Text="BunCommand property is required" Condition="'$(BunCommand)' == ''" />
 
     <PropertyGroup>
       <BunWorkingDirectory Condition="'$(BunWorkingDirectory)' == ''">$(MSBuildProjectDirectory)</BunWorkingDirectory>
-      <_BunStampDirectory Condition="'$(BunStampDirectory)' != ''">$(BunStampDirectory)</_BunStampDirectory>
-      <_BunStampDirectory Condition="'$(_BunStampDirectory)' == '' AND '$(IntermediateOutputPath)' != ''">$([System.IO.Path]::GetFullPath($([System.IO.Path]::Combine('$(MSBuildProjectDirectory)', '$(IntermediateOutputPath)', 'Scarlet.Bun'))))</_BunStampDirectory>
     </PropertyGroup>
 
     <BunRunTask Command="$(BunCommand)"
@@ -61,6 +78,12 @@
       <Output TaskParameter="ExitCode" PropertyName="BunExitCode" />
       <Output TaskParameter="StandardOutput" PropertyName="BunStandardOutput" />
       <Output TaskParameter="StandardError" PropertyName="BunStandardError" />
+      <!--
+        Only takes effect when this target runs in the calling project's own instance, via CallTarget or
+        DependsOnTargets. Reached the documented way - <MSBuild Projects="..." Targets="Bun" /> - the item
+        lands in a child instance that is discarded, so dotnet clean never learns about the stamp. Harmless:
+        a surviving stamp still cannot skip a step whose outputs are missing or whose inputs moved.
+      -->
       <Output TaskParameter="StampFilePath" ItemName="FileWrites" Condition="'$(BunInputs)' != '' AND '$(BunOutputs)' != ''" />
     </BunRunTask>
   </Target>
@@ -84,17 +107,8 @@
   -->
   <Target Name="RunBunBeforeStaticWebAssets"
           BeforeTargets="DispatchToInnerBuilds;ResolveProjectStaticWebAssets;PreBuildEvent"
-          DependsOnTargets="ResolveProjectReferences"
+          DependsOnTargets="ResolveProjectReferences;_BunResolveStampDirectory"
           Condition="'@(BunBeforeStaticWebAssets)' != '' AND '$(NoBuild)' != 'true' AND ('$(TargetFrameworks)' == '' OR '$(TargetFramework)' == '')">
-    <PropertyGroup>
-      <!--
-        Path.Combine returns the second argument unchanged when it is already rooted, so this is correct
-        for a relocated BaseIntermediateOutputPath or an artifacts layout as well as the usual obj\<cfg>\<tfm>\.
-      -->
-      <_BunStampDirectory Condition="'$(BunStampDirectory)' != ''">$(BunStampDirectory)</_BunStampDirectory>
-      <_BunStampDirectory Condition="'$(_BunStampDirectory)' == '' AND '$(IntermediateOutputPath)' != ''">$([System.IO.Path]::GetFullPath($([System.IO.Path]::Combine('$(MSBuildProjectDirectory)', '$(IntermediateOutputPath)', 'Scarlet.Bun'))))</_BunStampDirectory>
-    </PropertyGroup>
-
     <ItemGroup>
       <_BunBeforeStaticWebAssetsStep Include="@(BunBeforeStaticWebAssets)">
         <WorkingDirectory Condition="'%(BunBeforeStaticWebAssets.WorkingDirectory)' == ''">$(MSBuildProjectDirectory)</WorkingDirectory>
