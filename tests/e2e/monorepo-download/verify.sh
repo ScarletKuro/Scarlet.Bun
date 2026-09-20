@@ -161,7 +161,8 @@ echo ""
 echo "Runtime binaries in shared directory: $RUNTIME_COUNT"
 if [ "$RUNTIME_COUNT" -ge 1 ]; then
     echo "✓ Shared runtime directory used correctly"
-    find "$SHARED_RUNTIME_DIR" -type f \( -name "bun" -o -name "bun.exe" \) -ls
+    # -exec ls, not -ls: BusyBox find (Alpine/musl CI) doesn't support the GNU-only -ls action.
+    find "$SHARED_RUNTIME_DIR" -type f \( -name "bun" -o -name "bun.exe" \) -exec ls -l {} \;
 else
     echo "✗ No runtime found in shared directory"
     FAILED=1

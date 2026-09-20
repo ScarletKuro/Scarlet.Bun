@@ -29,7 +29,10 @@ jobs:
         run: dotnet build --no-restore --configuration Release
 
       - name: Run tests with coverage
-        run: dotnet test --no-build --configuration Release --collect:"XPlat Code Coverage" --results-directory ./coverage
+        run: >
+          dotnet test --no-build --configuration Release
+          --collect:"XPlat Code Coverage" --results-directory ./coverage
+          --logger "junit;LogFilePath=junit/{assembly}.xml"
 
       - name: Verify Scarlet.Bun.Sample outputs
         shell: bash
@@ -203,6 +206,17 @@ jobs:
           flags: ${{ matrix.os }}
           name: codecov-${{ matrix.os }}
 
+      - name: Upload test results to Codecov
+        if: ${{ !cancelled() }}
+        uses: codecov/codecov-action@v7
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          report_type: test_results
+          files: tests/**/junit/*.xml
+          fail_ci_if_error: false
+          flags: ${{ matrix.os }}
+          name: codecov-test-results-${{ matrix.os }}
+
   # No GitHub-hosted runner offers musl/Alpine natively, unlike every other platform above which runs on
   # its own native OS. This runs inside a musl-based .NET SDK container on top of a regular Linux runner
   # instead, so the musl runtime packages get proven against a real musl libc rather than just unzipped.
@@ -244,7 +258,10 @@ jobs:
         run: dotnet build --no-restore --configuration Release
 
       - name: Run tests with coverage
-        run: dotnet test --no-build --configuration Release --collect:"XPlat Code Coverage" --results-directory ./coverage
+        run: >
+          dotnet test --no-build --configuration Release
+          --collect:"XPlat Code Coverage" --results-directory ./coverage
+          --logger "junit;LogFilePath=junit/{assembly}.xml"
 
       - name: Pack NuGet packages
         shell: bash
@@ -328,9 +345,6 @@ jobs:
           chmod +x tests/e2e/cli-tool/verify.sh
           tests/e2e/cli-tool/verify.sh "$GITHUB_WORKSPACE" "${{ env.VERSION }}" "${{ env.BUN_VERSION }}"
 
-      # codecov-action is a JS action; Alpine containers only bundle a Node runtime capable of running JS
-      # actions on x64 (see the checkout step above), so this step is skipped on the arm64 leg to avoid a
-      # hard failure. Coverage is still collected on both legs by the "Run tests with coverage" step above.
       - name: Upload coverage to Codecov
         if: matrix.arch == 'x64'
         uses: codecov/codecov-action@v7
@@ -340,3 +354,16 @@ jobs:
           fail_ci_if_error: false
           flags: musl-${{ matrix.arch }}
           name: codecov-musl-${{ matrix.arch }}
+
+      # !cancelled() so this still uploads on a genuine test failure; matrix.arch == 'x64' for the same
+      # JS-action-on-Alpine-arm64 restriction as the coverage upload step above.
+      - name: Upload test results to Codecov
+        if: ${{ !cancelled() && matrix.arch == 'x64' }}
+        uses: codecov/codecov-action@v7
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          report_type: test_results
+          files: tests/**/junit/*.xml
+          fail_ci_if_error: false
+          flags: musl-${{ matrix.arch }}
+          name: codecov-test-results-musl-${{ matrix.arch }}
