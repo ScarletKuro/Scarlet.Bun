@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.IO.Abstractions;
 using System.Security;
@@ -388,14 +389,25 @@ public class BunRunTask : Task
             {
                 if (!process.WaitForExit(TimeoutMilliseconds))
                 {
-                    try
+                    KillTimedOutProcess(process);
+
+                    if (!process.WaitForExit(OutputDrainGraceMilliseconds))
                     {
-                        process.Kill();
+                        Log.LogMessage(
+                            MessageImportance.Normal,
+                            $"Bun did not exit within {OutputDrainGraceMilliseconds}ms after the timeout kill request.");
                     }
-                    catch
+
+                    if (!(outputClosed.Wait(OutputDrainGraceMilliseconds) && errorClosed.Wait(OutputDrainGraceMilliseconds)))
                     {
-                        // Ignore if process already exited
+                        Log.LogMessage(
+                            MessageImportance.Normal,
+                            $"Bun timed out but its output was still open after {OutputDrainGraceMilliseconds}ms; some output may be missing.");
                     }
+
+                    ExitCode = -1;
+                    StandardOutput = output.All;
+                    StandardError = error.All;
                     Log.LogError($"Command timed out after {TimeoutMilliseconds}ms");
                     return false;
                 }
@@ -925,6 +937,19 @@ public class BunRunTask : Task
                 BunRuntimeResolver.GetRuntimeIdentifier(platform),
                 Path.Combine(packageRoot!.Trim(), "runtimes"),
                 source: BunRuntimePackSource.LegacyProperty);
+        }
+    }
+
+    [ExcludeFromCodeCoverage]
+    private static void KillTimedOutProcess(Process process)
+    {
+        try
+        {
+            process.Kill();
+        }
+        catch
+        {
+            // Best-effort only: the process can exit between WaitForExit(timeout) and Kill().
         }
     }
 }
