@@ -73,7 +73,7 @@ public class BunBeforeStaticWebAssetsTests
 
         var endpoints = Assert.Single(
             Directory.GetFiles(workspace.PathTo("publish"), "*.staticwebassets.endpoints.json"));
-        var manifest = File.ReadAllText(endpoints);
+        var manifest = await File.ReadAllTextAsync(endpoints);
 
         // A fingerprinted route proves the file went through the static web assets pipeline rather than
         // being copied to the publish directory as plain content, which is what the README promises.
@@ -105,7 +105,7 @@ public class BunBeforeStaticWebAssetsTests
 
         // `dotnet pack` runs the steps in both its build and its pack pass, so assert the shape of the log
         // rather than a single pair: what matters is that "second" never precedes "first".
-        Assert.Matches("^(first,second,)+$", File.ReadAllText(workspace.PathTo("order.log")));
+        Assert.Matches("^(first,second,)+$", await File.ReadAllTextAsync(workspace.PathTo("order.log")));
     }
 
     [Fact]
@@ -380,7 +380,7 @@ public class BunBeforeStaticWebAssetsTests
     /// A Razor Class Library is the strictest case: its wwwroot files have to be packed under
     /// staticwebassets/ for a consuming app to serve them.
     /// </summary>
-    private TempWorkspace CreateRazorClassLibrary(string steps)
+    private static TempWorkspace CreateRazorClassLibrary(string steps)
     {
         var workspace = TempWorkspace.Create("static-web-assets");
 
@@ -398,7 +398,7 @@ public class BunBeforeStaticWebAssetsTests
         }
     }
 
-    private TempWorkspace CreateWebApplication()
+    private static TempWorkspace CreateWebApplication()
     {
         var workspace = TempWorkspace.Create("static-web-assets-web");
 

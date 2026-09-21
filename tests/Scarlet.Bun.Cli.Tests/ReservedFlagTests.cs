@@ -17,7 +17,7 @@ public class ReservedFlagTests
         var application = Create(launcher, stdout);
 
         // Act
-        var result = application.Run(new[] { BunCliApplication.InfoFlag });
+        var result = application.Run([BunCliApplication.InfoFlag]);
 
         // Assert
         Assert.Equal(0, result);
@@ -25,12 +25,12 @@ public class ReservedFlagTests
         Assert.Contains("Pinned Bun version", stdout.ToString());
     }
 
-    public static TheoryData<string[]> InfoFlagNotFirst => new()
-    {
-        new[] { "run", "--scarlet-info" },
-        new[] { "--version", "--scarlet-info" },
-        new[] { "run", "build.mjs", "--", "--scarlet-info" }
-    };
+    public static TheoryData<string[]> InfoFlagNotFirst =>
+    [
+        ["run", "--scarlet-info"],
+        ["--version", "--scarlet-info"],
+        ["run", "build.mjs", "--", "--scarlet-info"]
+    ];
 
     [Theory]
     [MemberData(nameof(InfoFlagNotFirst))]
@@ -78,7 +78,7 @@ public class ReservedFlagTests
         var application = Create(new RecordingProcessLauncher(), stdout);
 
         // Act
-        var result = application.Run(new[] { BunCliApplication.InfoFlag, "--json" });
+        var result = application.Run([BunCliApplication.InfoFlag, "--json"]);
 
         // Assert
         Assert.Equal(0, result);
@@ -95,7 +95,7 @@ public class ReservedFlagTests
         var application = Create(new RecordingProcessLauncher(), new StringWriter(), stderr: stderr);
 
         // Act
-        var result = application.Run(new[] { BunCliApplication.InfoFlag, "--nope" });
+        var result = application.Run([BunCliApplication.InfoFlag, "--nope"]);
 
         // Assert
         Assert.Equal(64, result);
@@ -128,7 +128,7 @@ public class ReservedFlagTests
             new StringWriter());
 
         // Act
-        var result = application.Run(new[] { BunCliApplication.InfoFlag });
+        var result = application.Run([BunCliApplication.InfoFlag]);
 
         // Assert - it reports the URL it *would* use rather than fetching it
         Assert.Equal(0, result);

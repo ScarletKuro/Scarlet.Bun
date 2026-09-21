@@ -259,11 +259,11 @@ public class BunRuntimeResolverTests
         var other = new BunRuntimePack("other", "osx-arm64", "/o/runtimes", priority: 99);
 
         // Act
-        var forward = BunRuntimeResolver.SelectPacks(new[] { low, alsoLow, high, other }, Platform.LinuxX64);
-        var reversed = BunRuntimeResolver.SelectPacks(new[] { other, high, alsoLow, low }, Platform.LinuxX64);
+        var forward = BunRuntimeResolver.SelectPacks([low, alsoLow, high, other], Platform.LinuxX64);
+        var reversed = BunRuntimeResolver.SelectPacks([other, high, alsoLow, low], Platform.LinuxX64);
 
         // Assert
-        Assert.Equal(new[] { "m-pack", "a-pack", "z-pack" }, forward.Select(pack => pack.Id));
+        Assert.Equal(["m-pack", "a-pack", "z-pack"], forward.Select(pack => pack.Id));
         Assert.Equal(forward.Select(pack => pack.Id), reversed.Select(pack => pack.Id));
     }
 
@@ -275,11 +275,11 @@ public class BunRuntimeResolverTests
         var first = new BunRuntimePack("same-id", "linux-x64", "/a/runtimes");
 
         // Act
-        var forward = BunRuntimeResolver.SelectPacks(new[] { second, first }, Platform.LinuxX64);
-        var reversed = BunRuntimeResolver.SelectPacks(new[] { first, second }, Platform.LinuxX64);
+        var forward = BunRuntimeResolver.SelectPacks([second, first], Platform.LinuxX64);
+        var reversed = BunRuntimeResolver.SelectPacks([first, second], Platform.LinuxX64);
 
         // Assert
-        Assert.Equal(new[] { "/a/runtimes", "/b/runtimes" }, forward.Select(pack => pack.RuntimesPath));
+        Assert.Equal(["/a/runtimes", "/b/runtimes"], forward.Select(pack => pack.RuntimesPath));
         Assert.Equal(forward.Select(pack => pack.RuntimesPath), reversed.Select(pack => pack.RuntimesPath));
     }
 

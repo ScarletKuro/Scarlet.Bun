@@ -443,8 +443,8 @@ public class BunDownloaderTests
         // Assert
         Assert.Equal(expectedPath, result);
         Assert.Equal(1, requestCount);
-        Assert.Equal("1.4.2", mockFileSystem.File.ReadAllText(markerPath).Trim());
-        Assert.Equal("fake bun executable", mockFileSystem.File.ReadAllText(expectedPath));
+        Assert.Equal("1.4.2", (await mockFileSystem.File.ReadAllTextAsync(markerPath)).Trim());
+        Assert.Equal("fake bun executable", await mockFileSystem.File.ReadAllTextAsync(expectedPath));
     }
 
     [Fact]
@@ -474,7 +474,7 @@ public class BunDownloaderTests
         // Assert - no download was attempted, so the cached executable is untouched
         Assert.Equal(expectedPath, result);
         Assert.Equal(1, resolver.CallCount);
-        Assert.Equal("already-cached bun executable", mockFileSystem.File.ReadAllText(expectedPath));
+        Assert.Equal("already-cached bun executable", await mockFileSystem.File.ReadAllTextAsync(expectedPath));
     }
 
     [Theory]

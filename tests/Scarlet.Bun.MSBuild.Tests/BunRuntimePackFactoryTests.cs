@@ -74,7 +74,7 @@ public class BunRuntimePackFactoryTests
     public void FromTaskItems_WithoutPriority_ShouldDefaultToZero()
     {
         // Act
-        var pack = Assert.Single(BunRuntimePackFactory.FromTaskItems(new ITaskItem[] { Pack("pack") }));
+        var pack = Assert.Single(BunRuntimePackFactory.FromTaskItems([Pack("pack")]));
 
         // Assert
         Assert.Equal(0, pack.Priority);
@@ -178,7 +178,7 @@ public class BunRuntimePackFactoryTests
         };
 
         // Act
-        var packs = BunRuntimePackFactory.FromTaskItems(new ITaskItem[] { new FakeTaskItem("Null.Pack", metadata) }, reported.Add);
+        var packs = BunRuntimePackFactory.FromTaskItems([new FakeTaskItem("Null.Pack", metadata)], reported.Add);
 
         // Assert
         Assert.Empty(packs);
@@ -199,7 +199,7 @@ public class BunRuntimePackFactoryTests
         };
 
         // Act
-        var pack = Assert.Single(BunRuntimePackFactory.FromTaskItems(new ITaskItem[] { new FakeTaskItem("Null.Pack", metadata) }, reported.Add));
+        var pack = Assert.Single(BunRuntimePackFactory.FromTaskItems([new FakeTaskItem("Null.Pack", metadata)], reported.Add));
 
         // Assert
         Assert.Null(pack.Variant);
