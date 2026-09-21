@@ -31,12 +31,14 @@ internal static class DotnetCli
             WorkingDirectory = workingDirectory,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
-            UseShellExecute = false
+            UseShellExecute = false,
+            Environment =
+            {
+                // Node reuse keeps MSBuild worker processes (and the task assembly they loaded) alive after the build,
+                // which blocks the workspace cleanup below on Windows.
+                ["MSBUILDDISABLENODEREUSE"] = "1"
+            }
         };
-
-        // Node reuse keeps MSBuild worker processes (and the task assembly they loaded) alive after the build,
-        // which blocks the workspace cleanup below on Windows.
-        startInfo.Environment["MSBUILDDISABLENODEREUSE"] = "1";
 
         using var process = Process.Start(startInfo) ?? throw new InvalidOperationException("Failed to start dotnet.");
 
