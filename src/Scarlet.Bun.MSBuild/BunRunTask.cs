@@ -390,20 +390,9 @@ public class BunRunTask : Task
                 if (!process.WaitForExit(TimeoutMilliseconds))
                 {
                     KillTimedOutProcess(process);
-
-                    if (!process.WaitForExit(OutputDrainGraceMilliseconds))
-                    {
-                        Log.LogMessage(
-                            MessageImportance.Normal,
-                            $"Bun did not exit within {OutputDrainGraceMilliseconds}ms after the timeout kill request.");
-                    }
-
-                    if (!(outputClosed.Wait(OutputDrainGraceMilliseconds) && errorClosed.Wait(OutputDrainGraceMilliseconds)))
-                    {
-                        Log.LogMessage(
-                            MessageImportance.Normal,
-                            $"Bun timed out but its output was still open after {OutputDrainGraceMilliseconds}ms; some output may be missing.");
-                    }
+                    process.WaitForExit(OutputDrainGraceMilliseconds);
+                    outputClosed.Wait(OutputDrainGraceMilliseconds);
+                    errorClosed.Wait(OutputDrainGraceMilliseconds);
 
                     ExitCode = -1;
                     StandardOutput = output.All;
