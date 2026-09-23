@@ -471,7 +471,9 @@ public class BunIntegrationTests
         {
             var inputDirectory = Path.Combine(tempDir, "assets");
             var editedFile = Path.Combine(inputDirectory, relativePath.Replace('/', Path.DirectorySeparatorChar));
-            Directory.CreateDirectory(Path.GetDirectoryName(editedFile)!);
+            var directoryName = Path.GetDirectoryName(editedFile);
+            Assert.NotNull(directoryName);
+            Directory.CreateDirectory(directoryName);
             File.WriteAllText(editedFile, "console.log('v1');");
 
             var output = Path.Combine(tempDir, "bundle.js");
@@ -847,7 +849,7 @@ public class BunIntegrationTests
 
         Assert.NotNull(errorOutput);
         Assert.Contains($"DETAILED_BUN_DIAGNOSTIC line {stderrLineCount}", errorOutput, StringComparison.Ordinal);
-        Assert.Equal(expectTruncationNotice, errorOutput!.Contains("(last 50 lines)", StringComparison.Ordinal));
+        Assert.Equal(expectTruncationNotice, errorOutput.Contains("(last 50 lines)", StringComparison.Ordinal));
 
         if (expectTruncationNotice)
         {
