@@ -406,6 +406,51 @@ public class BunDownloaderTests
     }
 
     [Fact]
+    public void DownloadRuntime_WhenThePreviousOwnerAbandonedTheMutex_ShouldCarryOn()
+    {
+        // A build killed mid-download leaves the mutex owned by a thread that no longer exists, and the next
+        // build's WaitOne throws AbandonedMutexException instead of returning. Treating that as failure would
+        // mean one interrupted build poisons every later one until the machine is restarted.
+        //
+        // This is deterministic rather than timing-dependent: abandonment is defined by the owning thread
+        // terminating, and Join proves it has. The mutex is created here and held open for the whole test so
+        // the named object survives the thread that abandons it.
+        var platform = Platform.LinuxX64;
+        var tempDir = "/test-runtime";
+        var executableName = BunRuntimeResolver.GetExecutableName(platform);
+        var expectedPath = Path.Combine(tempDir, BunRuntimeResolver.GetRuntimeIdentifier(platform), "native", executableName);
+
+        using var mutex = new Mutex(false, BunDownloader.CreateMutexName(expectedPath));
+
+        var abandoningThread = new Thread(() => mutex.WaitOne()) { IsBackground = true };
+        abandoningThread.Start();
+        abandoningThread.Join();
+
+        var mockFileSystem = new MockFileSystem();
+        var mockHttp = new MockHttpMessageHandler();
+        var zipContent = CreateMockBunZip(executableName);
+        mockHttp.When("https://github.com/oven-sh/bun/releases/latest/download/bun-linux-x64-baseline.zip")
+                .Respond("application/zip", zipContent);
+        MockChecksums(mockHttp, ChecksumsUrlLatest, "bun-linux-x64-baseline.zip", zipContent);
+
+        var downloader = new BunDownloader(
+            mockHttp.ToHttpClient(),
+            new FakeLatestVersionResolver(null),
+            mockFileSystem,
+            new FakeZipArchiveProvider(mockFileSystem),
+            NoOpChmodProvider.Instance,
+            platform,
+            NoOpBunLogger.Instance);
+
+        // Act - without the AbandonedMutexException catch this throws instead of downloading.
+        var result = downloader.DownloadRuntime(tempDir);
+
+        // Assert
+        Assert.Equal(expectedPath, result);
+        Assert.True(mockFileSystem.File.Exists(expectedPath));
+    }
+
+    [Fact]
     public void DownloadRuntime_WhenMutexIsHeldPastTheTimeout_ShouldThrow()
     {
         // The test above creates the named mutex without ever holding it, so WaitOne returns immediately and
