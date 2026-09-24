@@ -404,6 +404,145 @@ public class BunDownloaderTests
     }
 
     [Fact]
+    public void DownloadRuntime_WhenMutexIsHeldPastTheTimeout_ShouldThrow()
+    {
+        // The test above creates the named mutex without ever holding it, so WaitOne returns immediately and
+        // the timeout branch never runs. Observing it needs the mutex held from a genuinely different thread:
+        // a named Mutex is reentrant for the thread that already owns it, so holding it here would succeed
+        // instead of blocking.
+        var platform = Platform.LinuxX64;
+        var tempDir = "/test-runtime";
+        var executableName = BunRuntimeResolver.GetExecutableName(platform);
+        var expectedPath = Path.Combine(tempDir, BunRuntimeResolver.GetRuntimeIdentifier(platform), "native", executableName);
+
+        using var mutexHeldSignal = new ManualResetEventSlim(false);
+        using var releaseMutexSignal = new ManualResetEventSlim(false);
+
+        var holderThread = new Thread(() =>
+        {
+            using var mutex = new Mutex(false, BunDownloader.CreateMutexName(expectedPath), out _);
+            mutex.WaitOne();
+            mutexHeldSignal.Set();
+            releaseMutexSignal.Wait();
+            mutex.ReleaseMutex();
+        })
+        {
+            IsBackground = true
+        };
+        holderThread.Start();
+
+        try
+        {
+            mutexHeldSignal.Wait();
+
+            var mockFileSystem = new MockFileSystem();
+            var mockHttp = new MockHttpMessageHandler();
+            var logger = new RecordingBunLogger();
+            var downloader = new BunDownloader(
+                mockHttp.ToHttpClient(),
+                new FakeLatestVersionResolver(null),
+                mockFileSystem,
+                new FakeZipArchiveProvider(mockFileSystem),
+                NoOpChmodProvider.Instance,
+                platform,
+                logger);
+
+            // Act & Assert - the holder never releases within the timeout.
+            Assert.Throws<TimeoutException>(() => downloader.DownloadRuntime(tempDir, "1.3.6", mutexTimeoutSeconds: 0));
+            Assert.Contains(logger.Messages, m => m.Contains("Another process is downloading", StringComparison.Ordinal));
+        }
+        finally
+        {
+            releaseMutexSignal.Set();
+            holderThread.Join();
+        }
+    }
+
+    [Fact]
+    public async Task DownloadRuntime_WhenAnotherProcessPublishesWhileWaiting_ShouldSkipTheDownload()
+    {
+        // The re-check after acquiring the mutex is the entire reason the mutex exists, and nothing covered
+        // it. Without it every process that queued behind the winner would download and republish on top of
+        // the executable the others are already running.
+        var platform = Platform.LinuxX64;
+        const string tempDir = "/test-runtime";
+        var executableName = BunRuntimeResolver.GetExecutableName(platform);
+        var expectedPath = Path.Combine(tempDir, BunRuntimeResolver.GetRuntimeIdentifier(platform), "native", executableName);
+        var markerPath = expectedPath + ".version";
+
+        var mockFileSystem = new MockFileSystem();
+        // No handler is registered, so the assertions below are backed up by the request failing outright if
+        // the downloader ever decides to go to the network.
+        using var mockHttp = new MockHttpMessageHandler();
+        var logger = new RecordingBunLogger();
+        var chmod = new RecordingChmodProvider();
+        var downloader = new BunDownloader(
+            mockHttp.ToHttpClient(),
+            new FakeLatestVersionResolver(null),
+            mockFileSystem,
+            new FakeZipArchiveProvider(mockFileSystem),
+            chmod,
+            platform,
+            logger);
+
+        using var mutexHeldSignal = new ManualResetEventSlim(false);
+        using var publishSignal = new ManualResetEventSlim(false);
+
+        var holderThread = new Thread(() =>
+        {
+            using var mutex = new Mutex(false, BunDownloader.CreateMutexName(expectedPath), out _);
+            mutex.WaitOne();
+            mutexHeldSignal.Set();
+            publishSignal.Wait();
+
+            // Publish the way a real download does, marker last, while still holding the mutex.
+            mockFileSystem.AddFile(expectedPath, new MockFileData("bun"));
+            mockFileSystem.AddFile(markerPath, new MockFileData("1.3.6"));
+
+            mutex.ReleaseMutex();
+        })
+        {
+            IsBackground = true
+        };
+        holderThread.Start();
+
+        try
+        {
+            mutexHeldSignal.Wait();
+
+            var download = Task.Run(() => downloader.DownloadRuntime(tempDir, "1.3.6", mutexTimeoutSeconds: 60));
+
+            // This message is logged after the pre-mutex cache check and before WaitOne, so seeing it means
+            // the downloader looked at an empty cache and is now queued behind the holder. Publishing before
+            // that point would exercise the pre-mutex check instead of the branch under test.
+            Assert.True(
+                SpinWait.SpinUntil(
+                    () => logger.Messages.Any(m => m.Contains("Another process is downloading", StringComparison.Ordinal)),
+                    TimeSpan.FromSeconds(30)),
+                "The downloader never reported that it was waiting for another process.");
+
+            publishSignal.Set();
+
+            // Act
+            var result = await download;
+
+            // Assert
+            Assert.Equal(expectedPath, result);
+            Assert.Contains(
+                logger.Messages,
+                m => m.Contains("was downloaded by another process while waiting", StringComparison.Ordinal));
+            // The skip path still has to chmod: the executable it is handing back was written by a process
+            // whose permission bits this one cannot assume anything about.
+            Assert.Equal(expectedPath, chmod.LastPath);
+        }
+        finally
+        {
+            publishSignal.Set();
+            holderThread.Join();
+        }
+    }
+
+    [Fact]
     public async Task DownloadRuntimeAsync_WhenPinnedVersionBumped_ShouldRedownloadAndUpdateMarker()
     {
         // Arrange
@@ -1328,9 +1467,26 @@ public class BunDownloaderTests
     {
         private readonly List<string> _messages = new();
 
-        public IReadOnlyList<string> Messages => _messages;
+        // Snapshotted under the lock: the contended-mutex tests read this from the test thread while the
+        // downloader is still logging from another one.
+        public IReadOnlyList<string> Messages
+        {
+            get
+            {
+                lock (_messages)
+                {
+                    return _messages.ToList();
+                }
+            }
+        }
 
-        public void LogMessage(string message) => _messages.Add(message);
+        public void LogMessage(string message)
+        {
+            lock (_messages)
+            {
+                _messages.Add(message);
+            }
+        }
     }
 
     private sealed class RecordingChmodProvider : IChmodProvider
