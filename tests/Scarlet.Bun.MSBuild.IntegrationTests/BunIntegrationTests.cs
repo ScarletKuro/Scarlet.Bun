@@ -1189,6 +1189,13 @@ public class BunIntegrationTests
         Assert.Contains(
             buildEngine.Messages,
             message => message.Message?.Contains("SCARLET_TIMEOUT_STARTED", StringComparison.Ordinal) == true);
+
+        // As an error, not just a message: the streamed copy above is logged at an importance that quiet
+        // verbosity drops, so without this a timed-out build reports one line and an exit code.
+        Assert.Contains(
+            buildEngine.Errors,
+            error => error.Message?.Contains("Error output: ", StringComparison.Ordinal) == true
+                && error.Message.Contains("SCARLET_TIMEOUT_STARTED", StringComparison.Ordinal));
     }
 
     [Fact]

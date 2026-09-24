@@ -398,6 +398,12 @@ public class BunRunTask : Task
                     StandardOutput = output.All;
                     StandardError = error.All;
                     Log.LogError($"Command timed out after {TimeoutMilliseconds}ms");
+
+                    // Same detail as any other failure. A timeout is the case where "what was it doing?" is
+                    // the only question worth asking, and the streamed lines are logged as messages, which
+                    // quiet verbosity drops - so without this the whole report is one line and an exit code.
+                    LogOutputDetail(output, error);
+
                     return false;
                 }
 
@@ -424,24 +430,7 @@ public class BunRunTask : Task
             if (ExitCode != 0)
             {
                 Log.LogError($"Bun command failed with exit code {ExitCode}");
-
-                var errorDetail = CaptureOutput && !string.IsNullOrWhiteSpace(StandardError)
-                    ? StandardError!
-                    : error.Tail;
-
-                if (!string.IsNullOrWhiteSpace(errorDetail))
-                {
-                    Log.LogError($"Error output: {errorDetail}");
-                }
-
-                // Always the bounded tail, even when capturing: stdout is context for the failure rather than
-                // the failure itself, and a full `bun install` transcript repeated into an error helps nobody.
-                var standardDetail = output.Tail;
-
-                if (!string.IsNullOrWhiteSpace(standardDetail))
-                {
-                    Log.LogError($"Standard output: {standardDetail}");
-                }
+                LogOutputDetail(output, error);
 
                 return ContinueOnError;
             }
@@ -926,6 +915,34 @@ public class BunRunTask : Task
                 BunRuntimeResolver.GetRuntimeIdentifier(platform),
                 Path.Combine(packageRoot!.Trim(), "runtimes"),
                 source: BunRuntimePackSource.LegacyProperty);
+        }
+    }
+
+    /// <summary>
+    /// Adds whatever the process said to a failure that has already been reported.
+    /// </summary>
+    /// <remarks>
+    /// Shared by the timeout and non-zero-exit paths so they cannot report differently. stderr uses the full
+    /// capture when there is one; stdout is always the bounded tail, because it is context for the failure
+    /// rather than the failure itself and a whole <c>bun install</c> transcript repeated into an error helps
+    /// nobody.
+    /// </remarks>
+    private void LogOutputDetail(OutputCollector output, OutputCollector error)
+    {
+        var errorDetail = CaptureOutput && !string.IsNullOrWhiteSpace(StandardError)
+            ? StandardError!
+            : error.Tail;
+
+        if (!string.IsNullOrWhiteSpace(errorDetail))
+        {
+            Log.LogError($"Error output: {errorDetail}");
+        }
+
+        var standardDetail = output.Tail;
+
+        if (!string.IsNullOrWhiteSpace(standardDetail))
+        {
+            Log.LogError($"Standard output: {standardDetail}");
         }
     }
 
