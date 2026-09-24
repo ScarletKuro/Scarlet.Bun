@@ -9,7 +9,7 @@ namespace Scarlet.Bun.Cli.Tests.Mock;
 /// </remarks>
 internal sealed class RecordingChmodProvider : IChmodProvider
 {
-    private readonly List<string> _paths = new();
+    private readonly List<string> _paths = [];
 
     public IReadOnlyList<string> Paths => _paths;
 

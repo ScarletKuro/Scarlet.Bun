@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Microsoft.Build.Utilities;
 using Xunit.Abstractions;
 
@@ -470,7 +471,9 @@ public class BunIntegrationTests
         {
             var inputDirectory = Path.Combine(tempDir, "assets");
             var editedFile = Path.Combine(inputDirectory, relativePath.Replace('/', Path.DirectorySeparatorChar));
-            Directory.CreateDirectory(Path.GetDirectoryName(editedFile)!);
+            var directoryName = Path.GetDirectoryName(editedFile);
+            Assert.NotNull(directoryName);
+            Directory.CreateDirectory(directoryName);
             File.WriteAllText(editedFile, "console.log('v1');");
 
             var output = Path.Combine(tempDir, "bundle.js");
@@ -846,7 +849,7 @@ public class BunIntegrationTests
 
         Assert.NotNull(errorOutput);
         Assert.Contains($"DETAILED_BUN_DIAGNOSTIC line {stderrLineCount}", errorOutput, StringComparison.Ordinal);
-        Assert.Equal(expectTruncationNotice, errorOutput!.Contains("(last 50 lines)", StringComparison.Ordinal));
+        Assert.Equal(expectTruncationNotice, errorOutput.Contains("(last 50 lines)", StringComparison.Ordinal));
 
         if (expectTruncationNotice)
         {
@@ -1142,19 +1145,57 @@ public class BunIntegrationTests
     [Fact]
     public void BunRunTask_WithTimeout_ShouldKillProcessAndFail()
     {
+        using var workspace = TestAssetWorkspace.Create(_output);
+        var pidFile = Path.Combine(workspace.RootDirectory, "timeout.pid");
+        File.WriteAllText(
+            Path.Combine(workspace.RootDirectory, "timeout-hang.mjs"),
+            """
+            await Bun.write("timeout.pid", `${process.pid}
+            `);
+            console.error("SCARLET_TIMEOUT_STARTED");
+            setInterval(() => {}, 1000);
+            """);
+
         var runtimesDirectory = Path.Combine(Directory.GetCurrentDirectory(), "runtimes");
+        var buildEngine = new MockBuildEngine(_output);
         var task = new BunRunTask
         {
             Command = "run",
-            Arguments = "build.mjs",
+            Arguments = "./timeout-hang.mjs",
+            WorkingDirectory = workspace.RootDirectory,
             RuntimeDirectory = runtimesDirectory,
-            TimeoutMilliseconds = 50,
-            BuildEngine = new MockBuildEngine(_output)
+            TimeoutMilliseconds = 1500,
+            BuildEngine = buildEngine
         };
 
         var result = task.Execute();
 
         Assert.False(result);
+        Assert.Equal(-1, task.ExitCode);
+        Assert.True(File.Exists(pidFile), "The hanging Bun script should write its PID before the timeout fires.");
+
+        var processId = int.Parse(File.ReadAllText(pidFile).Trim());
+        var processExited = WaitForProcessToExit(processId, TimeSpan.FromSeconds(5));
+        if (!processExited)
+        {
+            TryKillProcess(processId);
+        }
+
+        Assert.True(processExited, $"Timed-out Bun process {processId} was still running after the task returned.");
+        Assert.Contains(
+            buildEngine.Errors,
+            error => error.Message?.Contains("Command timed out after 1500ms", StringComparison.Ordinal) == true);
+        Assert.Contains("SCARLET_TIMEOUT_STARTED", task.StandardError, StringComparison.Ordinal);
+        Assert.Contains(
+            buildEngine.Messages,
+            message => message.Message?.Contains("SCARLET_TIMEOUT_STARTED", StringComparison.Ordinal) == true);
+
+        // As an error, not just a message: the streamed copy above is logged at an importance that quiet
+        // verbosity drops, so without this a timed-out build reports one line and an exit code.
+        Assert.Contains(
+            buildEngine.Errors,
+            error => error.Message?.Contains("Error output: ", StringComparison.Ordinal) == true
+                && error.Message.Contains("SCARLET_TIMEOUT_STARTED", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -1203,6 +1244,39 @@ public class BunIntegrationTests
                 break;
             default:
                 throw new InvalidOperationException($"Unsupported runtime identifier: {rid}");
+        }
+    }
+
+    private static bool WaitForProcessToExit(int processId, TimeSpan timeout)
+    {
+        try
+        {
+            using var process = Process.GetProcessById(processId);
+            return process.HasExited || process.WaitForExit((int)timeout.TotalMilliseconds) || process.HasExited;
+        }
+        catch (ArgumentException)
+        {
+            return true;
+        }
+        catch (InvalidOperationException)
+        {
+            return true;
+        }
+    }
+
+    private static void TryKillProcess(int processId)
+    {
+        try
+        {
+            using var process = Process.GetProcessById(processId);
+            if (!process.HasExited)
+            {
+                process.Kill();
+            }
+        }
+        catch
+        {
+            // Best-effort cleanup for a failed timeout assertion.
         }
     }
 }
