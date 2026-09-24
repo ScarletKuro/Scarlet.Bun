@@ -272,7 +272,7 @@ public sealed class BunDownloader
         {
             // Could not determine what version was just downloaded (e.g. GitHub changed the redirect
             // shape). Clear any stale marker rather than leave it pointing at a different version.
-            DeleteFileIfExists(versionMarkerPath);
+            TryDeleteFile(versionMarkerPath);
         }
 
         return publishedPath;
@@ -340,17 +340,7 @@ public sealed class BunDownloader
         }
         finally
         {
-            if (_fileSystem.File.Exists(tempZipPath))
-            {
-                try
-                {
-                    _fileSystem.File.Delete(tempZipPath);
-                }
-                catch
-                {
-                    // Ignore cleanup errors
-                }
-            }
+            TryDeleteFile(tempZipPath);
         }
     }
 
@@ -469,7 +459,7 @@ public sealed class BunDownloader
         }
         finally
         {
-            DeleteFileIfExists(stagedExecutablePath);
+            TryDeleteFile(stagedExecutablePath);
         }
     }
 
@@ -478,13 +468,19 @@ public sealed class BunDownloader
         return Path.Combine(directoryPath, $".{executableName}.{Guid.NewGuid():N}.tmp");
     }
 
-    private void DeleteFileIfExists(string path)
+    /// <summary>
+    /// Deletes a scratch file, ignoring any failure.
+    /// </summary>
+    /// <remarks>
+    /// Every caller runs in a finally, where a throw would replace whatever actually went wrong - a corrupt
+    /// archive would surface as a delete failure - and on the success path would fail a download that had
+    /// already produced a working Bun. A scanner briefly holding the file open is enough to cause it on
+    /// Windows. There is no Exists check because <see cref="System.IO.File.Delete(string)"/> does not throw
+    /// when the file is missing: a guard would defend against the one outcome that is harmless while doing
+    /// nothing about the locked file that actually fails.
+    /// </remarks>
+    private void TryDeleteFile(string path)
     {
-        if (!_fileSystem.File.Exists(path))
-        {
-            return;
-        }
-
         try
         {
             _fileSystem.File.Delete(path);

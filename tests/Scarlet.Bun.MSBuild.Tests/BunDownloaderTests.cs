@@ -322,7 +322,7 @@ public class BunDownloaderTests
         // specifically designed to make this unreachable through the public API on a single machine (see its
         // own remarks) - PublishStagedExecutable's own stale-file check would just delete a merely
         // pre-existing final path before Move ever ran. To reach the fallback at all, the destination has to
-        // reappear *between* that delete and the Move call, which RaceInjectingFileSystem simulates.
+        // reappear *between* that delete and the Move call, which RaceInjectingFile simulates.
         var platform = Platform.LinuxX64;
         var stagedPath = "/test-runtime/linux-x64/native/.bun.staged.tmp";
         var finalPath = "/test-runtime/linux-x64/native/bun";
@@ -330,11 +330,13 @@ public class BunDownloaderTests
         var mockFileSystem = new MockFileSystem();
         mockFileSystem.AddFile(stagedPath, new MockFileData("staged bun executable"));
         // A stale file here is what makes PublishStagedExecutable call Delete(finalPath) at all - that
-        // Delete is the hook RaceInjectingFileSystem uses to simulate the other caller's publish landing
+        // Delete is the hook RaceInjectingFile uses to simulate the other caller's publish landing
         // in the gap right after it.
         mockFileSystem.AddFile(finalPath, new MockFileData("stale bun executable"));
 
-        var raceSimulatingFileSystem = new RaceInjectingFileSystem(mockFileSystem, finalPath, "published by another caller");
+        var raceSimulatingFileSystem = new MockFileSystemWithFile(
+            mockFileSystem,
+            new RaceInjectingFile(mockFileSystem, finalPath, "published by another caller"));
         var downloader = new BunDownloader(new HttpClient(), new FakeLatestVersionResolver(null), raceSimulatingFileSystem, new FakeZipArchiveProvider(mockFileSystem), NoOpChmodProvider.Instance, platform, NoOpBunLogger.Instance);
 
         var result = downloader.PublishStagedExecutable(stagedPath, finalPath);
@@ -1275,6 +1277,84 @@ public class BunDownloaderTests
     /// Registers a mock response for the SHASUMS256.txt endpoint that matches the real content of
     /// <paramref name="zipContent"/>, mirroring the "hash  filename" format Bun publishes per release.
     /// </summary>
+    [Fact]
+    public void DownloadRuntime_WhenScratchFilesCannotBeDeleted_ShouldStillSucceed()
+    {
+        // TryDeleteFile's callers all run in a finally, so a throw there would replace whatever the download
+        // actually reported - and on this path nothing failed: Bun is published and usable, only the scratch
+        // archive and staging file could not be removed. A scanner holding one open is all it takes.
+        var platform = Platform.LinuxX64;
+        var tempDir = "/test-runtime";
+        var executableName = BunRuntimeResolver.GetExecutableName(platform);
+        var expectedPath = Path.Combine(tempDir, BunRuntimeResolver.GetRuntimeIdentifier(platform), "native", executableName);
+
+        var real = new MockFileSystem();
+        var file = new RecordingFile(real, failDeletes: true);
+        var fileSystem = new MockFileSystemWithFile(real, file);
+
+        var mockHttp = new MockHttpMessageHandler();
+        var zipContent = CreateMockBunZip(executableName);
+        mockHttp.When("https://github.com/oven-sh/bun/releases/latest/download/bun-linux-x64-baseline.zip")
+                .Respond("application/zip", zipContent);
+        MockChecksums(mockHttp, ChecksumsUrlLatest, "bun-linux-x64-baseline.zip", zipContent);
+
+        var downloader = new BunDownloader(
+            mockHttp.ToHttpClient(),
+            new FakeLatestVersionResolver(null),
+            fileSystem,
+            new FakeZipArchiveProvider(real),
+            NoOpChmodProvider.Instance,
+            platform,
+            NoOpBunLogger.Instance);
+
+        // Act
+        var result = downloader.DownloadRuntime(tempDir);
+
+        // Assert
+        Assert.Equal(expectedPath, result);
+        Assert.True(real.File.Exists(expectedPath), "Bun should still be published when cleanup fails.");
+
+        // Swallowing the error is the point; skipping the cleanup is not.
+        Assert.Contains(file.Deleted, path => path.EndsWith(".zip", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void DownloadRuntime_ShouldDeleteScratchFilesWithoutProbingForThemFirst()
+    {
+        // File.Delete does not throw when the file is missing, so an Exists guard would only defend against
+        // the harmless outcome while doing nothing about the locked file that actually fails. This pins that
+        // the guard stays gone: re-adding it is a silent no-op that makes the cleanup look safer than it is.
+        var platform = Platform.LinuxX64;
+        var tempDir = "/test-runtime";
+        var executableName = BunRuntimeResolver.GetExecutableName(platform);
+
+        var real = new MockFileSystem();
+        var file = new RecordingFile(real);
+        var fileSystem = new MockFileSystemWithFile(real, file);
+
+        var mockHttp = new MockHttpMessageHandler();
+        var zipContent = CreateMockBunZip(executableName);
+        mockHttp.When("https://github.com/oven-sh/bun/releases/latest/download/bun-linux-x64-baseline.zip")
+                .Respond("application/zip", zipContent);
+        MockChecksums(mockHttp, ChecksumsUrlLatest, "bun-linux-x64-baseline.zip", zipContent);
+
+        var downloader = new BunDownloader(
+            mockHttp.ToHttpClient(),
+            new FakeLatestVersionResolver(null),
+            fileSystem,
+            new FakeZipArchiveProvider(real),
+            NoOpChmodProvider.Instance,
+            platform,
+            NoOpBunLogger.Instance);
+
+        // Act
+        downloader.DownloadRuntime(tempDir);
+
+        // Assert
+        Assert.Contains(file.Deleted, path => path.EndsWith(".zip", StringComparison.Ordinal));
+        Assert.DoesNotContain(file.ExistenceChecks, path => path.EndsWith(".zip", StringComparison.Ordinal));
+    }
+
     private static void MockChecksums(MockHttpMessageHandler mockHttp, string checksumsUrl, string archiveFileName, MemoryStream zipContent)
     {
         using var sha256 = SHA256.Create();
@@ -1365,17 +1445,18 @@ public class BunDownloaderTests
     }
 
     /// <summary>
-    /// Wraps a <see cref="MockFileSystem"/>, swapping in <see cref="RaceInjectingFile"/> for
-    /// <see cref="IFileSystem.File"/> and forwarding everything else untouched.
+    /// Wraps a <see cref="MockFileSystem"/>, swapping in a custom <see cref="IFile"/> and forwarding
+    /// everything else untouched. Subclassing <see cref="MockFile"/> keeps the real behaviour for every
+    /// member the test does not override, so a new call in the downloader cannot silently get a default.
     /// </summary>
-    private sealed class RaceInjectingFileSystem : IFileSystem
+    private sealed class MockFileSystemWithFile : IFileSystem
     {
         private readonly MockFileSystem _inner;
 
-        public RaceInjectingFileSystem(MockFileSystem inner, string raceTargetPath, string raceContent)
+        public MockFileSystemWithFile(MockFileSystem inner, IFile file)
         {
             _inner = inner;
-            File = new RaceInjectingFile(inner, raceTargetPath, raceContent);
+            File = file;
         }
 
         public IFile File { get; }
@@ -1396,6 +1477,46 @@ public class BunDownloaderTests
     /// interleaving that makes <c>Move</c> throw <see cref="IOException"/> with the destination existing
     /// again, which no amount of pre-seeding state before the call can reach on its own.
     /// </summary>
+    /// <summary>
+    /// Records the paths passed to <c>Delete</c> and <c>Exists</c>, and optionally fails every delete to
+    /// stand in for a scanner holding a file open. Everything else behaves like the underlying mock.
+    /// </summary>
+    private sealed class RecordingFile : MockFile
+    {
+        private readonly bool _failDeletes;
+
+        public RecordingFile(MockFileSystem inner, bool failDeletes = false) : base(inner)
+        {
+            _failDeletes = failDeletes;
+        }
+
+        public List<string> Deleted { get; } = new();
+
+        public List<string> ExistenceChecks { get; } = new();
+
+        public override void Delete(string path)
+        {
+            Deleted.Add(path);
+
+            if (_failDeletes)
+            {
+                throw new IOException("The process cannot access the file because it is being used by another process.");
+            }
+
+            base.Delete(path);
+        }
+
+        public override bool Exists(string? path)
+        {
+            if (path is not null)
+            {
+                ExistenceChecks.Add(path);
+            }
+
+            return base.Exists(path);
+        }
+    }
+
     private sealed class RaceInjectingFile : MockFile
     {
         private readonly MockFileSystem _inner;
