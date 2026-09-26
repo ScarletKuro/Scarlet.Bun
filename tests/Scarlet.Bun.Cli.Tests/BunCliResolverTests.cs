@@ -37,7 +37,7 @@ public class BunCliResolverTests
         Resolve(fileSystem, out var chmod);
 
         // Assert
-        Assert.Equal(new[] { embedded }, chmod.Paths);
+        Assert.Equal([embedded], chmod.Paths);
     }
 
     [Fact]

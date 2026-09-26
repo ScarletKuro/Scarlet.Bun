@@ -114,7 +114,7 @@ public class ArgumentForwardingTests
 
     private static BunCliApplication CreateApplication(IProcessLauncher launcher, out string embeddedPath)
     {
-        const string toolDirectory = "/tool";
+        const string toolDirectory = "tool";
         embeddedPath = Path.Combine(toolDirectory, "bun");
 
         var fileSystem = new MockFileSystem();

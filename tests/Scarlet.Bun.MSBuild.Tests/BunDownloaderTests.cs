@@ -205,7 +205,7 @@ public class BunDownloaderTests
         Assert.Equal(zipProvider.StagedPath, chmodProvider.LastPath);
         Assert.NotEqual(expectedPath, chmodProvider.LastPath);
         Assert.Equal(
-            new[] { normalizedExpectedPath },
+            [normalizedExpectedPath],
             mockFileSystem.Directory.GetFiles(nativeDirectory).Select(mockFileSystem.Path.GetFullPath));
     }
 

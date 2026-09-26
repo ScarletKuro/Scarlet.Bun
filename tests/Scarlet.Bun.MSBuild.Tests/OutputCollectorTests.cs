@@ -79,8 +79,8 @@ public class OutputCollectorTests
 
         Assert.NotNull(all);
         Assert.Contains("line 1" + Environment.NewLine, all, StringComparison.Ordinal);
-        Assert.Contains("line 20", all!, StringComparison.Ordinal);
-        Assert.Equal(20, all!.Split('\n', StringSplitOptions.RemoveEmptyEntries).Length);
+        Assert.Contains("line 20", all, StringComparison.Ordinal);
+        Assert.Equal(20, all.Split('\n', StringSplitOptions.RemoveEmptyEntries).Length);
     }
 
     /// <summary>

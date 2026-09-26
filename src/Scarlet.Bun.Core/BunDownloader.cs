@@ -308,7 +308,7 @@ public sealed class BunDownloader
                     hashingStream.FlushFinalBlock();
                 }
 
-                actualHash = BitConverter.ToString(sha256.Hash!).Replace("-", "");
+                actualHash = BitConverter.ToString(sha256.Hash).Replace("-", "");
             }
 
             // Verify against upstream's published SHA-256 sums before touching the archive. Bun publishes
@@ -432,10 +432,7 @@ public sealed class BunDownloader
             // cleanup below, a failed delete here must not be swallowed: silently keeping the stale file
             // while the caller goes on to write the new version marker would make the marker lie about
             // what is actually on disk.
-            if (_fileSystem.File.Exists(bunExecutablePath))
-            {
-                _fileSystem.File.Delete(bunExecutablePath);
-            }
+            TryDeleteFile(bunExecutablePath);
 
             try
             {
