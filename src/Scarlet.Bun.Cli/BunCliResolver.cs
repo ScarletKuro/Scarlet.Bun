@@ -97,8 +97,12 @@ internal sealed class BunCliResolver
 
         // 3. A previous download. Checked before constructing a downloader so the happy path stays cheap,
         //    and so diagnostics can distinguish "cached" from "would download".
+        //
+        //    The version marker, not the executable alone, proves the cache entry was fully published. The
+        //    downloader writes it last, so an executable without its marker is an interrupted or in-flight
+        //    download. Falling through lets the downloader repair that entry under its mutex.
         var cachedPath = BunRuntimeResolver.GetExecutablePath(options.RuntimeDirectory, _platform);
-        if (_fileSystem.File.Exists(cachedPath))
+        if (_fileSystem.File.Exists(cachedPath) && _fileSystem.File.Exists(BunDownloader.GetVersionMarkerPath(cachedPath)))
         {
             _chmodProvider.EnsureExecutablePermissions(cachedPath);
 

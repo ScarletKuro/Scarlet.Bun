@@ -48,6 +48,7 @@ public class BunCliResolverTests
         var options = CreateOptions();
         var cached = BunRuntimeResolver.GetExecutablePath(options.RuntimeDirectory, Platform.LinuxX64);
         fileSystem.AddFile(cached, new MockFileData("bun"));
+        fileSystem.AddFile(BunDownloader.GetVersionMarkerPath(cached), new MockFileData("1.4.2"));
 
         // Act
         var resolution = Resolve(fileSystem, out _, options);
@@ -55,6 +56,22 @@ public class BunCliResolverTests
         // Assert
         Assert.Equal(BunSource.Cache, resolution.Source);
         Assert.Equal(cached, resolution.ExecutablePath);
+    }
+
+    [Fact]
+    public void Resolve_WithCachedExecutableButNoVersionMarkerAndDownloadsDisabled_ShouldNotReportItAsUsable()
+    {
+        // Arrange - --scarlet-info must not tell the user an incompletely published cache entry is ready.
+        var fileSystem = new MockFileSystem();
+        var options = CreateOptions();
+        var cached = BunRuntimeResolver.GetExecutablePath(options.RuntimeDirectory, Platform.LinuxX64);
+        fileSystem.AddFile(cached, new MockFileData("partially published"));
+
+        // Act
+        var resolution = Resolve(fileSystem, out _, options, allowDownload: false);
+
+        // Assert
+        Assert.Equal(BunSource.NotFound, resolution.Source);
     }
 
     [Fact]

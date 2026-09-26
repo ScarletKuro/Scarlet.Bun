@@ -352,7 +352,7 @@ public sealed class BunDownloader
         }
     }
 
-    private static string GetVersionMarkerPath(string bunExecutablePath) => bunExecutablePath + ".version";
+    public static string GetVersionMarkerPath(string bunExecutablePath) => bunExecutablePath + ".version";
 
     private bool IsCacheValidForVersion(string bunExecutablePath, string versionMarkerPath, string expectedVersion)
     {

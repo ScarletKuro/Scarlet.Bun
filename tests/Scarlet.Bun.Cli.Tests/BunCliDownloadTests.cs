@@ -53,6 +53,29 @@ public class BunCliDownloadTests
     }
 
     [Fact]
+    public void Resolve_WithCachedExecutableButNoVersionMarker_ShouldRedownloadInsteadOfUsingIt()
+    {
+        // Arrange - the marker is written last, so the executable alone is not a complete cache entry.
+        var fileSystem = new MockFileSystem();
+        using var handler = new MockHttpMessageHandler();
+
+        var cached = BunRuntimeResolver.GetExecutablePath(Path.Combine(CacheRoot, "runtimes", "1.4.2"), Platform.LinuxX64);
+        fileSystem.AddFile(cached, new MockFileData("partially published"));
+
+        MockChecksums(handler, "https://github.com/oven-sh/bun/releases/download/bun-v1.4.2/SHASUMS256.txt");
+        handler.Expect("https://github.com/oven-sh/bun/releases/download/bun-v1.4.2/bun-linux-x64-baseline.zip")
+            .Respond("application/zip", new MemoryStream(ArchiveBytes));
+
+        // Act
+        var resolution = Resolve(fileSystem, handler, version: "1.4.2");
+
+        // Assert
+        Assert.Equal(BunSource.Downloaded, resolution.Source);
+        Assert.True(fileSystem.File.Exists(BunDownloader.GetVersionMarkerPath(resolution.ExecutablePath!)));
+        handler.VerifyNoOutstandingExpectation();
+    }
+
+    [Fact]
     public void Resolve_ShouldRequestTheVersionScopedDirectory()
     {
         // Arrange - the CLI intentionally asks BunDownloader to use the cache directory scoped to the
