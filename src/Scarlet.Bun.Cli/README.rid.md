@@ -13,5 +13,5 @@ dotnet tool install --global Scarlet.Bun.Cli
 
 See [`Scarlet.Bun.Cli`](https://www.nuget.org/packages/Scarlet.Bun.Cli/) for full documentation.
 
-Licensed under MIT. Bun itself is licensed separately — see the
-[Bun repository](https://github.com/oven-sh/bun).
+Licensed under MIT. Bun and its bundled components are distributed under their respective licenses; see
+`LICENSE-3RD-PARTY.txt` in the package.

@@ -147,25 +147,11 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ### Bundled Software Licenses
 
-This package distributes Bun binaries, which include:
-
-- **Bun**: MIT License - Copyright (c) Jarred Sumner and contributors
-- **JavaScriptCore/WebKit**: LGPL-2.1 License - Bun statically links JavaScriptCore and WebKit components
-
-Per the LGPL-2.1 license requirements, the complete source code and build instructions for Bun (including its statically linked JavaScriptCore components) are available at:
-- Bun source: https://github.com/oven-sh/bun
-- Patched WebKit/JavaScriptCore: https://github.com/oven-sh/webkit
-
-To relink Bun with modifications to JavaScriptCore:
-```bash
-git clone https://github.com/oven-sh/bun
-cd bun
-git submodule update --init --recursive
-make jsc
-zig build
-```
-
-For more information, see the [Bun License Documentation](https://bun.sh/docs/project/license).
+This project distributes official Bun executables. Bun itself is MIT licensed; its statically linked
+JavaScriptCore/WebKit components and other bundled libraries retain their respective licenses. See
+[LICENSE-3RD-PARTY.txt](LICENSE-3RD-PARTY.txt) for the notices and source links distributed with the
+packages, and Bun's [authoritative license document](https://github.com/oven-sh/bun/blob/main/LICENSE.md)
+for its version-specific component list and relinking instructions.
 
 ## Credits
 

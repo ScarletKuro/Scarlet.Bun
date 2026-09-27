@@ -37,6 +37,8 @@ Works with ASP.NET Core, Blazor and Razor Class Library static web assets.
   - [Output Parameters](#output-parameters)
 - [Example: JavaScript/SCSS Build Script](#example-javascriptscss-build-script)
 - [Supported Platforms](#supported-platforms)
+- [Links](#links)
+- [License](#license)
 
 ## Installation
 
@@ -65,7 +67,7 @@ Download the Bun runtime automatically during build by setting the `BunRuntimeDo
 ```xml
 <PropertyGroup>
   <BunRuntimeDownload>true</BunRuntimeDownload>
-  <BunVersionDownload>1.3.6</BunVersionDownload> <!-- Optional: specify version -->
+  <BunVersionDownload>1.3.6</BunVersionDownload>
   <BunRuntimeDirectory>$(MSBuildProjectDirectory)/runtimes</BunRuntimeDirectory>
 </PropertyGroup>
 ```
@@ -590,5 +592,7 @@ Visual Studio's MSBuild.
 - [Scarlet.Bun.Cli](https://www.nuget.org/packages/Scarlet.Bun.Cli/) — Bun on the command line
 - [Bun documentation](https://bun.sh/docs)
 
-Licensed under MIT. Bun itself is licensed separately — see the
-[Bun repository](https://github.com/oven-sh/bun).
+## License
+
+Scarlet.Bun is MIT licensed. Bun and its bundled components are distributed under their respective
+licenses; see `LICENSE-3RD-PARTY.txt` in the package.

@@ -1,0 +1,21 @@
+Scarlet.Bun Third-Party Notices
+================================
+
+Scarlet.Bun packages may download, embed, or redistribute official Bun executables from:
+
+  https://github.com/oven-sh/bun
+
+Bun itself is MIT licensed. Bun statically links JavaScriptCore and WebKit components licensed under
+the GNU Lesser General Public License, version 2, and includes other linked libraries and polyfills under
+their respective licenses. Bun maintains the authoritative, version-specific license and component list at:
+
+  https://github.com/oven-sh/bun/blob/main/LICENSE.md
+
+The patched WebKit source needed to modify and relink Bun is available at:
+
+  https://github.com/oven-sh/webkit
+
+Current source checkout and relinking instructions are maintained in Bun's license document. The complete
+LGPL-2.1 license text is available at:
+
+  https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html

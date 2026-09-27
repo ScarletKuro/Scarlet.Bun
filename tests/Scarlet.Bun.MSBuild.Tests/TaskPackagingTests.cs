@@ -60,6 +60,30 @@ public class TaskPackagingTests
         Assert.Contains("Scarlet.Bun.Core.dll", packed);
     }
 
+    [Fact]
+    public void ThirdPartyNotice_ShouldBePackedForPackableProjects()
+    {
+        // Arrange
+        var noticePath = Path.Combine(RepositoryRoot.Path, "LICENSE-3RD-PARTY.txt");
+        var targetsPath = Path.Combine(RepositoryRoot.Path, "Directory.Build.targets");
+
+        Assert.True(File.Exists(noticePath), $"Third-party notice not found: {noticePath}");
+        Assert.Contains("Bun", File.ReadAllText(noticePath));
+
+        var targets = XDocument.Load(targetsPath).Root;
+        Assert.NotNull(targets);
+
+        // Act
+        var noticeItem = targets.Descendants("None")
+            .SingleOrDefault(none => (none.Attribute("Include")?.Value ?? string.Empty)
+                .Contains("LICENSE-3RD-PARTY.txt", StringComparison.Ordinal));
+
+        // Assert
+        Assert.NotNull(noticeItem);
+        Assert.Equal("true", noticeItem.Attribute("Pack")?.Value);
+        Assert.Equal("\\", noticeItem.Attribute("PackagePath")?.Value);
+    }
+
     private static XElement LoadTaskProject()
     {
         var projectPath = Path.Combine(

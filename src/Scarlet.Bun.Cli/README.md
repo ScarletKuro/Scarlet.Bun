@@ -132,5 +132,5 @@ The two are independent; this tool is for the command line.
 - [Source and full documentation](https://github.com/ScarletKuro/Scarlet.Bun)
 - [Bun documentation](https://bun.sh/docs)
 
-Licensed under MIT. Bun itself is licensed separately — see the
-[Bun repository](https://github.com/oven-sh/bun).
+Licensed under MIT. Bun and its bundled components are distributed under their respective licenses; see
+`LICENSE-3RD-PARTY.txt` in the package.
