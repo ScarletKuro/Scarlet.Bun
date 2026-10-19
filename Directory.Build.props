@@ -1,7 +1,7 @@
 <Project>
   <PropertyGroup>
     <!-- Bun runtime version used across all runtime packages -->
-    <BunVersion>1.4.2</BunVersion>
+    <BunVersion>1.4.3</BunVersion>
 
     <!-- Revision of Scarlet.Bun.Cli within a single BunVersion. The CLI package version is
          $(BunVersion).$(BunCliRevision), and NuGet normalises a trailing zero away, so revision 0
