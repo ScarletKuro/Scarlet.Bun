@@ -1,5 +1,6 @@
 using System.IO.Compression;
 using System.Security;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using Xunit.Abstractions;
 
@@ -23,6 +24,102 @@ public class BunBeforeStaticWebAssetsTests
     public BunBeforeStaticWebAssetsTests(ITestOutputHelper output)
     {
         _output = output;
+    }
+
+    [Fact]
+    public async Task MultiTargetRebuild_AfterDeletingOutputs_NoBuildPackRetainsAssets()
+    {
+        using var workspace = TempWorkspace.Create("rebuild-static-web-assets");
+        const string version = "0.0.0-rebuild-test";
+        var taskProject = Path.Combine(RepositoryRoot.Path, "src", "Scarlet.Bun.MSBuild", "Scarlet.Bun.MSBuild.csproj");
+        var runtimeDirectory = Path.Combine(RepositoryRoot.Path, "src", "Scarlet.Bun.MSBuild", "bin", "runtimes");
+        var packTask = await RunDotnet(workspace,
+            $"pack \"{taskProject}\" --no-build -c {DotnetCli.Configuration} -p:PackageVersion={version} -o feed");
+        Assert.Equal(0, packTask.ExitCode);
+
+        // A private package cache ensures this test installs the targets just packed, even on repeated runs.
+        workspace.WriteFile("nuget.config", """
+            <configuration>
+              <config><add key="globalPackagesFolder" value="packages" /></config>
+              <packageSources>
+                <clear />
+                <add key="local" value="feed" />
+                <add key="nuget" value="https://api.nuget.org/v3/index.json" />
+              </packageSources>
+            </configuration>
+            """);
+        workspace.WriteFile("GeneratedAssetsRcl.csproj", $$"""
+            <Project Sdk="Microsoft.NET.Sdk.Razor">
+              <PropertyGroup>
+                <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
+                <BunRuntimeDirectory>{{SecurityElement.Escape(runtimeDirectory)}}</BunRuntimeDirectory>
+              </PropertyGroup>
+              <ItemGroup><FrameworkReference Include="Microsoft.AspNetCore.App" /></ItemGroup>
+              <ItemGroup><PackageReference Include="Scarlet.Bun.MSBuild" Version="{{version}}" PrivateAssets="all" /></ItemGroup>
+              <ItemGroup>
+                <BunBeforeStaticWebAssets Include="run"><Arguments>first.mjs</Arguments></BunBeforeStaticWebAssets>
+                <BunBeforeStaticWebAssets Include="run">
+                  <Arguments>build.mjs</Arguments>
+                  <Inputs>build.mjs</Inputs>
+                  <Outputs>wwwroot/js/generated.js;wwwroot/css/generated.css</Outputs>
+                </BunBeforeStaticWebAssets>
+              </ItemGroup>
+              <Target Name="RecordContent" AfterTargets="ResolveProjectStaticWebAssets" Condition="'$(TargetFramework)' != ''">
+                <WriteLinesToFile File="$(IntermediateOutputPath)content.txt" Lines="@(Content)" Overwrite="true" />
+              </Target>
+            </Project>
+            """);
+        workspace.WriteFile("first.mjs", "import fs from 'node:fs'; fs.appendFileSync('order.log', 'first,');");
+        workspace.WriteFile("build.mjs", """
+            import fs from 'node:fs';
+            fs.appendFileSync('order.log', 'build,');
+            fs.mkdirSync('wwwroot/js', { recursive: true });
+            fs.mkdirSync('wwwroot/css', { recursive: true });
+            fs.writeFileSync('wwwroot/js/generated.js', 'export const generated = true;');
+            fs.writeFileSync('wwwroot/css/generated.css', '.generated { color: red; }');
+            """);
+        Assert.Equal(0, (await RunDotnet(workspace, "new sln -n RebuildAssets")).ExitCode);
+        Assert.Equal(0, (await RunDotnet(workspace, "sln add GeneratedAssetsRcl.csproj")).ExitCode);
+        var build = $"build RebuildAssets.slnx -c {DotnetCli.Configuration}";
+        Assert.Equal(0, (await RunDotnet(workspace, build)).ExitCode);
+        Assert.Equal("first,build,", await File.ReadAllTextAsync(workspace.PathTo("order.log")));
+        Assert.Equal(0, (await RunDotnet(workspace, build + " --no-restore")).ExitCode);
+        Assert.Equal("first,build,first,", await File.ReadAllTextAsync(workspace.PathTo("order.log")));
+
+        string[] assets = ["js/generated.js", GeneratedAsset];
+        foreach (var asset in assets)
+            File.Delete(workspace.PathTo("wwwroot", asset));
+        File.Delete(workspace.PathTo("order.log"));
+
+        Assert.Equal(0, (await RunDotnet(workspace, build + " --no-restore --no-incremental")).ExitCode);
+        Assert.Equal("first,build,", await File.ReadAllTextAsync(workspace.PathTo("order.log")));
+        foreach (var asset in assets)
+            Assert.True(new FileInfo(workspace.PathTo("wwwroot", asset)).Length > 0);
+
+        // Inspect immediately: another build or a building pack can repair the broken manifests.
+        Assert.Equal(0, (await RunDotnet(workspace,
+            $"pack GeneratedAssetsRcl.csproj -c {DotnetCli.Configuration} --no-build -o nupkg")).ExitCode);
+        Assert.Equal("first,build,", await File.ReadAllTextAsync(workspace.PathTo("order.log")));
+        using var package = ZipFile.OpenRead(Assert.Single(Directory.GetFiles(workspace.PathTo("nupkg"), "*.nupkg")));
+        foreach (var asset in assets)
+        {
+            var entry = Assert.Single(package.Entries, entry => entry.FullName == $"staticwebassets/{asset}");
+            Assert.True(entry.Length > 0);
+        }
+
+        foreach (var tfm in new[] { "net8.0", "net9.0", "net10.0" })
+        {
+            using var manifest = JsonDocument.Parse(await File.ReadAllTextAsync(
+                workspace.PathTo("obj", DotnetCli.Configuration, tfm, "staticwebassets.build.json")));
+            var content = await File.ReadAllLinesAsync(workspace.PathTo("obj", DotnetCli.Configuration, tfm, "content.txt"));
+            foreach (var asset in assets)
+            {
+                var manifestAsset = Assert.Single(manifest.RootElement.GetProperty("Assets").EnumerateArray(),
+                    item => item.GetProperty("OriginalItemSpec").GetString()?.Replace('\\', '/') == $"wwwroot/{asset}");
+                Assert.True(manifestAsset.GetProperty("FileLength").GetInt64() > 0);
+                Assert.Single(content, item => item.Replace('\\', '/') == $"wwwroot/{asset}");
+            }
+        }
     }
 
     [Fact]

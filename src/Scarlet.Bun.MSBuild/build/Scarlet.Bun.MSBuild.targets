@@ -208,6 +208,18 @@
               Condition="'%(_BunBeforeStaticWebAssetsStep.Inputs)' != '' AND '%(_BunBeforeStaticWebAssetsStep.Outputs)' != ''" />
     </BunRunTask>
 
+  </Target>
+
+  <!--
+    Discover content in each inner build, even when Bun ran only in the outer build.
+    Rebuild's Clean phase can evaluate and cache the inner projects before Bun generates the files;
+    registering Content in the outer project cannot update those cached item lists.
+    The dependency orders generation before discovery for single-target builds too.
+  -->
+  <Target Name="_BunDiscoverGeneratedStaticWebAssets"
+          BeforeTargets="ResolveProjectStaticWebAssets;PreBuildEvent"
+          DependsOnTargets="RunBunBeforeStaticWebAssets"
+          Condition="'@(BunBeforeStaticWebAssets)' != '' AND '$(NoBuild)' != 'true'">
     <!--
       Bun wrote these after MSBuild evaluated the project, so the SDK's own wwwroot glob missed them.
       The path must stay project-relative: the static web assets SDK matches candidates against

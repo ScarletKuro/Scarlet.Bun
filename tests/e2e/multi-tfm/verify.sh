@@ -410,12 +410,46 @@ for tfm in net8.0 net9.0 net10.0; do
     fi
 done
 
-# Pack the RCL and verify static web assets in nupkg
+# Rebuild evaluates inner projects during Clean, before the outer Bun steps regenerate missing files.
+# Inspect this build's manifests and package before any ordinary build can hide stale Content lists.
+rm wwwroot/js/bundle.min.js wwwroot/css/style.min.css
+echo "Rebuilding after deleting generated assets..."
+dotnet build --no-restore --no-incremental --verbosity normal > rebuild.log 2>&1
+for asset in wwwroot/js/bundle.min.js wwwroot/css/style.min.css; do
+    if [ ! -s "$asset" ]; then
+        echo "✗ Rebuild did not regenerate non-empty $asset"
+        FAILED=1
+    fi
+done
+for command in "install --frozen-lockfile" "run build.mjs"; do
+    RUNS=$(grep -c "Executing: bun $command" rebuild.log || true)
+    if [ "$RUNS" -ne 1 ]; then
+        echo "✗ Rebuild should run bun $command once, saw $RUNS"
+        FAILED=1
+    fi
+done
+for tfm in net8.0 net9.0 net10.0; do
+    MANIFEST="obj/Debug/$tfm/staticwebassets.build.json"
+    for asset in bundle.min.js style.min.css; do
+        # Identity occurs once per asset and uses the original name even with SDK fingerprint patterns.
+        MATCHES=$(grep -oE '"Identity"[[:space:]]*:[[:space:]]*"[^"]*"' "$MANIFEST" | grep -Fc "$asset\"" || true)
+        if [ "$MATCHES" -ne 1 ]; then
+            echo "✗ Expected $asset once in $MANIFEST, saw $MATCHES"
+            FAILED=1
+        fi
+    done
+done
+
+# Pack the RCL without rebuilding and verify static web assets in nupkg
 echo ""
 echo "=========================================="
 echo "Packing NuGet package..."
 echo "=========================================="
-dotnet pack --configuration Debug --output ./nupkg --verbosity minimal
+dotnet pack --no-build --configuration Debug --output ./nupkg --verbosity normal > pack.log 2>&1
+if grep -q "Executing: bun " pack.log; then
+    echo "✗ Packing after Rebuild re-ran Bun"
+    FAILED=1
+fi
 
 echo ""
 echo "=========================================="
@@ -469,6 +503,14 @@ else
     echo ""
     echo "Static web asset entries in package:"
     echo "$NUPKG_CONTENTS" | grep -E "bundle\.min\.js|style\.min\.css" || echo "(none found)"
+
+    for asset in js/bundle.min.js css/style.min.css; do
+        ENTRIES=$(unzip -Z1 "$NUPKG_FILE" | grep -Fcx "staticwebassets/$asset" || true)
+        if [ "$ENTRIES" -ne 1 ] || [ "$(unzip -p "$NUPKG_FILE" "staticwebassets/$asset" | wc -c)" -eq 0 ]; then
+            echo "✗ Expected exactly one non-empty staticwebassets/$asset in the rebuild package"
+            FAILED=1
+        fi
+    done
 fi
 
 # Pack again without building. CI commonly builds once and packs separately, and that path skips
