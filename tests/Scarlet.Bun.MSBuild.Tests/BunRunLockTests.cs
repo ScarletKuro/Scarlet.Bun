@@ -62,6 +62,80 @@ public class BunRunLockTests
         Assert.NotEqual(BunDownloader.CreateMutexName(directory), MutexNameFor(directory));
     }
 
+    [Fact]
+    public void Acquire_WhileAnotherRunHoldsTheLock_WaitsForIt()
+    {
+        var directory = NewDirectory();
+        var waited = false;
+        var acquired = new ManualResetEventSlim();
+
+        using (BunRunLock.Acquire(directory, () => Assert.Fail("Nothing else holds this lock yet.")))
+        {
+            var contender = new Thread(() =>
+            {
+                using (BunRunLock.Acquire(directory, () => waited = true))
+                {
+                    acquired.Set();
+                }
+            });
+            contender.Start();
+
+            Assert.False(acquired.Wait(TimeSpan.FromMilliseconds(300)), "The second run got the lock while the first held it.");
+            Assert.True(waited);
+        }
+
+        Assert.True(acquired.Wait(TimeSpan.FromSeconds(10)), "The second run never got the lock after it was released.");
+    }
+
+    [Fact]
+    public void Acquire_AfterAHolderDiedWithoutReleasing_TakesTheLock()
+    {
+        // A build process that crashes mid-run abandons the mutex rather than releasing it.
+        var directory = NewDirectory();
+        using var held = new Mutex(false, BunRunLock.CreateMutexName(directory));
+        var holder = new Thread(() => held.WaitOne());
+        holder.Start();
+        holder.Join();
+
+        using (BunRunLock.Acquire(directory, () => { }))
+        {
+            // Owning it is the point: the next run must not wait on a holder that will never return.
+        }
+
+        using var next = BunRunLock.Acquire(directory, () => Assert.Fail("The lock was not released after the abandoned owner."));
+    }
+
+    [Fact]
+    public void Acquire_WhenWaitingFails_PropagatesTheErrorAndHoldsNothing()
+    {
+        var directory = NewDirectory();
+        var holding = new ManualResetEventSlim();
+        var release = new ManualResetEventSlim();
+        var holder = new Thread(() =>
+        {
+            using (BunRunLock.Acquire(directory, () => { }))
+            {
+                holding.Set();
+                release.Wait();
+            }
+        });
+        holder.Start();
+        holding.Wait();
+
+        var failure = Assert.Throws<InvalidOperationException>(() =>
+            BunRunLock.Acquire(directory, () => throw new InvalidOperationException("logging failed")));
+        Assert.Equal("logging failed", failure.Message);
+
+        release.Set();
+        holder.Join();
+
+        // The failed attempt never owned the mutex, so nothing is left held once the holder lets go.
+        using var next = BunRunLock.Acquire(directory, () => Assert.Fail("A failed attempt left the lock held."));
+    }
+
+    private static string NewDirectory() =>
+        BunRunLock.ResolveDirectory(Path.Combine(Root, Guid.NewGuid().ToString("N")), projectDirectory: null);
+
     private static string MutexNameFor(string workingDirectory) =>
         BunRunLock.CreateMutexName(BunRunLock.ResolveDirectory(workingDirectory, projectDirectory: null));
 }

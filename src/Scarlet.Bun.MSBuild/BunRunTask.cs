@@ -215,35 +215,13 @@ public class BunRunTask : Task
         }
 
         var lockDirectory = BunRunLock.ResolveDirectory(WorkingDirectory, ProjectDirectory);
-        using var mutex = new Mutex(false, BunRunLock.CreateMutexName(lockDirectory));
 
-        try
-        {
-            if (!mutex.WaitOne(0))
-            {
-                Log.LogMessage(MessageImportance.High, $"Waiting for another build running Bun in {lockDirectory}...");
+        // Released on this thread: ExecuteCore blocks rather than awaiting.
+        using var runLock = BunRunLock.Acquire(
+            lockDirectory,
+            () => Log.LogMessage(MessageImportance.High, $"Waiting for another build running Bun in {lockDirectory}..."));
 
-                // No timeout of its own: the holder is a Bun process bounded by its own TimeoutMilliseconds, and a
-                // holder that dies abandons the mutex rather than keeping it.
-                mutex.WaitOne();
-            }
-        }
-        catch (AbandonedMutexException)
-        {
-            // The previous owner died mid-run. We own the mutex now; whatever it left half-written is what the
-            // up-to-date check inside ExecuteCore is there to catch.
-        }
-
-        try
-        {
-            return ExecuteCore();
-        }
-        finally
-        {
-            // Thread-affine, like the download mutex: ExecuteCore blocks rather than awaiting, so this is still
-            // the thread that acquired it.
-            mutex.ReleaseMutex();
-        }
+        return ExecuteCore();
     }
 
     private bool ExecuteCore()
