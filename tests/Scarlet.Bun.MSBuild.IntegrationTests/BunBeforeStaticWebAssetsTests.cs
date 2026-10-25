@@ -16,6 +16,9 @@ public class BunBeforeStaticWebAssetsTests
 {
     private const string GeneratedAsset = "css/generated.css";
 
+    /// <summary>Stable part of the warning an inner build logs when a declared Bun output is missing.</summary>
+    private const string MissingOutputWarning = "is missing in the";
+
     /// <summary>The TFM the generated test projects target; also the intermediate output path segment.</summary>
     private const string TargetFramework = "net10.0";
 
@@ -80,18 +83,40 @@ public class BunBeforeStaticWebAssetsTests
             """);
         Assert.Equal(0, (await RunDotnet(workspace, "new sln -n RebuildAssets")).ExitCode);
         Assert.Equal(0, (await RunDotnet(workspace, "sln add GeneratedAssetsRcl.csproj")).ExitCode);
+        string[] assets = ["js/generated.js", GeneratedAsset];
+        string[] targetFrameworks = ["net8.0", "net9.0", "net10.0"];
+        string ContentRecord(string tfm) => workspace.PathTo("obj", DotnetCli.Configuration, tfm, "content.txt");
+        async Task AssertEachAssetIsContentOnce()
+        {
+            foreach (var tfm in targetFrameworks)
+            {
+                var content = await File.ReadAllLinesAsync(ContentRecord(tfm));
+                foreach (var asset in assets)
+                    Assert.Single(content, item => item.Replace('\\', '/') == $"wwwroot/{asset}");
+            }
+        }
+
         var build = $"build RebuildAssets.slnx -c {DotnetCli.Configuration}";
-        Assert.Equal(0, (await RunDotnet(workspace, build)).ExitCode);
+        var initialBuild = await RunDotnet(workspace, build);
+        Assert.Equal(0, initialBuild.ExitCode);
+        Assert.DoesNotContain(MissingOutputWarning, initialBuild.Output, StringComparison.Ordinal);
         Assert.Equal("first,build,", await File.ReadAllTextAsync(workspace.PathTo("order.log")));
+
+        // On an incremental build the SDK glob already holds the files, so discovery must not add them again.
         Assert.Equal(0, (await RunDotnet(workspace, build + " --no-restore")).ExitCode);
         Assert.Equal("first,build,first,", await File.ReadAllTextAsync(workspace.PathTo("order.log")));
+        await AssertEachAssetIsContentOnce();
 
-        string[] assets = ["js/generated.js", GeneratedAsset];
         foreach (var asset in assets)
             File.Delete(workspace.PathTo("wwwroot", asset));
         File.Delete(workspace.PathTo("order.log"));
+        // Clean leaves these behind, so delete them to prove the rebuild's inner builds wrote fresh ones.
+        foreach (var tfm in targetFrameworks)
+            File.Delete(ContentRecord(tfm));
 
-        Assert.Equal(0, (await RunDotnet(workspace, build + " --no-restore --no-incremental")).ExitCode);
+        var rebuild = await RunDotnet(workspace, build + " --no-restore --no-incremental");
+        Assert.Equal(0, rebuild.ExitCode);
+        Assert.DoesNotContain(MissingOutputWarning, rebuild.Output, StringComparison.Ordinal);
         Assert.Equal("first,build,", await File.ReadAllTextAsync(workspace.PathTo("order.log")));
         foreach (var asset in assets)
             Assert.True(new FileInfo(workspace.PathTo("wwwroot", asset)).Length > 0);
@@ -107,19 +132,30 @@ public class BunBeforeStaticWebAssetsTests
             Assert.True(entry.Length > 0);
         }
 
-        foreach (var tfm in new[] { "net8.0", "net9.0", "net10.0" })
+        foreach (var tfm in targetFrameworks)
         {
             using var manifest = JsonDocument.Parse(await File.ReadAllTextAsync(
                 workspace.PathTo("obj", DotnetCli.Configuration, tfm, "staticwebassets.build.json")));
-            var content = await File.ReadAllLinesAsync(workspace.PathTo("obj", DotnetCli.Configuration, tfm, "content.txt"));
             foreach (var asset in assets)
             {
                 var manifestAsset = Assert.Single(manifest.RootElement.GetProperty("Assets").EnumerateArray(),
                     item => item.GetProperty("OriginalItemSpec").GetString()?.Replace('\\', '/') == $"wwwroot/{asset}");
                 Assert.True(manifestAsset.GetProperty("FileLength").GetInt64() > 0);
-                Assert.Single(content, item => item.Replace('\\', '/') == $"wwwroot/{asset}");
             }
         }
+        await AssertEachAssetIsContentOnce();
+
+        // A single framework built on its own cannot run the steps, so a missing declared output is reported
+        // instead of silently leaving the asset out.
+        File.Delete(workspace.PathTo("wwwroot", "js/generated.js"));
+        var singleFramework = await RunDotnet(workspace,
+            $"build GeneratedAssetsRcl.csproj -c {DotnetCli.Configuration} --no-restore -f net8.0");
+        Assert.Equal(0, singleFramework.ExitCode);
+        Assert.Contains($"Bun output 'wwwroot/js/generated.js' {MissingOutputWarning} net8.0 build",
+            singleFramework.Output, StringComparison.Ordinal);
+        Assert.DoesNotContain($"'wwwroot/{GeneratedAsset}' {MissingOutputWarning}", singleFramework.Output,
+            StringComparison.Ordinal);
+        Assert.Equal("first,build,", await File.ReadAllTextAsync(workspace.PathTo("order.log")));
     }
 
     [Fact]

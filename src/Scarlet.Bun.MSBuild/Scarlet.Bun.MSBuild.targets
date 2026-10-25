@@ -166,5 +166,18 @@
     <ItemGroup>
       <Content Include="wwwroot\**\*" Exclude="@(Content)" />
     </ItemGroup>
+
+    <!--
+      A per-framework build invoked on its own (dotnet build -f net8.0, or a ProjectReference that builds this
+      framework before the outer build has run) never runs the steps: only the outer build may, because the
+      inner builds run in parallel and would race on node_modules and the output files. Running them here
+      instead would be unsafe, since this build cannot tell a -f build from one of those parallel builds.
+      Warn rather than ship a package that silently lacks the assets. Only declared Outputs can be checked.
+    -->
+    <ItemGroup Condition="'$(TargetFrameworks)' != '' AND '$(TargetFramework)' != ''">
+      <_BunExpectedStaticWebAssetOutput Include="%(BunBeforeStaticWebAssets.Outputs)" />
+    </ItemGroup>
+    <Warning Text="Bun output '%(_BunExpectedStaticWebAssetOutput.Identity)' is missing in the $(TargetFramework) build. BunBeforeStaticWebAssets steps run only in the outer build of a multi-targeted project, so build without -f/--framework to generate it."
+             Condition="'@(_BunExpectedStaticWebAssetOutput)' != '' AND !Exists('%(_BunExpectedStaticWebAssetOutput.Identity)')" />
   </Target>
 </Project>

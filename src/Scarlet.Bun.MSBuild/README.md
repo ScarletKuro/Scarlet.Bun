@@ -428,6 +428,11 @@ Internally, the target uses the usual outer-build condition:
 - **Inner builds** (per-TFM): both `TargetFrameworks` and `TargetFramework` are set — target skips
 - **Single-TFM build**: `TargetFrameworks` is empty — target runs
 
+Each inner build still picks up whatever the outer build wrote to `wwwroot`, so the generated files become
+static web assets for every TFM. Building one framework on its own (`dotnet build -f net8.0`) skips the
+outer build, so the steps do not run; if a step declares `Outputs` and one of them is missing, that build
+logs a warning instead of silently leaving the asset out. Build without `-f` to generate the files.
+
 If you are not generating static web assets, keep using your own target and call `Bun` directly.
 
 ### dotnet watch Integration
