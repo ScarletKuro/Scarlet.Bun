@@ -12,21 +12,20 @@ namespace Scarlet.Bun.MSBuild.IntegrationTests;
 /// during the build - and so are absent when MSBuild evaluates the project - still reach the static web
 /// assets pipeline, which is only observable from the package or publish output.
 /// </summary>
-public class BunBeforeStaticWebAssetsTests
+public class BunBeforeStaticWebAssetsTests : IClassFixture<PackedTargetsFixture>
 {
     private const string GeneratedAsset = "css/generated.css";
-
-    /// <summary>The version tests install from a private feed, to exercise the real packaged targets.</summary>
-    private const string PackedVersion = "0.0.0-integration-test";
 
     /// <summary>The TFM the generated test projects target; also the intermediate output path segment.</summary>
     private const string TargetFramework = "net10.0";
 
     private readonly ITestOutputHelper _output;
+    private readonly PackedTargetsFixture _package;
 
-    public BunBeforeStaticWebAssetsTests(ITestOutputHelper output)
+    public BunBeforeStaticWebAssetsTests(ITestOutputHelper output, PackedTargetsFixture package)
     {
         _output = output;
+        _package = package;
     }
 
     [Fact]
@@ -40,7 +39,7 @@ public class BunBeforeStaticWebAssetsTests
                 <BunRuntimeDirectory>{{SecurityElement.Escape(PackedRuntimeDirectory)}}</BunRuntimeDirectory>
               </PropertyGroup>
               <ItemGroup><FrameworkReference Include="Microsoft.AspNetCore.App" /></ItemGroup>
-              <ItemGroup><PackageReference Include="Scarlet.Bun.MSBuild" Version="{{PackedVersion}}" PrivateAssets="all" /></ItemGroup>
+              <ItemGroup><PackageReference Include="Scarlet.Bun.MSBuild" Version="{{PackedTargetsFixture.Version}}" PrivateAssets="all" /></ItemGroup>
               <ItemGroup>
                 <BunBeforeStaticWebAssets Include="run"><Arguments>first.mjs</Arguments></BunBeforeStaticWebAssets>
                 <BunBeforeStaticWebAssets Include="run">
@@ -155,7 +154,7 @@ public class BunBeforeStaticWebAssetsTests
                 <BunRuntimeDirectory>{{SecurityElement.Escape(PackedRuntimeDirectory)}}</BunRuntimeDirectory>
               </PropertyGroup>
               <ItemGroup><FrameworkReference Include="Microsoft.AspNetCore.App" /></ItemGroup>
-              <ItemGroup><PackageReference Include="Scarlet.Bun.MSBuild" Version="{{PackedVersion}}" PrivateAssets="all" /></ItemGroup>
+              <ItemGroup><PackageReference Include="Scarlet.Bun.MSBuild" Version="{{PackedTargetsFixture.Version}}" PrivateAssets="all" /></ItemGroup>
               <ItemGroup>
                 <BunBeforeStaticWebAssets Include="run">
                   <Arguments>build.mjs</Arguments>
@@ -683,31 +682,28 @@ public class BunBeforeStaticWebAssetsTests
     /// <summary>
     /// A workspace that installs the packaged targets rather than importing the development copy. Multi-targeted
     /// projects need this: the development copy depends on ResolveProjectReferences, which an outer build lacks.
+    /// The package comes from <see cref="PackedTargetsFixture"/>, never from the task project's shared build output,
+    /// which this class's own clean test deletes.
     /// </summary>
-    private async Task<TempWorkspace> CreatePackagedTargetsWorkspace(string name)
+    private Task<TempWorkspace> CreatePackagedTargetsWorkspace(string name)
     {
         var workspace = TempWorkspace.Create(name);
 
         try
         {
-            var taskProject = Path.Combine(RepositoryRoot.Path, "src", "Scarlet.Bun.MSBuild", "Scarlet.Bun.MSBuild.csproj");
-            var packTask = await RunDotnet(workspace,
-                $"pack \"{taskProject}\" --no-build -c {DotnetCli.Configuration} -p:PackageVersion={PackedVersion} -o feed");
-            Assert.Equal(0, packTask.ExitCode);
-
             // A private package cache ensures each test installs the targets just packed, even on repeated runs.
-            workspace.WriteFile("nuget.config", """
+            workspace.WriteFile("nuget.config", $"""
                 <configuration>
                   <config><add key="globalPackagesFolder" value="packages" /></config>
                   <packageSources>
                     <clear />
-                    <add key="local" value="feed" />
+                    <add key="local" value="{SecurityElement.Escape(_package.FeedDirectory)}" />
                     <add key="nuget" value="https://api.nuget.org/v3/index.json" />
                   </packageSources>
                 </configuration>
                 """);
 
-            return workspace;
+            return Task.FromResult(workspace);
         }
         catch
         {

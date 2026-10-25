@@ -112,6 +112,7 @@ The complete MSBuild documentation for LLMs is available at `.github/agents/msbu
 │   └── Scarlet.Bun.MSBuild.IntegrationTests/  # Integration tests
 │       ├── BunIntegrationTests.cs            # End-to-end Bun execution tests (incl. RunExclusively)
 │       ├── BunBeforeStaticWebAssetsTests.cs  # Static web assets: rebuilds, packing, ProjectReference consumers
+│       ├── PackedTargetsFixture.cs           # Builds and packs the task once; never pack shared bin/ output
 │       ├── BunRuntimePackDiscoveryTests.cs    # Item + legacy property merging in BunRunTask
 │       ├── BunDownloadIntegrationTests.cs    # Runtime download integration tests
 │       ├── MockBuildEngine.cs                # Mock MSBuild engine for testing
@@ -392,6 +393,9 @@ If all three commands succeed, the project is in good shape.
 ### Common Issues and Solutions
 
 #### Integration Tests Fail
+- **Issue:** `NU5026: The file '...Scarlet.Bun.MSBuild.dll' to be packed was not found on disk`, depending on test order
+- **Solution:** Pack through `PackedTargetsFixture`, never `pack --no-build` of shared build output. `dotnet clean` on any test workspace that imports the development targets cascades through its `ProjectReference` and deletes the task DLL
+
 - **Issue:** Bun runtime not found
 - **Solution:** Ensure runtime files are in `src/Scarlet.Bun.MSBuild/runtimes/` and are being copied to output
 
