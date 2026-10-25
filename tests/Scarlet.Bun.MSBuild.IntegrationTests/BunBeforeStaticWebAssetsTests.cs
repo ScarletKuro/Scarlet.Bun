@@ -156,6 +156,17 @@ public class BunBeforeStaticWebAssetsTests
         Assert.DoesNotContain($"'wwwroot/{GeneratedAsset}' {MissingOutputWarning}", singleFramework.Output,
             StringComparison.Ordinal);
         Assert.Equal("first,build,", await File.ReadAllTextAsync(workspace.PathTo("order.log")));
+
+        // Visual Studio's per-framework design-time builds reach static asset discovery through
+        // CollectCopyToOutputDirectoryItemDesignTime -> _GetCopyToOutputDirectoryItemsFromThisProject ->
+        // AssignTargetPaths, typically on project load before anything has been built. They package nothing,
+        // so a missing output there is not worth a warning in the Error List.
+        var designTime = await RunDotnet(workspace,
+            $"msbuild GeneratedAssetsRcl.csproj -t:_GetCopyToOutputDirectoryItemsFromThisProject " +
+            $"-p:Configuration={DotnetCli.Configuration} -p:TargetFramework=net8.0 " +
+            "-p:DesignTimeBuild=true -p:BuildingInsideVisualStudio=true");
+        Assert.Equal(0, designTime.ExitCode);
+        Assert.DoesNotContain(MissingOutputWarning, designTime.Output, StringComparison.Ordinal);
     }
 
     [Fact]

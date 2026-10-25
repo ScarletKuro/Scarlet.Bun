@@ -238,11 +238,13 @@
       inner builds run in parallel and would race on node_modules and the output files. Running them here
       instead would be unsafe, since this build cannot tell a -f build from one of those parallel builds.
       Warn rather than ship a package that silently lacks the assets. Only declared Outputs can be checked.
+      Design-time builds are exempt: the IDE runs them per framework, usually on project load before anything
+      has been built, and they package nothing.
     -->
     <ItemGroup Condition="'$(TargetFrameworks)' != '' AND '$(TargetFramework)' != ''">
       <_BunExpectedStaticWebAssetOutput Include="%(BunBeforeStaticWebAssets.Outputs)" />
     </ItemGroup>
     <Warning Text="Bun output '%(_BunExpectedStaticWebAssetOutput.Identity)' is missing in the $(TargetFramework) build. BunBeforeStaticWebAssets steps run only in the outer build of a multi-targeted project, so build without -f/--framework to generate it."
-             Condition="'@(_BunExpectedStaticWebAssetOutput)' != '' AND !Exists('%(_BunExpectedStaticWebAssetOutput.Identity)')" />
+             Condition="'$(DesignTimeBuild)' != 'true' AND '@(_BunExpectedStaticWebAssetOutput)' != '' AND !Exists('%(_BunExpectedStaticWebAssetOutput.Identity)')" />
   </Target>
 </Project>
