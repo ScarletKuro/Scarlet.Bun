@@ -169,11 +169,15 @@
     skipped by its own condition, and ResolveProjectStaticWebAssets carries Condition="'$(NoBuild)' != 'true'".
     Without the guard, a no-build pack re-runs every step to produce assets that nothing will then
     discover - it packs from the manifest the earlier build wrote.
+
+    DesignTimeBuild is in the condition because the IDE runs a design-time build on project load and after many
+    edits, and it reaches ResolveProjectStaticWebAssets through CollectCopyToOutputDirectoryItemDesignTime and
+    AssignTargetPaths. Without the guard every one of them runs every step, bun install included.
   -->
   <Target Name="RunBunBeforeStaticWebAssets"
           BeforeTargets="DispatchToInnerBuilds;ResolveProjectStaticWebAssets;PreBuildEvent"
           DependsOnTargets="_BunResolveStampDirectory"
-          Condition="'@(BunBeforeStaticWebAssets)' != '' AND '$(NoBuild)' != 'true' AND ('$(TargetFrameworks)' == '' OR '$(TargetFramework)' == '')">
+          Condition="'@(BunBeforeStaticWebAssets)' != '' AND '$(DesignTimeBuild)' != 'true' AND '$(NoBuild)' != 'true' AND ('$(TargetFrameworks)' == '' OR '$(TargetFramework)' == '')">
     <ItemGroup>
       <_BunBeforeStaticWebAssetsStep Include="@(BunBeforeStaticWebAssets)">
         <WorkingDirectory Condition="'%(BunBeforeStaticWebAssets.WorkingDirectory)' == ''">$(MSBuildProjectDirectory)</WorkingDirectory>
@@ -226,8 +230,9 @@
     AdditionalProperties, say) addresses a different outer instance, which runs the steps again. RunExclusively
     on the task keeps those runs from overlapping.
 
-    Design-time builds are left out: the IDE runs them per framework on project load, and running Bun there
-    would put npm installs behind opening a solution.
+    The DesignTimeBuild guard is not what keeps the IDE from running the steps: that global property reaches the
+    outer instance through this call, where RunBunBeforeStaticWebAssets already skips. It saves evaluating the
+    outer project on every design-time build.
   -->
   <Target Name="_BunRunStepsFromInnerBuild"
           Condition="'@(BunBeforeStaticWebAssets)' != '' AND '$(NoBuild)' != 'true' AND '$(DesignTimeBuild)' != 'true' AND '$(TargetFrameworks)' != '' AND '$(TargetFramework)' != ''">

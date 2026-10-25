@@ -226,6 +226,31 @@ public class BunBeforeStaticWebAssetsTests
     }
 
     [Fact]
+    public async Task DesignTimeBuild_DoesNotRunTheSteps()
+    {
+        // Visual Studio runs a design-time build on project load and after many edits, and it reaches static
+        // asset discovery through CollectCopyToOutputDirectoryItemDesignTime -> AssignTargetPaths. Without a
+        // DesignTimeBuild guard every one of them runs every step - bun install included.
+        using var workspace = CreateRazorClassLibrary(
+            """
+            <BunBeforeStaticWebAssets Include="run">
+              <Arguments>build.mjs</Arguments>
+            </BunBeforeStaticWebAssets>
+            """);
+        workspace.WriteFile("build.mjs", AppendToOrderLog("build"));
+        Assert.Equal(0, (await RunDotnet(workspace, "restore")).ExitCode);
+
+        var designTime = await RunDesignTimeBuild(workspace, "GeneratedAssetsRcl.csproj", TargetFramework);
+
+        Assert.Equal(0, designTime.ExitCode);
+        Assert.False(File.Exists(workspace.PathTo("order.log")), "A design-time build ran a Bun step.");
+
+        // The guard must not cost the real build anything.
+        Assert.Equal(0, (await RunDotnet(workspace, $"build --configuration {DotnetCli.Configuration} --no-restore")).ExitCode);
+        Assert.Equal("build,", await File.ReadAllTextAsync(workspace.PathTo("order.log")));
+    }
+
+    [Fact]
     public async Task SingleTargetFrameworkPack_IncludesGeneratedWwwrootFilesAsStaticWebAssets()
     {
         using var workspace = CreateRazorClassLibrary(
