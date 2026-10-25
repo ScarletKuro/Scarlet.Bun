@@ -571,6 +571,75 @@ else
     FAILED=1
 fi
 
+# An app that references the RCL, built on its own - what dotnet run on the app does. Its ProjectReference
+# builds the RCL's net10.0 inner build directly, never the RCL's outer build, so the inner build has to ask
+# the outer one for the steps. Before it did, Bun never ran here and the app 404ed on the RCL's bundles.
+echo ""
+echo "=========================================="
+echo "Building a referencing app on its own..."
+echo "=========================================="
+RCL_DIR="$(pwd)"
+APP_DIR="$TEST_DIR/TestApp"
+mkdir -p "$APP_DIR"
+copy_template "$TEMPLATES_DIR/TestApp.csproj.template" "$APP_DIR/TestApp.csproj"
+copy_template "$TEMPLATES_DIR/Program.cs.template" "$APP_DIR/Program.cs"
+rm wwwroot/js/bundle.min.js wwwroot/css/style.min.css
+
+if ! dotnet build "$APP_DIR/TestApp.csproj" --verbosity normal > app-build.log 2>&1; then
+    echo "✗ Building the referencing app failed"
+    tail -n 30 app-build.log
+    exit 1
+fi
+echo "✓ Referencing app built"
+
+for command in "install --frozen-lockfile" "run build.mjs"; do
+    RUNS=$(grep -c "Executing: bun $command" app-build.log || true)
+    if [ "$RUNS" -eq 1 ]; then
+        echo "✓ Building the app ran bun $command once"
+    else
+        echo "✗ Building the app should run bun $command once, saw $RUNS"
+        FAILED=1
+    fi
+done
+
+APP_MANIFEST="$APP_DIR/obj/Debug/net10.0/staticwebassets.build.json"
+for asset in bundle.min.js style.min.css; do
+    # Identity is the RCL file's path; the .gz alternatives end in .gz", so this counts primary assets only.
+    MATCHES=$(grep -oE '"Identity"[[:space:]]*:[[:space:]]*"[^"]*"' "$APP_MANIFEST" | grep -Fc "$asset\"" || true)
+    if [ "$MATCHES" -eq 1 ]; then
+        echo "✓ App manifest carries the RCL's $asset"
+    else
+        echo "✗ Expected the RCL's $asset once in $APP_MANIFEST, saw $MATCHES"
+        FAILED=1
+    fi
+done
+
+# Serve it: the manifest is the means, the app answering for the bundle is the point. Development is the
+# environment in which an app serves referenced projects' static web assets straight from their wwwroot.
+APP_PORT=$((20000 + RANDOM % 10000))
+ASPNETCORE_ENVIRONMENT=Development dotnet "$APP_DIR/bin/Debug/net10.0/TestApp.dll" \
+    --urls "http://127.0.0.1:$APP_PORT" --contentRoot "$APP_DIR" > app-run.log 2>&1 &
+APP_PID=$!
+BUNDLE_URL="http://127.0.0.1:$APP_PORT/_content/TestRclMultiTfm/js/bundle.min.js"
+STATUS=000
+for _ in $(seq 1 60); do
+    STATUS=$(curl -s -o served-bundle.js -w '%{http_code}' "$BUNDLE_URL" || true)
+    if [ "$STATUS" != "000" ]; then
+        break
+    fi
+    sleep 0.5
+done
+kill "$APP_PID" 2>/dev/null || true
+wait "$APP_PID" 2>/dev/null || true
+
+if [ "$STATUS" = "200" ] && cmp -s served-bundle.js "$RCL_DIR/wwwroot/js/bundle.min.js"; then
+    echo "✓ App serves the RCL's bundle at /_content/TestRclMultiTfm/js/bundle.min.js"
+else
+    echo "✗ App answered $STATUS for $BUNDLE_URL, or served something other than the generated bundle"
+    tail -n 20 app-run.log
+    FAILED=1
+fi
+
 echo ""
 echo "=========================================="
 

@@ -289,6 +289,106 @@ public class BunIntegrationTests
     }
 
     [Fact]
+    public void BunRunTask_RunExclusively_SerializesRunsInTheSameDirectory()
+    {
+        var tempDir = CreateExclusiveRunDirectory();
+
+        try
+        {
+            var engines = RunTwoExclusiveTasksAtOnce(tempDir, inputs: null, outputs: null);
+
+            // Overlapping runs would log start,start,end,end.
+            Assert.Equal("start,end,start,end,", File.ReadAllText(Path.Combine(tempDir, "order.log")));
+
+            // Both started together and the step holds the lock for a second, so one of them must have queued.
+            // Without this the assertion above could pass merely because the two never actually contended.
+            Assert.Contains(engines, engine => engine.Messages.Any(message =>
+                message.Message?.Contains("Waiting for another build running Bun", StringComparison.Ordinal) == true));
+        }
+        finally
+        {
+            Directory.Delete(tempDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void BunRunTask_RunExclusively_WaitingRunSkipsOutputsTheOtherRunProduced()
+    {
+        var tempDir = CreateExclusiveRunDirectory();
+
+        try
+        {
+            var engines = RunTwoExclusiveTasksAtOnce(tempDir, inputs: "step.mjs", outputs: "out.txt");
+
+            // The up-to-date check runs inside the lock, so the run that queued sees the fresh outputs and stamp.
+            Assert.Equal("start,end,", File.ReadAllText(Path.Combine(tempDir, "order.log")));
+            Assert.Single(engines, engine => engine.Messages.Any(message =>
+                message.Message?.Contains("outputs are up-to-date", StringComparison.Ordinal) == true));
+        }
+        finally
+        {
+            Directory.Delete(tempDir, recursive: true);
+        }
+    }
+
+    private static string CreateExclusiveRunDirectory()
+    {
+        var tempDir = Path.Combine(Path.GetTempPath(), $"scarlet-bun-exclusive-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        File.WriteAllText(Path.Combine(tempDir, "step.mjs"), """
+            import fs from 'node:fs';
+            fs.appendFileSync('order.log', 'start,');
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            fs.writeFileSync('out.txt', 'done');
+            fs.appendFileSync('order.log', 'end,');
+            """);
+        File.SetLastWriteTimeUtc(Path.Combine(tempDir, "step.mjs"), DateTime.UtcNow.AddMinutes(-10));
+
+        return tempDir;
+    }
+
+    private MockBuildEngine[] RunTwoExclusiveTasksAtOnce(string workingDirectory, string? inputs, string? outputs)
+    {
+        var runtimesDirectory = Path.Combine(Directory.GetCurrentDirectory(), "runtimes");
+        var engines = new[] { new MockBuildEngine(_output), new MockBuildEngine(_output) };
+        var results = new bool[engines.Length];
+        using var start = new Barrier(engines.Length);
+
+        // Dedicated threads, as MSBuild nodes would be: the task blocks on the mutex for the whole run.
+        var threads = engines.Select((engine, index) => new Thread(() =>
+        {
+            var task = new BunRunTask
+            {
+                Command = "run",
+                Arguments = "step.mjs",
+                WorkingDirectory = workingDirectory,
+                RuntimeDirectory = runtimesDirectory,
+                Inputs = inputs,
+                Outputs = outputs,
+                RunExclusively = true,
+                BuildEngine = engine
+            };
+
+            start.SignalAndWait();
+            results[index] = task.Execute();
+        })).ToArray();
+
+        foreach (var thread in threads)
+        {
+            thread.Start();
+        }
+
+        foreach (var thread in threads)
+        {
+            thread.Join();
+        }
+
+        Assert.All(results, Assert.True);
+
+        return engines;
+    }
+
+    [Fact]
     public void BunRunTask_WithNoWorkingDirectory_ShouldUseCurrentDirectoryForDefaultStampPath()
     {
         var tempDir = Path.Combine(Path.GetTempPath(), $"scarlet-bun-current-dir-{Guid.NewGuid():N}");

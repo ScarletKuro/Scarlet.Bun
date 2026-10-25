@@ -90,6 +90,7 @@ The complete MSBuild documentation for LLMs is available at `.github/agents/msbu
 │   │   ├── README.md                      # Package readme shown on nuget.org
 │   │   ├── BunRunTask.cs                  # Main MSBuild task for executing Bun commands
 │   │   ├── BunRuntimePackFactory.cs       # @(BunRuntimePack) item parsing (the MSBuild-coupled half)
+│   │   ├── BunRunLock.cs                  # Mutex naming behind BunRunTask.RunExclusively
 │   │   ├── MsBuildBunLogger.cs            # IBunLogger over TaskLoggingHelper
 │   │   └── build/
 │   │       ├── Scarlet.Bun.MSBuild.props      # MSBuild properties
@@ -106,9 +107,11 @@ The complete MSBuild documentation for LLMs is available at `.github/agents/msbu
 │   │   ├── PlatformTests.cs                  # Platform detection tests
 │   │   ├── BunRuntimePackTests.cs            # BunRuntimePack item parsing and de-duplication
 │   │   ├── BunRuntimeResolverTests.cs        # Runtime resolver tests
+│   │   ├── BunRunLockTests.cs                # RunExclusively lock naming
 │   │   └── BunDownloaderTests.cs             # Runtime downloader tests
 │   └── Scarlet.Bun.MSBuild.IntegrationTests/  # Integration tests
-│       ├── BunIntegrationTests.cs            # End-to-end Bun execution tests
+│       ├── BunIntegrationTests.cs            # End-to-end Bun execution tests (incl. RunExclusively)
+│       ├── BunBeforeStaticWebAssetsTests.cs  # Static web assets: rebuilds, packing, ProjectReference consumers
 │       ├── BunRuntimePackDiscoveryTests.cs    # Item + legacy property merging in BunRunTask
 │       ├── BunDownloadIntegrationTests.cs    # Runtime download integration tests
 │       ├── MockBuildEngine.cs                # Mock MSBuild engine for testing

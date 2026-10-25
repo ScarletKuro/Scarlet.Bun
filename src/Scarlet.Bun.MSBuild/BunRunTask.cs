@@ -131,6 +131,18 @@ public class BunRunTask : Task
     public int DownloadMutexTimeoutSeconds { get; set; } = 300;
 
     /// <summary>
+    /// When true, runs that share a working directory take turns, across every build process on the machine.
+    /// </summary>
+    /// <remarks>
+    /// MSBuild runs a target once per project instance, and one project can be built as several instances in
+    /// the same build - a ProjectReference that passes its own global properties is enough. Each instance then
+    /// runs the step, in parallel, and two <c>bun install</c>s writing one <c>node_modules</c> fail on Windows.
+    /// The up-to-date check runs inside the lock, so a waiting run whose outputs the first one just produced
+    /// skips instead of repeating the work.
+    /// </remarks>
+    public bool RunExclusively { get; set; }
+
+    /// <summary>
     /// The Bun runtimes available to this build, normally <c>@(BunRuntimePack)</c>.
     /// </summary>
     /// <remarks>
@@ -196,6 +208,45 @@ public class BunRunTask : Task
     public string? StandardError { get; set; }
 
     public override bool Execute()
+    {
+        if (!RunExclusively)
+        {
+            return ExecuteCore();
+        }
+
+        var lockDirectory = BunRunLock.ResolveDirectory(WorkingDirectory, ProjectDirectory);
+        using var mutex = new Mutex(false, BunRunLock.CreateMutexName(lockDirectory));
+
+        try
+        {
+            if (!mutex.WaitOne(0))
+            {
+                Log.LogMessage(MessageImportance.High, $"Waiting for another build running Bun in {lockDirectory}...");
+
+                // No timeout of its own: the holder is a Bun process bounded by its own TimeoutMilliseconds, and a
+                // holder that dies abandons the mutex rather than keeping it.
+                mutex.WaitOne();
+            }
+        }
+        catch (AbandonedMutexException)
+        {
+            // The previous owner died mid-run. We own the mutex now; whatever it left half-written is what the
+            // up-to-date check inside ExecuteCore is there to catch.
+        }
+
+        try
+        {
+            return ExecuteCore();
+        }
+        finally
+        {
+            // Thread-affine, like the download mutex: ExecuteCore blocks rather than awaiting, so this is still
+            // the thread that acquired it.
+            mutex.ReleaseMutex();
+        }
+    }
+
+    private bool ExecuteCore()
     {
         // Closed on every exit path. A handler firing after the task has returned - possible whenever the drain
         // grace expires - would otherwise log into a finished task, which MSBuild turns into an exception that

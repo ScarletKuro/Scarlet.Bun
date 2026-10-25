@@ -100,6 +100,7 @@ If the RID cannot be determined, the script falls back to shell-based OS and arc
 8. Verifies all three TFM output directories (`bin/Debug/net{8,9,10}.0/`) exist
 9. Deletes generated bundles, rebuilds with `--no-incremental`, checks each TFM's manifest, then packs with `--no-build` and verifies Bun did not re-run and each JS/CSS asset appears once and is non-empty under `staticwebassets/`
 10. Packs again with a build and verifies each Bun step ran once (outer build only) and each asset appears once and is non-empty under `staticwebassets/`
+11. Adds a `net10.0` web app with a `ProjectReference` to the RCL, deletes the bundles, and builds **only the app** (what `dotnet run` does - the RCL's outer build never runs). Verifies each Bun step ran once, the app's manifest carries both bundles, and the running app serves the generated bundle at `/_content/TestRclMultiTfm/js/bundle.min.js`
 
 Platform detection and runtime package selection follow the same logic as `package-installation/verify.sh`.
 

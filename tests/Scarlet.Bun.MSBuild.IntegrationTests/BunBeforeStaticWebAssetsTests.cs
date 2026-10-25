@@ -16,8 +16,8 @@ public class BunBeforeStaticWebAssetsTests
 {
     private const string GeneratedAsset = "css/generated.css";
 
-    /// <summary>Stable part of the warning an inner build logs when a declared Bun output is missing.</summary>
-    private const string MissingOutputWarning = "is missing in the";
+    /// <summary>The version tests install from a private feed, to exercise the real packaged targets.</summary>
+    private const string PackedVersion = "0.0.0-integration-test";
 
     /// <summary>The TFM the generated test projects target; also the intermediate output path segment.</summary>
     private const string TargetFramework = "net10.0";
@@ -32,33 +32,15 @@ public class BunBeforeStaticWebAssetsTests
     [Fact]
     public async Task MultiTargetRebuild_AfterDeletingOutputs_NoBuildPackRetainsAssets()
     {
-        using var workspace = TempWorkspace.Create("rebuild-static-web-assets");
-        const string version = "0.0.0-rebuild-test";
-        var taskProject = Path.Combine(RepositoryRoot.Path, "src", "Scarlet.Bun.MSBuild", "Scarlet.Bun.MSBuild.csproj");
-        var runtimeDirectory = Path.Combine(RepositoryRoot.Path, "src", "Scarlet.Bun.MSBuild", "bin", "runtimes");
-        var packTask = await RunDotnet(workspace,
-            $"pack \"{taskProject}\" --no-build -c {DotnetCli.Configuration} -p:PackageVersion={version} -o feed");
-        Assert.Equal(0, packTask.ExitCode);
-
-        // A private package cache ensures this test installs the targets just packed, even on repeated runs.
-        workspace.WriteFile("nuget.config", """
-            <configuration>
-              <config><add key="globalPackagesFolder" value="packages" /></config>
-              <packageSources>
-                <clear />
-                <add key="local" value="feed" />
-                <add key="nuget" value="https://api.nuget.org/v3/index.json" />
-              </packageSources>
-            </configuration>
-            """);
+        using var workspace = await CreatePackagedTargetsWorkspace("rebuild-static-web-assets");
         workspace.WriteFile("GeneratedAssetsRcl.csproj", $$"""
             <Project Sdk="Microsoft.NET.Sdk.Razor">
               <PropertyGroup>
                 <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
-                <BunRuntimeDirectory>{{SecurityElement.Escape(runtimeDirectory)}}</BunRuntimeDirectory>
+                <BunRuntimeDirectory>{{SecurityElement.Escape(PackedRuntimeDirectory)}}</BunRuntimeDirectory>
               </PropertyGroup>
               <ItemGroup><FrameworkReference Include="Microsoft.AspNetCore.App" /></ItemGroup>
-              <ItemGroup><PackageReference Include="Scarlet.Bun.MSBuild" Version="{{version}}" PrivateAssets="all" /></ItemGroup>
+              <ItemGroup><PackageReference Include="Scarlet.Bun.MSBuild" Version="{{PackedVersion}}" PrivateAssets="all" /></ItemGroup>
               <ItemGroup>
                 <BunBeforeStaticWebAssets Include="run"><Arguments>first.mjs</Arguments></BunBeforeStaticWebAssets>
                 <BunBeforeStaticWebAssets Include="run">
@@ -97,9 +79,7 @@ public class BunBeforeStaticWebAssetsTests
         }
 
         var build = $"build RebuildAssets.slnx -c {DotnetCli.Configuration}";
-        var initialBuild = await RunDotnet(workspace, build);
-        Assert.Equal(0, initialBuild.ExitCode);
-        Assert.DoesNotContain(MissingOutputWarning, initialBuild.Output, StringComparison.Ordinal);
+        Assert.Equal(0, (await RunDotnet(workspace, build)).ExitCode);
         Assert.Equal("first,build,", await File.ReadAllTextAsync(workspace.PathTo("order.log")));
 
         // On an incremental build the SDK glob already holds the files, so discovery must not add them again.
@@ -114,9 +94,7 @@ public class BunBeforeStaticWebAssetsTests
         foreach (var tfm in targetFrameworks)
             File.Delete(ContentRecord(tfm));
 
-        var rebuild = await RunDotnet(workspace, build + " --no-restore --no-incremental");
-        Assert.Equal(0, rebuild.ExitCode);
-        Assert.DoesNotContain(MissingOutputWarning, rebuild.Output, StringComparison.Ordinal);
+        Assert.Equal(0, (await RunDotnet(workspace, build + " --no-restore --no-incremental")).ExitCode);
         Assert.Equal("first,build,", await File.ReadAllTextAsync(workspace.PathTo("order.log")));
         foreach (var asset in assets)
             Assert.True(new FileInfo(workspace.PathTo("wwwroot", asset)).Length > 0);
@@ -145,28 +123,106 @@ public class BunBeforeStaticWebAssetsTests
         }
         await AssertEachAssetIsContentOnce();
 
-        // A single framework built on its own cannot run the steps, so a missing declared output is reported
-        // instead of silently leaving the asset out.
-        File.Delete(workspace.PathTo("wwwroot", "js/generated.js"));
-        var singleFramework = await RunDotnet(workspace,
-            $"build GeneratedAssetsRcl.csproj -c {DotnetCli.Configuration} --no-restore -f net8.0");
-        Assert.Equal(0, singleFramework.ExitCode);
-        Assert.Contains($"Bun output 'wwwroot/js/generated.js' {MissingOutputWarning} net8.0 build",
-            singleFramework.Output, StringComparison.Ordinal);
-        Assert.DoesNotContain($"'wwwroot/{GeneratedAsset}' {MissingOutputWarning}", singleFramework.Output,
-            StringComparison.Ordinal);
-        Assert.Equal("first,build,", await File.ReadAllTextAsync(workspace.PathTo("order.log")));
-
         // Visual Studio's per-framework design-time builds reach static asset discovery through
         // CollectCopyToOutputDirectoryItemDesignTime -> _GetCopyToOutputDirectoryItemsFromThisProject ->
-        // AssignTargetPaths, typically on project load before anything has been built. They package nothing,
-        // so a missing output there is not worth a warning in the Error List.
-        var designTime = await RunDotnet(workspace,
-            $"msbuild GeneratedAssetsRcl.csproj -t:_GetCopyToOutputDirectoryItemsFromThisProject " +
-            $"-p:Configuration={DotnetCli.Configuration} -p:TargetFramework=net8.0 " +
-            "-p:DesignTimeBuild=true -p:BuildingInsideVisualStudio=true");
-        Assert.Equal(0, designTime.ExitCode);
-        Assert.DoesNotContain(MissingOutputWarning, designTime.Output, StringComparison.Ordinal);
+        // AssignTargetPaths, on project load. They must not start Bun, even with an output missing.
+        File.Delete(workspace.PathTo("wwwroot", "js/generated.js"));
+        Assert.Equal(0, (await RunDesignTimeBuild(workspace, "GeneratedAssetsRcl.csproj", "net8.0")).ExitCode);
+        Assert.Equal("first,build,", await File.ReadAllTextAsync(workspace.PathTo("order.log")));
+        Assert.False(File.Exists(workspace.PathTo("wwwroot", "js/generated.js")));
+
+        // dotnet build -f reaches one inner build without the outer one, which still has to run the steps.
+        Assert.Equal(0, (await RunDotnet(workspace,
+            $"build GeneratedAssetsRcl.csproj -c {DotnetCli.Configuration} --no-restore -f net8.0")).ExitCode);
+        Assert.Equal("first,build,first,build,", await File.ReadAllTextAsync(workspace.PathTo("order.log")));
+        Assert.True(new FileInfo(workspace.PathTo("wwwroot", "js/generated.js")).Length > 0);
+        await AssertManifestHasAsset(workspace.PathTo("obj", DotnetCli.Configuration, "net8.0", "staticwebassets.build.json"),
+            "GeneratedAssetsRcl", "js/generated.js");
+    }
+
+    /// <summary>
+    /// <c>dotnet run --project App</c> builds a referenced multi-targeted library only through the app's
+    /// ProjectReference, which addresses one inner build directly and never the library's outer build.
+    /// </summary>
+    [Fact]
+    public async Task MultiTargetLibrary_BuiltThroughProjectReferences_RunsStepsOnceAndAppsGetAssets()
+    {
+        using var workspace = await CreatePackagedTargetsWorkspace("project-reference-static-web-assets");
+        workspace.WriteFile("Rcl/Rcl.csproj", $$"""
+            <Project Sdk="Microsoft.NET.Sdk.Razor">
+              <PropertyGroup>
+                <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
+                <BunRuntimeDirectory>{{SecurityElement.Escape(PackedRuntimeDirectory)}}</BunRuntimeDirectory>
+              </PropertyGroup>
+              <ItemGroup><FrameworkReference Include="Microsoft.AspNetCore.App" /></ItemGroup>
+              <ItemGroup><PackageReference Include="Scarlet.Bun.MSBuild" Version="{{PackedVersion}}" PrivateAssets="all" /></ItemGroup>
+              <ItemGroup>
+                <BunBeforeStaticWebAssets Include="run">
+                  <Arguments>build.mjs</Arguments>
+                  <Outputs>wwwroot/js/generated.js</Outputs>
+                </BunBeforeStaticWebAssets>
+              </ItemGroup>
+            </Project>
+            """);
+        // start/end around a pause: two runs overlapping would log start,start,...
+        workspace.WriteFile("Rcl/build.mjs", """
+            import fs from 'node:fs';
+            fs.appendFileSync('order.log', 'start,');
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            fs.mkdirSync('wwwroot/js', { recursive: true });
+            fs.writeFileSync('wwwroot/js/generated.js', 'export const generated = true;');
+            fs.appendFileSync('order.log', 'end,');
+            """);
+        foreach (var (app, tfm) in new[] { ("App10", "net10.0"), ("App8", "net8.0") })
+        {
+            workspace.WriteFile($"{app}/{app}.csproj", $"""
+                <Project Sdk="Microsoft.NET.Sdk.Web">
+                  <PropertyGroup>
+                    <TargetFramework>{tfm}</TargetFramework>
+                    <ImplicitUsings>enable</ImplicitUsings>
+                  </PropertyGroup>
+                  <ItemGroup><ProjectReference Include="..\Rcl\Rcl.csproj" /></ItemGroup>
+                </Project>
+                """);
+            workspace.WriteFile($"{app}/Program.cs", "WebApplication.Create(args).Run();");
+        }
+        Assert.Equal(0, (await RunDotnet(workspace, "new sln -n Apps")).ExitCode);
+        Assert.Equal(0, (await RunDotnet(workspace, "sln add Rcl/Rcl.csproj App10/App10.csproj App8/App8.csproj")).ExitCode);
+        Assert.Equal(0, (await RunDotnet(workspace, "restore Apps.slnx")).ExitCode);
+
+        string AppManifest(string app, string tfm) =>
+            workspace.PathTo(app, "obj", DotnetCli.Configuration, tfm, "staticwebassets.build.json");
+        void ResetGeneratedState()
+        {
+            if (Directory.Exists(workspace.PathTo("Rcl", "wwwroot")))
+                Directory.Delete(workspace.PathTo("Rcl", "wwwroot"), recursive: true);
+            File.Delete(workspace.PathTo("Rcl", "order.log"));
+        }
+
+        // Only the app is built, as dotnet run does: the library's outer build never runs.
+        Assert.Equal(0, (await RunDotnet(workspace,
+            $"build App10/App10.csproj -c {DotnetCli.Configuration} --no-restore")).ExitCode);
+        Assert.Equal("start,end,", await File.ReadAllTextAsync(workspace.PathTo("Rcl", "order.log")));
+        await AssertManifestHasAsset(AppManifest("App10", "net10.0"), "Rcl", "js/generated.js");
+
+        // The whole solution: the library's outer build, three inner builds and two apps each reach the steps,
+        // concurrently, and between them must run them exactly once.
+        ResetGeneratedState();
+        Assert.Equal(0, (await RunDotnet(workspace,
+            $"build Apps.slnx -c {DotnetCli.Configuration} --no-restore")).ExitCode);
+        Assert.Equal("start,end,", await File.ReadAllTextAsync(workspace.PathTo("Rcl", "order.log")));
+        await AssertManifestHasAsset(AppManifest("App10", "net10.0"), "Rcl", "js/generated.js");
+        await AssertManifestHasAsset(AppManifest("App8", "net8.0"), "Rcl", "js/generated.js");
+        foreach (var tfm in new[] { "net8.0", "net9.0", "net10.0" })
+            await AssertManifestHasAsset(workspace.PathTo("Rcl", "obj", DotnetCli.Configuration, tfm, "staticwebassets.build.json"),
+                "Rcl", "js/generated.js");
+
+        // Rebuild cleans first, which evaluates and caches the inner builds before anything regenerates.
+        ResetGeneratedState();
+        Assert.Equal(0, (await RunDotnet(workspace,
+            $"build Apps.slnx -c {DotnetCli.Configuration} --no-restore --no-incremental")).ExitCode);
+        Assert.Equal("start,end,", await File.ReadAllTextAsync(workspace.PathTo("Rcl", "order.log")));
+        await AssertManifestHasAsset(AppManifest("App8", "net8.0"), "Rcl", "js/generated.js");
     }
 
     [Fact]
@@ -595,6 +651,65 @@ public class BunBeforeStaticWebAssetsTests
 
     private static string DevelopmentTargetsPath => Path.Combine(
         RepositoryRoot.Path, "src", "Scarlet.Bun.MSBuild", "Scarlet.Bun.MSBuild.targets");
+
+    private static string PackedRuntimeDirectory => Path.Combine(
+        RepositoryRoot.Path, "src", "Scarlet.Bun.MSBuild", "bin", "runtimes");
+
+    /// <summary>
+    /// A workspace that installs the packaged targets rather than importing the development copy. Multi-targeted
+    /// projects need this: the development copy depends on ResolveProjectReferences, which an outer build lacks.
+    /// </summary>
+    private async Task<TempWorkspace> CreatePackagedTargetsWorkspace(string name)
+    {
+        var workspace = TempWorkspace.Create(name);
+
+        try
+        {
+            var taskProject = Path.Combine(RepositoryRoot.Path, "src", "Scarlet.Bun.MSBuild", "Scarlet.Bun.MSBuild.csproj");
+            var packTask = await RunDotnet(workspace,
+                $"pack \"{taskProject}\" --no-build -c {DotnetCli.Configuration} -p:PackageVersion={PackedVersion} -o feed");
+            Assert.Equal(0, packTask.ExitCode);
+
+            // A private package cache ensures each test installs the targets just packed, even on repeated runs.
+            workspace.WriteFile("nuget.config", """
+                <configuration>
+                  <config><add key="globalPackagesFolder" value="packages" /></config>
+                  <packageSources>
+                    <clear />
+                    <add key="local" value="feed" />
+                    <add key="nuget" value="https://api.nuget.org/v3/index.json" />
+                  </packageSources>
+                </configuration>
+                """);
+
+            return workspace;
+        }
+        catch
+        {
+            workspace.Dispose();
+            throw;
+        }
+    }
+
+    private Task<DotnetResult> RunDesignTimeBuild(TempWorkspace workspace, string project, string targetFramework) =>
+        RunDotnet(workspace,
+            $"msbuild {project} -t:_GetCopyToOutputDirectoryItemsFromThisProject " +
+            $"-p:Configuration={DotnetCli.Configuration} -p:TargetFramework={targetFramework} " +
+            "-p:DesignTimeBuild=true -p:BuildingInsideVisualStudio=true");
+
+    /// <summary>
+    /// Asserts the static web assets manifest carries the asset once, as a non-empty primary asset of
+    /// <paramref name="sourceId"/> - the project that owns it, also when the manifest is a referencing app's.
+    /// </summary>
+    private static async Task AssertManifestHasAsset(string manifestPath, string sourceId, string relativePath)
+    {
+        using var manifest = JsonDocument.Parse(await File.ReadAllTextAsync(manifestPath));
+        var asset = Assert.Single(manifest.RootElement.GetProperty("Assets").EnumerateArray(), item =>
+            item.GetProperty("SourceId").GetString() == sourceId &&
+            item.GetProperty("AssetRole").GetString() == "Primary" &&
+            item.GetProperty("OriginalItemSpec").GetString()?.Replace('\\', '/') == $"wwwroot/{relativePath}");
+        Assert.True(asset.GetProperty("FileLength").GetInt64() > 0);
+    }
 
     private async Task Pack(TempWorkspace workspace)
     {

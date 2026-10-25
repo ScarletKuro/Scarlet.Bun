@@ -425,13 +425,22 @@ When your project targets multiple frameworks (`<TargetFrameworks>net8.0;net9.0;
 
 Internally, the target uses the usual outer-build condition:
 - **Outer build** (multi-TFM): `TargetFramework` is empty — target runs
-- **Inner builds** (per-TFM): both `TargetFrameworks` and `TargetFramework` are set — target skips
+- **Inner builds** (per-TFM): both `TargetFrameworks` and `TargetFramework` are set — target skips, and the inner build asks the outer build for it instead (see below)
 - **Single-TFM build**: `TargetFrameworks` is empty — target runs
 
-Each inner build still picks up whatever the outer build wrote to `wwwroot`, so the generated files become
-static web assets for every TFM. Building one framework on its own (`dotnet build -f net8.0`) skips the
-outer build, so the steps do not run; if a step declares `Outputs` and one of them is missing, that build
-logs a warning instead of silently leaving the asset out. Build without `-f` to generate the files.
+Each inner build picks up whatever the steps wrote to `wwwroot`, so the generated files become static web
+assets for every TFM.
+
+Some builds reach an inner build without going through the outer one: an app with a `ProjectReference` to
+your library (which is all `dotnet run` on that app builds), and `dotnet build -f net8.0`. An inner build
+reached that way asks the outer build to run the steps, and MSBuild runs them once however many frameworks
+or referencing apps ask, so `dotnet run --project MyApp` on a fresh clone still serves the library's bundles.
+Design-time builds in the IDE never run them.
+
+Steps never run concurrently in the same working directory, across every build process on the machine. If a
+project gets built twice in one build with different global properties - a `ProjectReference` with
+`AdditionalProperties`, for example - the second run waits for the first, then skips if the step's `Inputs`
+and `Outputs` show it up to date.
 
 If you are not generating static web assets, keep using your own target and call `Bun` directly.
 
@@ -501,6 +510,7 @@ The `BunRunTask` supports the following parameters:
 | `BunRuntimeDownload` | No | When true, downloads the Bun runtime from GitHub releases instead of using embedded runtimes | false |
 | `BunVersionDownload` | No | Specific Bun version to download (e.g., "1.3.6"). If not specified, downloads latest version. Only used when `BunRuntimeDownload=true`. | latest |
 | `DownloadMutexTimeoutSeconds` | No | Maximum seconds to wait for the download mutex when another process is already downloading. Only used when `BunRuntimeDownload=true`. | 300 |
+| `RunExclusively` | No | When true, runs sharing a working directory take turns across every build process on the machine, and a run that waited skips if `Inputs`/`Outputs` now show it up to date. `BunBeforeStaticWebAssets` steps always set it. | false |
 
 ### Output Parameters
 

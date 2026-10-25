@@ -29,6 +29,7 @@ public class BunTargetsTests
     [InlineData("_BunResolveStampDirectory", null)]
     [InlineData("Bun", null)]
     [InlineData("RunBunBeforeStaticWebAssets", "ResolveProjectReferences")]
+    [InlineData("_BunRunStepsFromInnerBuild", null)]
     [InlineData("_BunDiscoverGeneratedStaticWebAssets", null)]
     public void DevelopmentTargets_ShouldStayInSyncWithPackagedTargets(string targetName, string? developmentOnlyPrefix)
     {
