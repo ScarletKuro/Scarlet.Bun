@@ -224,6 +224,86 @@ public class BunBeforeStaticWebAssetsTests : IClassFixture<PackedTargetsFixture>
         await AssertManifestHasAsset(AppManifest("App8", "net8.0"), "Rcl", "js/generated.js");
     }
 
+    /// <summary>
+    /// Imitates a bundler that cleans its output directory and names the bundle from bundle-name.txt - as a
+    /// content-hashed file name changes with every edit.
+    /// </summary>
+    private const string RenamingBundler = """
+        import fs from 'node:fs';
+        const name = fs.readFileSync('bundle-name.txt', 'utf8').trim();
+        fs.rmSync('wwwroot/js', { recursive: true, force: true });
+        fs.mkdirSync('wwwroot/js', { recursive: true });
+        fs.writeFileSync(`wwwroot/js/${name}.js`, 'export const bundled = true;');
+        """;
+
+    [Fact]
+    public async Task RenamedBundle_DoesNotFailTheBuild()
+    {
+        // The SDK's wwwroot glob is evaluated before the step deletes old.js, so without reconciliation the build
+        // still lists it as Content and the static web assets SDK fails on a file that is gone.
+        using var workspace = CreateRazorClassLibrary(
+            """
+            <BunBeforeStaticWebAssets Include="run">
+              <Arguments>build.mjs</Arguments>
+            </BunBeforeStaticWebAssets>
+            """);
+        workspace.WriteFile("build.mjs", RenamingBundler);
+        workspace.WriteFile("bundle-name.txt", "old");
+        Assert.Equal(0, (await RunDotnet(workspace, $"build --configuration {DotnetCli.Configuration}")).ExitCode);
+        Assert.True(File.Exists(workspace.PathTo("wwwroot", "js", "old.js")));
+
+        workspace.WriteFile("bundle-name.txt", "new");
+        var build = await RunDotnet(workspace, $"build --configuration {DotnetCli.Configuration} --no-restore");
+
+        Assert.Equal(0, build.ExitCode);
+        Assert.False(File.Exists(workspace.PathTo("wwwroot", "js", "old.js")));
+        var manifestPath = workspace.PathTo("obj", DotnetCli.Configuration, TargetFramework, "staticwebassets.build.json");
+        await AssertManifestHasAsset(manifestPath, "GeneratedAssetsRcl", "js/new.js");
+        Assert.DoesNotContain("old.js", await File.ReadAllTextAsync(manifestPath), StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task RenamedBundle_InAMultiTargetLibraryBuiltThroughAnApp_DoesNotFailTheBuild()
+    {
+        // The inner build an app's ProjectReference reaches evaluates its glob before asking the outer build to
+        // run the steps, so it too still holds the deleted bundle.
+        using var workspace = await CreatePackagedTargetsWorkspace("renamed-bundle-project-reference");
+        workspace.WriteFile("Rcl/Rcl.csproj", $$"""
+            <Project Sdk="Microsoft.NET.Sdk.Razor">
+              <PropertyGroup>
+                <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+                <BunRuntimeDirectory>{{SecurityElement.Escape(PackedRuntimeDirectory)}}</BunRuntimeDirectory>
+              </PropertyGroup>
+              <ItemGroup><FrameworkReference Include="Microsoft.AspNetCore.App" /></ItemGroup>
+              <ItemGroup><PackageReference Include="Scarlet.Bun.MSBuild" Version="{{PackedTargetsFixture.Version}}" PrivateAssets="all" /></ItemGroup>
+              <ItemGroup><BunBeforeStaticWebAssets Include="run"><Arguments>build.mjs</Arguments></BunBeforeStaticWebAssets></ItemGroup>
+            </Project>
+            """);
+        workspace.WriteFile("Rcl/build.mjs", RenamingBundler);
+        workspace.WriteFile("Rcl/bundle-name.txt", "old");
+        workspace.WriteFile("App/App.csproj", """
+            <Project Sdk="Microsoft.NET.Sdk.Web">
+              <PropertyGroup>
+                <TargetFramework>net10.0</TargetFramework>
+                <ImplicitUsings>enable</ImplicitUsings>
+              </PropertyGroup>
+              <ItemGroup><ProjectReference Include="..\Rcl\Rcl.csproj" /></ItemGroup>
+            </Project>
+            """);
+        workspace.WriteFile("App/Program.cs", "WebApplication.Create(args).Run();");
+        Assert.Equal(0, (await RunDotnet(workspace, "restore App/App.csproj")).ExitCode);
+        Assert.Equal(0, (await RunDotnet(workspace, $"build App/App.csproj -c {DotnetCli.Configuration} --no-restore")).ExitCode);
+        Assert.True(File.Exists(workspace.PathTo("Rcl", "wwwroot", "js", "old.js")));
+
+        workspace.WriteFile("Rcl/bundle-name.txt", "new");
+        var build = await RunDotnet(workspace, $"build App/App.csproj -c {DotnetCli.Configuration} --no-restore");
+
+        Assert.Equal(0, build.ExitCode);
+        var appManifest = workspace.PathTo("App", "obj", DotnetCli.Configuration, "net10.0", "staticwebassets.build.json");
+        await AssertManifestHasAsset(appManifest, "Rcl", "js/new.js");
+        Assert.DoesNotContain("old.js", await File.ReadAllTextAsync(appManifest), StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task DesignTimeBuild_DoesNotRunTheSteps()
     {

@@ -193,5 +193,26 @@
     <ItemGroup>
       <Content Include="wwwroot\**\*" Exclude="@(Content)" />
     </ItemGroup>
+
+    <!--
+      And the other direction: a step that cleans its output directory or renames a bundle (a content hash in
+      the file name changes on every edit) deletes files the SDK's glob had already listed, and the static web
+      assets SDK fails on an asset whose file is gone. Bun cannot say what a script deleted, so this drops
+      exactly the wwwroot files that existed at evaluation and no longer do. Content someone listed explicitly
+      for a file that never existed is not in that snapshot, so a genuine mistake still fails as before.
+    -->
+    <ItemGroup>
+      <_BunDeletedWwwroot Include="@(_BunEvaluatedWwwroot)" Condition="!Exists('%(FullPath)')" />
+      <Content Remove="@(_BunDeletedWwwroot)" />
+    </ItemGroup>
   </Target>
+
+  <!--
+    The wwwroot files that existed when this project was evaluated, spelled as the SDK's glob spells them, for
+    the reconciliation above. Unconditional because an item condition here would depend on whether the project
+    declares its BunBeforeStaticWebAssets items before or after this file is imported.
+  -->
+  <ItemGroup>
+    <_BunEvaluatedWwwroot Include="wwwroot\**\*" />
+  </ItemGroup>
 </Project>
