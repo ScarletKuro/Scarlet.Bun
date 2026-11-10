@@ -19,6 +19,9 @@ Node.js, on Windows, Linux and macOS (x64 and ARM64).
 
 They are independent — use either, or both.
 
+Building this repository and running its samples and tests requires the .NET 11 SDK.
+The CLI package targets .NET 10; install that runtime too when testing the packaged tool.
+
 ### Scarlet.Bun.MSBuild — Bun during `dotnet build`
 
 ```bash
