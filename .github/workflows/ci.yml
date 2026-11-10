@@ -32,6 +32,10 @@ jobs:
         run: dotnet build --no-restore --configuration Release
 
       - name: Run tests with coverage
+        # VSTest uses x64 directory-open flags on Linux ARM64 (microsoft/vstest#16653).
+        # Skip attachment post-processing there; test execution and report generation stay enabled.
+        env:
+          VSTEST_DISABLE_ARTIFACTS_POSTPROCESSING: ${{ matrix.os == 'ubuntu-24.04-arm' && '1' || '0' }}
         run: >
           dotnet test --no-build --configuration Release
           --collect:"XPlat Code Coverage" --results-directory ./coverage
@@ -278,6 +282,10 @@ jobs:
         run: dotnet build --no-restore --configuration Release
 
       - name: Run tests with coverage
+        # VSTest uses x64 directory-open flags on Linux ARM64 (microsoft/vstest#16653).
+        # Skip attachment post-processing there; test execution and report generation stay enabled.
+        env:
+          VSTEST_DISABLE_ARTIFACTS_POSTPROCESSING: ${{ matrix.arch == 'arm64' && '1' || '0' }}
         run: >
           dotnet test --no-build --configuration Release
           --collect:"XPlat Code Coverage" --results-directory ./coverage
