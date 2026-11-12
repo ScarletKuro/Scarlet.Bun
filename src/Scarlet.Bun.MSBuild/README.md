@@ -487,14 +487,31 @@ file like a change to a `.cs` file." When it fires, `dotnet watch` just runs a n
 regardless of what triggered it, so they run here too — the `Watch` item doesn't invoke Bun itself, it just
 causes the build that was always going to invoke Bun to happen more often.
 
-Run `dotnet watch build` (or `dotnet watch run` for a Blazor/ASP.NET Core app, which also gets browser
-refresh for the resulting static assets) and saving a `.js`/`.scss` file re-runs Bun like any other source
-change.
+That only works when `dotnet watch` builds: `dotnet watch build`, or `dotnet watch run --no-hot-reload`. Then
+saving a `.js`/`.scss` file re-runs Bun like any other source change, at the cost of a full MSBuild build per
+save.
 
-This rides entirely on `dotnet watch`'s existing file-watching — no code in this repo — so it triggers a
-full MSBuild build per save rather than an instant incremental rebuild. That's fine for most JS/CSS bundling
-setups; if the rebuild latency becomes the bottleneck, running Bun's own `--watch` mode as a separate
-long-lived process is a further option, at the cost of managing that process's lifecycle yourself.
+#### With Hot Reload
+
+`dotnet watch run` uses Hot Reload by default, and Hot Reload applies changes **without building**. It notices
+the change but runs no build, so your Bun steps do not run and the app keeps serving the old output until you
+restart. For this loop, run the step's own watch mode next to it:
+
+```bash
+dotnet watch run
+dotnet bun build assets/app.js --outfile wwwroot/js/app.js --watch
+```
+
+Bun rebuilds on every save and the running app serves the new bundle as a changed static asset — no rebuild,
+no restart. Give the watcher the same arguments as your `BunBeforeStaticWebAssets` step: both write the same
+files.
+
+A script step (`bun run build.mjs`) needs its own watching. `bun --watch build.mjs` restarts the script only
+when a file the script *imports* changes, not the files it reads or hands to `Bun.build` as entry points. Use
+`bun build --watch` for each bundle, or make the script watch its inputs itself.
+
+None of this is code in this repo: the build side rides on `dotnet watch`'s file watching, and the Hot Reload
+side on Bun's.
 
 ### BunBeforeStaticWebAssets Metadata
 
