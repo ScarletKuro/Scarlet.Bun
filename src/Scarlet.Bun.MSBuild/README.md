@@ -369,7 +369,8 @@ project the generated `wwwroot` files are **not** added back as `Content`: only 
 packed by NuGet under `content/` and `contentFiles/`.
 
 This is controlled by the `BunDiscoverStaticWebAssets` property. It defaults to `true` when the project uses
-the static web assets SDK (`$(UsingMicrosoftNETSdkStaticWebAssets)`) and `false` otherwise; set it
+static web assets - the static web assets SDK from .NET 8 (`$(UsingMicrosoftNETSdkStaticWebAssets)`), or the
+Razor SDK that carries them in .NET 6 and 7 (`$(UsingMicrosoftNETSdkRazor)`) - and `false` otherwise; set it
 explicitly to override:
 
 ```xml

@@ -530,6 +530,37 @@ public class BunBeforeStaticWebAssetsTests : IClassFixture<PackedTargetsFixture>
         Assert.DoesNotContain("generated.css", manifest, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// The .NET 6 and 7 SDKs ship static web assets inside the Razor SDK and never set
+    /// <c>UsingMicrosoftNETSdkStaticWebAssets</c>, which only appeared with the standalone static web assets SDK in
+    /// .NET 8. Detection that relied on it alone silently dropped the generated files from every clean build there.
+    /// </summary>
+    /// <remarks>
+    /// CI has no SDK older than 10, so this clears the property in the project body instead. That reproduces what
+    /// the detection sees under SDK 6/7 without changing what the SDK does: the newer SDKs only read the property in
+    /// their props, to decide which targets to import, and those are evaluated before the project body.
+    /// </remarks>
+    [Fact]
+    public async Task RazorClassLibrary_WithoutTheStaticWebAssetsSdkMarker_StillRegistersGeneratedFiles()
+    {
+        using var workspace = TempWorkspace.Create("static-web-assets-legacy-razor");
+        workspace.WriteFile("build.mjs", WriteGeneratedAsset("wwwroot/css"));
+        workspace.WriteFile("GeneratedAssetsRcl.csproj", Project(
+            "Microsoft.NET.Sdk.Razor",
+            """
+            <BunBeforeStaticWebAssets Include="run">
+              <Arguments>build.mjs</Arguments>
+            </BunBeforeStaticWebAssets>
+            """,
+            additionalProperties: "<UsingMicrosoftNETSdkStaticWebAssets></UsingMicrosoftNETSdkStaticWebAssets>"));
+
+        Assert.Equal(0, (await RunDotnet(workspace, $"build --configuration {DotnetCli.Configuration}")).ExitCode);
+
+        await AssertManifestHasAsset(
+            workspace.PathTo("obj", DotnetCli.Configuration, TargetFramework, "staticwebassets.build.json"),
+            "GeneratedAssetsRcl", GeneratedAsset);
+    }
+
     private static TempWorkspace CreatePlainSdkLibrary(string additionalProperties)
     {
         var workspace = TempWorkspace.Create("plain-sdk-wwwroot");

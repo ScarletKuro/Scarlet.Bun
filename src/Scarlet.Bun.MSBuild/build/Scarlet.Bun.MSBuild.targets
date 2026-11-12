@@ -247,11 +247,14 @@
     re-added items are plain Content, which NuGet packs under content/ and contentFiles/ by default. So the
     default follows the SDK. The steps themselves - once in the outer build, exclusively, incrementally - run
     the same either way. Set the property explicitly to override the detection.
-    Computed in the targets rather than the props: the SDK sets UsingMicrosoftNETSdkStaticWebAssets in its own
-    props, which are not guaranteed to be imported before this package's.
+    Computed in the targets rather than the props: the SDK sets these markers in its own props, which are not
+    guaranteed to be imported before this package's.
+    UsingMicrosoftNETSdkStaticWebAssets marks the standalone static web assets SDK, which only exists from .NET 8.
+    The .NET 6 and 7 SDKs build static web assets into the Razor SDK and set only UsingMicrosoftNETSdkRazor -
+    which Web and Blazor WebAssembly projects get too, because their SDKs import Razor.
   -->
   <PropertyGroup>
-    <BunDiscoverStaticWebAssets Condition="'$(BunDiscoverStaticWebAssets)' == '' AND '$(UsingMicrosoftNETSdkStaticWebAssets)' == 'true'">true</BunDiscoverStaticWebAssets>
+    <BunDiscoverStaticWebAssets Condition="'$(BunDiscoverStaticWebAssets)' == '' AND ('$(UsingMicrosoftNETSdkStaticWebAssets)' == 'true' OR '$(UsingMicrosoftNETSdkRazor)' == 'true')">true</BunDiscoverStaticWebAssets>
     <BunDiscoverStaticWebAssets Condition="'$(BunDiscoverStaticWebAssets)' == ''">false</BunDiscoverStaticWebAssets>
   </PropertyGroup>
 
