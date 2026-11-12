@@ -10,7 +10,7 @@ namespace Scarlet.Bun.Testing;
 /// </summary>
 internal static class DotnetCli
 {
-    private static readonly TimeSpan Timeout = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan DefaultTimeout = TimeSpan.FromMinutes(5);
 
     /// <summary>
     /// The configuration this test assembly was built in.
@@ -33,8 +33,11 @@ internal static class DotnetCli
     public static async Task<DotnetResult> Run(
         string workingDirectory,
         string arguments,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        TimeSpan? timeoutOverride = null)
     {
+        var limit = timeoutOverride ?? DefaultTimeout;
+
         var startInfo = new ProcessStartInfo("dotnet", arguments)
         {
             WorkingDirectory = workingDirectory,
@@ -59,7 +62,7 @@ internal static class DotnetCli
             Collect(process.StandardError, standardError));
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        timeout.CancelAfter(Timeout);
+        timeout.CancelAfter(limit);
 
         try
         {
@@ -75,9 +78,9 @@ internal static class DotnetCli
             // and the output captured so far is the only clue as to where the build hung.
             throw new TimeoutException(
                 (exited
-                    ? $"'dotnet {arguments}' exited, but its output was still open after {Timeout.TotalMinutes} minutes; " +
+                    ? $"'dotnet {arguments}' exited, but its output was still open after {limit}; " +
                       "a process it started is probably still holding the pipe."
-                    : $"'dotnet {arguments}' did not finish within {Timeout.TotalMinutes} minutes.") +
+                    : $"'dotnet {arguments}' did not finish within {limit}.") +
                 Environment.NewLine + Snapshot(standardOutput) + Environment.NewLine + Snapshot(standardError));
         }
 
