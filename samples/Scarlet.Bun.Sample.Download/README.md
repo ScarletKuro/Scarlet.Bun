@@ -6,7 +6,7 @@ This sample demonstrates using the **runtime download** feature of Scarlet.Bun.M
 
 - Downloads Bun runtime from GitHub releases on-demand
 - Caches the runtime in a local directory for reuse
-- Uses a specific version (1.3.12) for reproducibility
+- Pins a specific Bun version for reproducibility
 - Automatically bundles JavaScript and compiles SCSS during build
 
 ## Configuration
@@ -17,10 +17,14 @@ The runtime download mode is configured in the `.csproj` file:
 <PropertyGroup>
   <!-- Enable Bun runtime download mode -->
   <BunRuntimeDownload>true</BunRuntimeDownload>
-  <BunVersionDownload>1.3.12</BunVersionDownload>
+  <BunVersionDownload>1.4.4</BunVersionDownload>
   <BunRuntimeDirectory>$(MSBuildProjectDirectory)/runtimes</BunRuntimeDirectory>
 </PropertyGroup>
 ```
+
+The sample itself sets `BunVersionDownload` to `$(BunVersion)`, the version this repository pins in
+`Directory.Build.props`, so it always builds against the Bun the packages ship. In your own project, write
+the version out as above.
 
 ## How It Works
 

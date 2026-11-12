@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Xml.Linq;
 
 namespace Scarlet.Bun.MSBuild.IntegrationTests;
 
@@ -26,7 +25,7 @@ public class BunBinaryVersionTests
     public void StagedBunBinary_ShouldReportTheVersionTheRepositoryPinned()
     {
         // Arrange
-        var expectedVersion = ReadPinnedBunVersion();
+        var expectedVersion = PinnedBunVersion.Value;
         var platform = BunRuntimeResolver.GetCurrentPlatform();
         var runtimesDirectory = Path.Combine(Directory.GetCurrentDirectory(), "runtimes");
         var bunPath = BunRuntimeResolver.GetExecutablePath(runtimesDirectory, platform);
@@ -40,29 +39,6 @@ public class BunBinaryVersionTests
 
         // Assert
         Assert.Equal(expectedVersion, reportedVersion);
-    }
-
-    private static string ReadPinnedBunVersion()
-    {
-        var directory = new DirectoryInfo(AppContext.BaseDirectory);
-
-        while (directory is not null)
-        {
-            var candidate = Path.Combine(directory.FullName, "Directory.Build.props");
-
-            if (File.Exists(candidate))
-            {
-                var root = XDocument.Load(candidate).Root;
-                Assert.NotNull(root);
-
-                return Assert.Single(root.Descendants("BunVersion")).Value.Trim();
-            }
-
-            directory = directory.Parent;
-        }
-
-        throw new DirectoryNotFoundException(
-            $"Could not locate Directory.Build.props above '{AppContext.BaseDirectory}'.");
     }
 
     private static string RunBun(string bunPath, string argument)
