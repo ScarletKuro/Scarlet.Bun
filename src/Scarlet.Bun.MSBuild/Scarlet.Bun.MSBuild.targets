@@ -173,6 +173,20 @@
   </Target>
 
   <!--
+    Whether the generated wwwroot files are handed back to the build as Content. Only the static web assets SDK
+    (Razor, Web, Blazor WebAssembly) turns wwwroot Content into static web assets; in any other project the
+    re-added items are plain Content, which NuGet packs under content/ and contentFiles/ by default. So the
+    default follows the SDK. The steps themselves - once in the outer build, exclusively, incrementally - run
+    the same either way. Set the property explicitly to override the detection.
+    Computed in the targets rather than the props: the SDK sets UsingMicrosoftNETSdkStaticWebAssets in its own
+    props, which are not guaranteed to be imported before this package's.
+  -->
+  <PropertyGroup>
+    <BunDiscoverStaticWebAssets Condition="'$(BunDiscoverStaticWebAssets)' == '' AND '$(UsingMicrosoftNETSdkStaticWebAssets)' == 'true'">true</BunDiscoverStaticWebAssets>
+    <BunDiscoverStaticWebAssets Condition="'$(BunDiscoverStaticWebAssets)' == ''">false</BunDiscoverStaticWebAssets>
+  </PropertyGroup>
+
+  <!--
     Discover content in each inner build, even when Bun ran only in the outer build.
     Rebuild's Clean phase can evaluate and cache the inner projects before Bun generates the files;
     registering Content in the outer project cannot update those cached item lists.
@@ -190,7 +204,7 @@
       the files up. DefineStaticWebAssets distincts its own candidates, so this is about not handing other
       consumers of @(Content) the same file twice.
     -->
-    <ItemGroup>
+    <ItemGroup Condition="'$(BunDiscoverStaticWebAssets)' == 'true'">
       <Content Include="wwwroot\**\*" Exclude="@(Content)" />
     </ItemGroup>
 
@@ -201,7 +215,7 @@
       exactly the wwwroot files that existed at evaluation and no longer do. Content someone listed explicitly
       for a file that never existed is not in that snapshot, so a genuine mistake still fails as before.
     -->
-    <ItemGroup>
+    <ItemGroup Condition="'$(BunDiscoverStaticWebAssets)' == 'true'">
       <_BunDeletedWwwroot Include="@(_BunEvaluatedWwwroot)" Condition="!Exists('%(FullPath)')" />
       <Content Remove="@(_BunDeletedWwwroot)" />
     </ItemGroup>
@@ -209,10 +223,11 @@
 
   <!--
     The wwwroot files that existed when this project was evaluated, spelled as the SDK's glob spells them, for
-    the reconciliation above. Unconditional because an item condition here would depend on whether the project
+    the reconciliation above. Conditioned on the property rather than on @(BunBeforeStaticWebAssets): every
+    property is evaluated before any item, whereas an item condition would depend on whether the project
     declares its BunBeforeStaticWebAssets items before or after this file is imported.
   -->
-  <ItemGroup>
+  <ItemGroup Condition="'$(BunDiscoverStaticWebAssets)' == 'true'">
     <_BunEvaluatedWwwroot Include="wwwroot\**\*" />
   </ItemGroup>
 </Project>

@@ -360,6 +360,24 @@ If you need to sequence another target after these steps, use `AfterTargets="Run
 </BunBeforeStaticWebAssets>
 ```
 
+#### Projects without static web assets
+
+`BunBeforeStaticWebAssets` also works in a plain `Microsoft.NET.Sdk` project — useful for its run-once,
+multi-targeting-aware and incremental behaviour even when the output is, say, embedded resources. In such a
+project the generated `wwwroot` files are **not** added back as `Content`: only the static web assets SDK
+(Razor, Web, Blazor WebAssembly) turns them into static web assets, and plain `Content` would otherwise be
+packed by NuGet under `content/` and `contentFiles/`.
+
+This is controlled by the `BunDiscoverStaticWebAssets` property. It defaults to `true` when the project uses
+the static web assets SDK (`$(UsingMicrosoftNETSdkStaticWebAssets)`) and `false` otherwise; set it
+explicitly to override:
+
+```xml
+<PropertyGroup>
+  <BunDiscoverStaticWebAssets>true</BunDiscoverStaticWebAssets>
+</PropertyGroup>
+```
+
 ### Basic Example
 
 For non-static-web-asset scenarios, you can call the reusable `Bun` target from your own targets:
@@ -442,7 +460,9 @@ project gets built twice in one build with different global properties - a `Proj
 `AdditionalProperties`, for example - the second run waits for the first, then skips if the step's `Inputs`
 and `Outputs` show it up to date.
 
-If you are not generating static web assets, keep using your own target and call `Bun` directly.
+This works the same in projects that do not use static web assets; see
+[Projects without static web assets](#projects-without-static-web-assets). For a step that should not run on
+every build (a test run, for example), keep using your own target and call `Bun` directly.
 
 ### dotnet watch Integration
 

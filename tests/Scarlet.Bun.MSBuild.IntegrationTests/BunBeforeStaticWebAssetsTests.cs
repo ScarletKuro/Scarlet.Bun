@@ -473,6 +473,98 @@ public class BunBeforeStaticWebAssetsTests : IClassFixture<PackedTargetsFixture>
         Assert.NotEqual(0, result.ExitCode);
     }
 
+    /// <summary>
+    /// A plain <c>Microsoft.NET.Sdk</c> project has no static web assets pipeline to hand <c>wwwroot</c> to, so
+    /// re-adding it as <c>Content</c> only makes NuGet pack it under <c>content/</c> and <c>contentFiles/</c> -
+    /// on top of wherever the project packs its own build output. The steps themselves must still run.
+    /// </summary>
+    [Fact]
+    public async Task PlainSdkProject_RunsStepsWithoutRegisteringWwwrootAsContent()
+    {
+        using var workspace = CreatePlainSdkLibrary(additionalProperties: "");
+
+        await Pack(workspace);
+
+        Assert.True(File.Exists(workspace.PathTo("wwwroot", "css", "generated.css")), "The step did not run.");
+        Assert.Empty(PackageEntriesEndingWith(workspace, "generated.css"));
+    }
+
+    /// <summary>
+    /// <c>BunDiscoverStaticWebAssets</c> overrides the SDK detection, for a project that does want the generated
+    /// files as <c>Content</c> without the static web assets SDK.
+    /// </summary>
+    [Fact]
+    public async Task PlainSdkProject_BunDiscoverStaticWebAssetsTrue_RegistersWwwrootAsContent()
+    {
+        using var workspace = CreatePlainSdkLibrary(
+            additionalProperties: "<BunDiscoverStaticWebAssets>true</BunDiscoverStaticWebAssets>");
+
+        await Pack(workspace);
+
+        Assert.Contains($"content/wwwroot/{GeneratedAsset}", PackageEntriesEndingWith(workspace, "generated.css"));
+    }
+
+    /// <summary>
+    /// And the other direction: a static web assets project can switch discovery off, and the generated file
+    /// then misses the clean build's evaluation-time glob, so it is not packed as a static web asset.
+    /// </summary>
+    [Fact]
+    public async Task RazorClassLibrary_BunDiscoverStaticWebAssetsFalse_DoesNotRegisterGeneratedFiles()
+    {
+        using var workspace = TempWorkspace.Create("static-web-assets-opt-out");
+        workspace.WriteFile("build.mjs", WriteGeneratedAsset("wwwroot/css"));
+        workspace.WriteFile("GeneratedAssetsRcl.csproj", Project(
+            "Microsoft.NET.Sdk.Razor",
+            """
+            <BunBeforeStaticWebAssets Include="run">
+              <Arguments>build.mjs</Arguments>
+            </BunBeforeStaticWebAssets>
+            """,
+            additionalProperties: "<BunDiscoverStaticWebAssets>false</BunDiscoverStaticWebAssets>"));
+
+        Assert.Equal(0, (await RunDotnet(workspace, $"build --configuration {DotnetCli.Configuration}")).ExitCode);
+
+        Assert.True(File.Exists(workspace.PathTo("wwwroot", "css", "generated.css")), "The step did not run.");
+        var manifest = await File.ReadAllTextAsync(
+            workspace.PathTo("obj", DotnetCli.Configuration, TargetFramework, "staticwebassets.build.json"));
+        Assert.DoesNotContain("generated.css", manifest, StringComparison.Ordinal);
+    }
+
+    private static TempWorkspace CreatePlainSdkLibrary(string additionalProperties)
+    {
+        var workspace = TempWorkspace.Create("plain-sdk-wwwroot");
+
+        try
+        {
+            workspace.WriteFile("build.mjs", WriteGeneratedAsset("wwwroot/css"));
+            workspace.WriteFile("PlainLibrary.csproj", Project(
+                "Microsoft.NET.Sdk",
+                """
+                <BunBeforeStaticWebAssets Include="run">
+                  <Arguments>build.mjs</Arguments>
+                </BunBeforeStaticWebAssets>
+                """,
+                additionalProperties));
+
+            return workspace;
+        }
+        catch
+        {
+            workspace.Dispose();
+            throw;
+        }
+    }
+
+    private static string[] PackageEntriesEndingWith(TempWorkspace workspace, string suffix)
+    {
+        using var package = ZipFile.OpenRead(Assert.Single(Directory.GetFiles(workspace.PathTo("nupkg"), "*.nupkg")));
+
+        return package.Entries
+            .Select(entry => entry.FullName)
+            .Where(name => name.EndsWith(suffix, StringComparison.Ordinal))
+            .ToArray();
+    }
+
     private static string AppendToOrderLog(string step) =>
         Script($"""fs.appendFileSync("order.log", "{step},");""", WriteGeneratedAssetTo("wwwroot/css"));
 
