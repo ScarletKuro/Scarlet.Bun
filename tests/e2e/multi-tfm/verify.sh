@@ -3,7 +3,7 @@ set -e
 
 # End-to-End test for multi-target framework support using a Razor Class Library.
 # Proves that the netstandard2.0 MSBuild task loads and resolves runtimes correctly
-# when a Blazor/Razor class library multi-targets net8.0, net9.0, and net10.0.
+# when a Blazor/Razor class library multi-targets net8.0, net9.0, net10.0, and net11.0.
 # Also verifies that the packed NuGet package contains static web assets (JS/CSS).
 #
 # Usage: ./verify.sh <workspace-path> <package-version> <runtime-version>
@@ -314,7 +314,7 @@ echo "✓ Created package.json, bun.lock, and build.mjs"
 
 # Update project file from template (multi-TFM RCL)
 process_template "$TEMPLATES_DIR/TestRclMultiTfm.csproj.template" "TestRclMultiTfm.csproj"
-echo "✓ Updated project file with multi-target frameworks (net8.0, net9.0, net10.0)"
+echo "✓ Updated project file with multi-target frameworks (net8.0, net9.0, net10.0, net11.0)"
 
 # Build the project. BunBeforeStaticWebAssets runs install + asset build once
 # before DispatchToInnerBuilds, then inner TFM builds compile without re-running Bun.
@@ -407,7 +407,7 @@ else
 fi
 
 # Check that each TFM produced build output
-for tfm in net8.0 net9.0 net10.0; do
+for tfm in net8.0 net9.0 net10.0 net11.0; do
     if [ -d "bin/Debug/$tfm" ]; then
         echo "✓ $tfm build output directory exists"
     else
@@ -438,7 +438,7 @@ for command in "install --frozen-lockfile" "run build.mjs"; do
         FAILED=1
     fi
 done
-for tfm in net8.0 net9.0 net10.0; do
+for tfm in net8.0 net9.0 net10.0 net11.0; do
     MANIFEST="obj/Debug/$tfm/staticwebassets.build.json"
     for asset in bundle.min.js style.min.css; do
         # Identity occurs once per asset and uses the original name even with SDK fingerprint patterns.
@@ -578,7 +578,7 @@ else
 fi
 
 # An app that references the RCL, built on its own - what dotnet run on the app does. Its ProjectReference
-# builds the RCL's net10.0 inner build directly, never the RCL's outer build, so the inner build has to ask
+# builds the RCL's net11.0 inner build directly, never the RCL's outer build, so the inner build has to ask
 # the outer one for the steps. Before it did, Bun never ran here and the app 404ed on the RCL's bundles.
 echo ""
 echo "=========================================="
@@ -608,7 +608,7 @@ for command in "install --frozen-lockfile" "run build.mjs"; do
     fi
 done
 
-APP_MANIFEST="$APP_DIR/obj/Debug/net10.0/staticwebassets.build.json"
+APP_MANIFEST="$APP_DIR/obj/Debug/net11.0/staticwebassets.build.json"
 for asset in bundle.min.js style.min.css; do
     # Identity is the RCL file's path; the .gz alternatives end in .gz", so this counts primary assets only.
     MATCHES=$(grep -oE '"Identity"[[:space:]]*:[[:space:]]*"[^"]*"' "$APP_MANIFEST" | grep -Fc "$asset\"" || true)
@@ -623,7 +623,7 @@ done
 # Serve it: the manifest is the means, the app answering for the bundle is the point. Development is the
 # environment in which an app serves referenced projects' static web assets straight from their wwwroot.
 APP_PORT=$((20000 + RANDOM % 10000))
-ASPNETCORE_ENVIRONMENT=Development dotnet "$APP_DIR/bin/Debug/net10.0/TestApp.dll" \
+ASPNETCORE_ENVIRONMENT=Development dotnet "$APP_DIR/bin/Debug/net11.0/TestApp.dll" \
     --urls "http://127.0.0.1:$APP_PORT" --contentRoot "$APP_DIR" > app-run.log 2>&1 &
 APP_PID=$!
 BUNDLE_URL="http://127.0.0.1:$APP_PORT/_content/TestRclMultiTfm/js/bundle.min.js"

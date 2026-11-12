@@ -17,7 +17,7 @@ public class BunBeforeStaticWebAssetsTests : IClassFixture<PackedTargetsFixture>
     private const string GeneratedAsset = "css/generated.css";
 
     /// <summary>The TFM the generated test projects target; also the intermediate output path segment.</summary>
-    private const string TargetFramework = "net10.0";
+    private const string TargetFramework = "net11.0";
 
     private readonly ITestOutputHelper _output;
     private readonly PackedTargetsFixture _package;
@@ -35,7 +35,7 @@ public class BunBeforeStaticWebAssetsTests : IClassFixture<PackedTargetsFixture>
         workspace.WriteFile("GeneratedAssetsRcl.csproj", $$"""
             <Project Sdk="Microsoft.NET.Sdk.Razor">
               <PropertyGroup>
-                <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
+                <TargetFrameworks>net8.0;net9.0;net10.0;net11.0</TargetFrameworks>
                 <BunRuntimeDirectory>{{SecurityElement.Escape(PackedRuntimeDirectory)}}</BunRuntimeDirectory>
               </PropertyGroup>
               <ItemGroup><FrameworkReference Include="Microsoft.AspNetCore.App" /></ItemGroup>
@@ -65,7 +65,7 @@ public class BunBeforeStaticWebAssetsTests : IClassFixture<PackedTargetsFixture>
         Assert.Equal(0, (await RunDotnet(workspace, "new sln -n RebuildAssets")).ExitCode);
         Assert.Equal(0, (await RunDotnet(workspace, "sln add GeneratedAssetsRcl.csproj")).ExitCode);
         string[] assets = ["js/generated.js", GeneratedAsset];
-        string[] targetFrameworks = ["net8.0", "net9.0", "net10.0"];
+        string[] targetFrameworks = ["net8.0", "net9.0", "net10.0", "net11.0"];
         string ContentRecord(string tfm) => workspace.PathTo("obj", DotnetCli.Configuration, tfm, "content.txt");
         async Task AssertEachAssetIsContentOnce()
         {
@@ -150,7 +150,7 @@ public class BunBeforeStaticWebAssetsTests : IClassFixture<PackedTargetsFixture>
         workspace.WriteFile("Rcl/Rcl.csproj", $$"""
             <Project Sdk="Microsoft.NET.Sdk.Razor">
               <PropertyGroup>
-                <TargetFrameworks>net8.0;net9.0;net10.0</TargetFrameworks>
+                <TargetFrameworks>net8.0;net9.0;net10.0;net11.0</TargetFrameworks>
                 <BunRuntimeDirectory>{{SecurityElement.Escape(PackedRuntimeDirectory)}}</BunRuntimeDirectory>
               </PropertyGroup>
               <ItemGroup><FrameworkReference Include="Microsoft.AspNetCore.App" /></ItemGroup>
@@ -172,7 +172,7 @@ public class BunBeforeStaticWebAssetsTests : IClassFixture<PackedTargetsFixture>
             fs.writeFileSync('wwwroot/js/generated.js', 'export const generated = true;');
             fs.appendFileSync('order.log', 'end,');
             """);
-        foreach (var (app, tfm) in new[] { ("App10", "net10.0"), ("App8", "net8.0") })
+        foreach (var (app, tfm) in new[] { ("App11", "net11.0"), ("App8", "net8.0") })
         {
             workspace.WriteFile($"{app}/{app}.csproj", $"""
                 <Project Sdk="Microsoft.NET.Sdk.Web">
@@ -186,7 +186,7 @@ public class BunBeforeStaticWebAssetsTests : IClassFixture<PackedTargetsFixture>
             workspace.WriteFile($"{app}/Program.cs", "WebApplication.Create(args).Run();");
         }
         Assert.Equal(0, (await RunDotnet(workspace, "new sln -n Apps")).ExitCode);
-        Assert.Equal(0, (await RunDotnet(workspace, "sln add Rcl/Rcl.csproj App10/App10.csproj App8/App8.csproj")).ExitCode);
+        Assert.Equal(0, (await RunDotnet(workspace, "sln add Rcl/Rcl.csproj App11/App11.csproj App8/App8.csproj")).ExitCode);
         Assert.Equal(0, (await RunDotnet(workspace, "restore Apps.slnx")).ExitCode);
 
         string AppManifest(string app, string tfm) =>
@@ -200,19 +200,19 @@ public class BunBeforeStaticWebAssetsTests : IClassFixture<PackedTargetsFixture>
 
         // Only the app is built, as dotnet run does: the library's outer build never runs.
         Assert.Equal(0, (await RunDotnet(workspace,
-            $"build App10/App10.csproj -c {DotnetCli.Configuration} --no-restore")).ExitCode);
+            $"build App11/App11.csproj -c {DotnetCli.Configuration} --no-restore")).ExitCode);
         Assert.Equal("start,end,", await File.ReadAllTextAsync(workspace.PathTo("Rcl", "order.log")));
-        await AssertManifestHasAsset(AppManifest("App10", "net10.0"), "Rcl", "js/generated.js");
+        await AssertManifestHasAsset(AppManifest("App11", "net11.0"), "Rcl", "js/generated.js");
 
-        // The whole solution: the library's outer build, three inner builds and two apps each reach the steps,
+        // The whole solution: the library's outer build, four inner builds and two apps each reach the steps,
         // concurrently, and between them must run them exactly once.
         ResetGeneratedState();
         Assert.Equal(0, (await RunDotnet(workspace,
             $"build Apps.slnx -c {DotnetCli.Configuration} --no-restore")).ExitCode);
         Assert.Equal("start,end,", await File.ReadAllTextAsync(workspace.PathTo("Rcl", "order.log")));
-        await AssertManifestHasAsset(AppManifest("App10", "net10.0"), "Rcl", "js/generated.js");
+        await AssertManifestHasAsset(AppManifest("App11", "net11.0"), "Rcl", "js/generated.js");
         await AssertManifestHasAsset(AppManifest("App8", "net8.0"), "Rcl", "js/generated.js");
-        foreach (var tfm in new[] { "net8.0", "net9.0", "net10.0" })
+        foreach (var tfm in new[] { "net8.0", "net9.0", "net10.0", "net11.0" })
             await AssertManifestHasAsset(workspace.PathTo("Rcl", "obj", DotnetCli.Configuration, tfm, "staticwebassets.build.json"),
                 "Rcl", "js/generated.js");
 
@@ -271,7 +271,7 @@ public class BunBeforeStaticWebAssetsTests : IClassFixture<PackedTargetsFixture>
         workspace.WriteFile("Rcl/Rcl.csproj", $$"""
             <Project Sdk="Microsoft.NET.Sdk.Razor">
               <PropertyGroup>
-                <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+                <TargetFrameworks>net8.0;net10.0;net11.0</TargetFrameworks>
                 <BunRuntimeDirectory>{{SecurityElement.Escape(PackedRuntimeDirectory)}}</BunRuntimeDirectory>
               </PropertyGroup>
               <ItemGroup><FrameworkReference Include="Microsoft.AspNetCore.App" /></ItemGroup>
@@ -284,7 +284,7 @@ public class BunBeforeStaticWebAssetsTests : IClassFixture<PackedTargetsFixture>
         workspace.WriteFile("App/App.csproj", """
             <Project Sdk="Microsoft.NET.Sdk.Web">
               <PropertyGroup>
-                <TargetFramework>net10.0</TargetFramework>
+                <TargetFramework>net11.0</TargetFramework>
                 <ImplicitUsings>enable</ImplicitUsings>
               </PropertyGroup>
               <ItemGroup><ProjectReference Include="..\Rcl\Rcl.csproj" /></ItemGroup>
@@ -299,7 +299,7 @@ public class BunBeforeStaticWebAssetsTests : IClassFixture<PackedTargetsFixture>
         var build = await RunDotnet(workspace, $"build App/App.csproj -c {DotnetCli.Configuration} --no-restore");
 
         Assert.Equal(0, build.ExitCode);
-        var appManifest = workspace.PathTo("App", "obj", DotnetCli.Configuration, "net10.0", "staticwebassets.build.json");
+        var appManifest = workspace.PathTo("App", "obj", DotnetCli.Configuration, "net11.0", "staticwebassets.build.json");
         await AssertManifestHasAsset(appManifest, "Rcl", "js/new.js");
         Assert.DoesNotContain("old.js", await File.ReadAllTextAsync(appManifest), StringComparison.Ordinal);
     }
